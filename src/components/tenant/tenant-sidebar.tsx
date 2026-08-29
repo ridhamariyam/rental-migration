@@ -13,9 +13,11 @@ import {
   HistoryIcon,
   LayoutDashboardIcon,
   MapPinCheckIcon,
+  Settings2Icon,
   ShirtIcon,
   SprayCanIcon,
   TagIcon,
+  UserCircleIcon,
   UsersIcon,
   WalletIcon,
 } from "lucide-react";
@@ -135,6 +137,21 @@ const navItems = [
   },
 ] as const;
 
+const accountNavItems = [
+  {
+    href: tenantPaths.profile,
+    label: "Profile",
+    icon: UserCircleIcon,
+    permission: null,
+  },
+  {
+    href: tenantPaths.business,
+    label: "Business Settings",
+    icon: Settings2Icon,
+    permission: Permission.SHOP_MANAGE,
+  },
+] as const;
+
 /**
  * The tenant dashboard shell's navigation, introduced this phase (Phase 6/7
  * only needed a bare header — see plan.md § Phase 6 "Delivered"). Nav items
@@ -150,6 +167,7 @@ export function TenantSidebar({
     firstName: string;
     lastName: string;
     email: string;
+    avatarUrl: string | null;
     role: UserRole;
   };
 }) {
@@ -170,6 +188,9 @@ export function TenantSidebar({
         ? { ...item, href: `${tenantPaths.attendance}/team` }
         : item,
     );
+  const accountItems = accountNavItems.filter(
+    (item) => !item.permission || hasPermission(user.role, item.permission),
+  );
 
   return (
     <Sidebar collapsible="icon" variant="inset" className="print:hidden">
@@ -239,6 +260,48 @@ export function TenantSidebar({
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
+
+        {accountItems.length > 0 ? (
+          <SidebarGroup className="px-2 py-1">
+            <SidebarGroupLabel className="px-2 py-1.5 text-[11px] font-semibold tracking-widest uppercase text-muted-foreground/60">
+              Account
+            </SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu className="gap-0.5">
+                {accountItems.map((item) => {
+                  const isActive = pathname.startsWith(item.href);
+                  const Icon = item.icon;
+
+                  return (
+                    <SidebarMenuItem key={item.href}>
+                      <SidebarMenuButton
+                        isActive={isActive}
+                        tooltip={item.label}
+                        render={<Link href={item.href} />}
+                        className={
+                          isActive
+                            ? "h-9 rounded-lg bg-primary/10 px-2.5 text-sm font-semibold text-primary transition-colors hover:bg-primary/15 hover:text-primary data-active:bg-primary/10 data-active:font-semibold data-active:text-primary"
+                            : "h-9 rounded-lg px-2.5 text-sm font-medium text-muted-foreground/90 transition-colors hover:bg-accent/60 hover:text-foreground"
+                        }
+                      >
+                        <Icon
+                          className={
+                            isActive
+                              ? "size-[18px] shrink-0 text-primary"
+                              : "size-[18px] shrink-0 text-muted-foreground/75 transition-colors group-hover/menu-button:text-foreground"
+                          }
+                        />
+                        <span className="min-w-0 truncate tracking-tight">
+                          {item.label}
+                        </span>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  );
+                })}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        ) : null}
       </SidebarContent>
 
       <SidebarFooter>
@@ -248,6 +311,7 @@ export function TenantSidebar({
               firstName={user.firstName}
               lastName={user.lastName}
               email={user.email}
+              avatarUrl={user.avatarUrl}
             />
           </SidebarMenuItem>
         </SidebarMenu>

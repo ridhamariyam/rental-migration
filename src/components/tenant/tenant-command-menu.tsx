@@ -14,9 +14,11 @@ import {
   LayoutDashboardIcon,
   MapPinCheckIcon,
   SearchIcon,
+  Settings2Icon,
   ShirtIcon,
   SprayCanIcon,
   TagIcon,
+  UserCircleIcon,
   UsersIcon,
   WalletIcon,
 } from "lucide-react";
@@ -127,6 +129,18 @@ const allSearchableItems = [
     label: "Audit Log",
     icon: HistoryIcon,
     permission: Permission.AUDIT_VIEW,
+  },
+  {
+    href: tenantPaths.profile,
+    label: "Profile",
+    icon: UserCircleIcon,
+    permission: null,
+  },
+  {
+    href: tenantPaths.business,
+    label: "Business Settings",
+    icon: Settings2Icon,
+    permission: Permission.SHOP_MANAGE,
   },
 ] as const;
 

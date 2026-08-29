@@ -78,11 +78,40 @@ export async function loginTenantUser(
  * another device that captured the temporary-password session before the
  * reset) would keep working and would never itself be re-checked against
  * the now-cleared flag.
+ *
+ * Rejects a new password identical to the one being replaced (the
+ * system-generated temporary password, here) — otherwise someone could
+ * satisfy the "you must change your password" gate without actually
+ * changing anything, defeating the point of forcing a reset at all.
  */
 export async function changePassword(
   userId: string,
   newPassword: string,
 ): Promise<void> {
+  const [existing] = await db
+    .select({ passwordHash: users.passwordHash })
+    .from(users)
+    .where(eq(users.id, userId))
+    .limit(1);
+
+  if (!existing) {
+    throw AppError.notFound("Account not found");
+  }
+
+  if (await verifyPassword(newPassword, existing.passwordHash)) {
+    throw new AppError(
+      "New password must be different from your current password",
+      400,
+      [
+        {
+          field: "newPassword",
+          message:
+            "New password must be different from your current password",
+        },
+      ],
+    );
+  }
+
   const passwordHash = await hashPassword(newPassword);
 
   await db

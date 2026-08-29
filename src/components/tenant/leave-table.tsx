@@ -32,7 +32,7 @@ import { formatDate } from "@/lib/format";
 import {
   avatarGradient,
   initialsFor,
-  staffAvatarSrc,
+  resolveAvatarSrc,
 } from "@/lib/tenant-avatar";
 import type { LeaveListQuery } from "@/lib/validation/leave";
 import type { TenantSessionUser } from "@/server/auth/guard";
@@ -118,7 +118,7 @@ export async function LeaveTable({
                   <TableCell className="px-4 py-3 font-medium">
                     <div className="flex items-center gap-3">
                       <Avatar className="size-8 shrink-0">
-                        <AvatarImage src={staffAvatarSrc(name)} alt={name} />
+                        <AvatarImage src={resolveAvatarSrc(leave.staffAvatarUrl, name)} alt={name} />
                         <AvatarFallback
                           className="text-xs font-semibold text-white"
                           style={{ backgroundImage: avatarGradient(name) }}

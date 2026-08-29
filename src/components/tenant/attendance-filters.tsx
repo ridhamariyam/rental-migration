@@ -25,7 +25,7 @@ import { parseDateString } from "@/lib/format";
 import {
   avatarGradient,
   initialsFor,
-  staffAvatarSrc,
+  resolveAvatarSrc,
 } from "@/lib/tenant-avatar";
 import type { Attendance } from "@/lib/db/schema";
 
@@ -60,7 +60,7 @@ export function AttendanceFilters({
   defaultStatus: string;
   defaultFromDate: string;
   defaultToDate: string;
-  staffOptions: { id: string; firstName: string; lastName: string }[];
+  staffOptions: { id: string; firstName: string; lastName: string; avatarUrl: string | null }[];
   outlets: { id: string; name: string }[];
 }) {
   const router = useRouter();
@@ -75,6 +75,10 @@ export function AttendanceFilters({
     ...Object.fromEntries(
       staffOptions.map((s) => [s.id, `${s.firstName} ${s.lastName}`.trim()]),
     ),
+  };
+  const staffAvatarUrls: Record<string, string | null> = {
+    all: null,
+    ...Object.fromEntries(staffOptions.map((s) => [s.id, s.avatarUrl])),
   };
   const outletLabels: Record<string, string> = {
     all: "All outlets",
@@ -139,7 +143,7 @@ export function AttendanceFilters({
               return (
                 <span className="flex min-w-0 items-center gap-2">
                   <Avatar className="size-5 shrink-0">
-                    <AvatarImage src={staffAvatarSrc(name)} alt={name} />
+                    <AvatarImage src={resolveAvatarSrc(staffAvatarUrls[value], name)} alt={name} />
                     <AvatarFallback
                       className="!text-white text-[10px] font-semibold"
                       style={{ backgroundImage: avatarGradient(name) }}
@@ -161,7 +165,7 @@ export function AttendanceFilters({
               <SelectItem key={staffMember.id} value={staffMember.id}>
                 <span className="flex min-w-0 items-center gap-2">
                   <Avatar className="size-5 shrink-0">
-                    <AvatarImage src={staffAvatarSrc(name)} alt={name} />
+                    <AvatarImage src={resolveAvatarSrc(staffMember.avatarUrl, name)} alt={name} />
                     <AvatarFallback
                       className="!text-white text-[10px] font-semibold"
                       style={{ backgroundImage: avatarGradient(name) }}

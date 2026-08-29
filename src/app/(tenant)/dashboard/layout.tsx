@@ -44,6 +44,7 @@ export default async function TenantDashboardLayout({
           firstName: user.firstName,
           lastName: user.lastName,
           email: user.email,
+          avatarUrl: user.avatarUrl,
           role: user.role,
         }}
       />

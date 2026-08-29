@@ -21,10 +21,21 @@ export function ImageUploadField({
   value,
   onChange,
   disabled,
+  endpoint = "/api/uploads",
+  rounded = false,
 }: {
   value: string;
   onChange: (url: string) => void;
   disabled?: boolean;
+  /** Which upload route to post the file to \u2014 defaults to the product/
+   * variation cover-image endpoint. The Profile/Business Settings forms
+   * pass `/api/uploads/avatar` instead (see that route's own doc comment
+   * for why it needs no specific `Permission`). */
+  endpoint?: string;
+  /** Renders the preview/placeholder as a circle instead of a rounded
+   * square \u2014 used for a person's avatar, left `false` for a product
+   * image or a business logo. */
+  rounded?: boolean;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [isUploading, setIsUploading] = useState(false);
@@ -44,7 +55,7 @@ export function ImageUploadField({
       const formData = new FormData();
       formData.append("file", file);
 
-      const response = await fetch("/api/uploads", {
+      const response = await fetch(endpoint, {
         method: "POST",
         body: formData,
       });
@@ -76,7 +87,13 @@ export function ImageUploadField({
   return (
     <div className="flex flex-col gap-2">
       <div className="flex items-center gap-4">
-        <div className="bg-muted flex size-20 shrink-0 items-center justify-center overflow-hidden rounded-lg border">
+        <div
+          className={
+            rounded
+              ? "bg-muted flex size-20 shrink-0 items-center justify-center overflow-hidden rounded-full border"
+              : "bg-muted flex size-20 shrink-0 items-center justify-center overflow-hidden rounded-lg border"
+          }
+        >
           {value ? (
             <Image
               src={value}

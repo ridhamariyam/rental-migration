@@ -28,6 +28,7 @@ import type {
 export type AttendanceItem = Attendance & {
   staffFirstName: string;
   staffLastName: string;
+  staffAvatarUrl: string | null;
   outletName: string | null;
 };
 
@@ -50,6 +51,7 @@ const ATTENDANCE_SELECT = {
   updatedAt: attendances.updatedAt,
   staffFirstName: users.firstName,
   staffLastName: users.lastName,
+  staffAvatarUrl: users.avatarUrl,
   outletName: outlets.name,
 } as const;
 

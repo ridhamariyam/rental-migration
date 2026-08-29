@@ -31,7 +31,7 @@ import { paginationRange } from "@/lib/pagination-range";
 import {
   avatarGradient,
   initialsFor,
-  staffAvatarSrc,
+  resolveAvatarSrc,
 } from "@/lib/tenant-avatar";
 import type { StaffListQuery } from "@/lib/validation/staff";
 import { listStaff } from "@/server/staff/service";
@@ -114,7 +114,7 @@ export async function StaffTable({
                     className="group flex items-center gap-3"
                   >
                     <Avatar>
-                      <AvatarImage src={staffAvatarSrc(name)} alt={name} />
+                      <AvatarImage src={resolveAvatarSrc(member.avatarUrl, name)} alt={name} />
                       <AvatarFallback
                         className="text-xs font-semibold text-white"
                         style={{ backgroundImage: avatarGradient(name) }}

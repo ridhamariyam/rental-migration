@@ -16,6 +16,7 @@ import type {
 export type LeaveItem = StaffLeave & {
   staffFirstName: string;
   staffLastName: string;
+  staffAvatarUrl: string | null;
 };
 
 const LEAVE_SELECT = {
@@ -32,6 +33,7 @@ const LEAVE_SELECT = {
   updatedAt: staffLeaves.updatedAt,
   staffFirstName: users.firstName,
   staffLastName: users.lastName,
+  staffAvatarUrl: users.avatarUrl,
 } as const;
 
 function baseLeaveQuery() {

@@ -1,12 +1,12 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import {
   AlertCircleIcon,
   CheckIcon,
+  CheckCircle2Icon,
   CircleIcon,
   EyeIcon,
   EyeOffIcon,
@@ -25,9 +25,9 @@ import {
 import { Spinner } from "@/components/ui/spinner";
 import { PASSWORD_MIN_LENGTH } from "@/lib/auth/password-policy";
 import {
-  changePasswordSchema,
-  type ChangePasswordInput,
-} from "@/lib/validation/auth";
+  changeOwnPasswordSchema,
+  type ChangeOwnPasswordInput,
+} from "@/lib/validation/profile";
 import { ApiClientError, apiRequest } from "@/lib/api-client";
 
 const passwordRules: { label: string; test: (value: string) => boolean }[] = [
@@ -40,14 +40,25 @@ const passwordRules: { label: string; test: (value: string) => boolean }[] = [
   { label: "One number", test: (value) => /[0-9]/.test(value) },
 ];
 
-export function ResetPasswordForm() {
-  const router = useRouter();
+/**
+ * Genuine self-service password change — unlike `ResetPasswordForm` (the
+ * forced first-login flow, no current-password field, redirects to the
+ * dashboard on success), this stays on the Profile page and requires
+ * proving the current password first (see `changeOwnPassword`'s doc
+ * comment in `server/profile/service.ts`).
+ */
+export function ChangePasswordForm() {
   const [showPassword, setShowPassword] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+  const [justSaved, setJustSaved] = useState(false);
 
-  const form = useForm<ChangePasswordInput>({
-    resolver: zodResolver(changePasswordSchema),
-    defaultValues: { newPassword: "", confirmPassword: "" },
+  const form = useForm<ChangeOwnPasswordInput>({
+    resolver: zodResolver(changeOwnPasswordSchema),
+    defaultValues: {
+      currentPassword: "",
+      newPassword: "",
+      confirmPassword: "",
+    },
     mode: "onTouched",
     reValidateMode: "onChange",
   });
@@ -60,24 +71,30 @@ export function ResetPasswordForm() {
 
   const onSubmit = form.handleSubmit(async (values) => {
     setFormError(null);
+    setJustSaved(false);
 
     try {
-      await apiRequest("/api/auth/change-password", {
+      await apiRequest("/api/profile/password", {
         method: "POST",
         body: JSON.stringify(values),
       });
-      router.push("/dashboard");
-      router.refresh();
+      form.reset();
+      setJustSaved(true);
     } catch (error) {
-      if (
-        error instanceof ApiClientError &&
-        error.fieldErrors.some((fieldError) => fieldError.field === "newPassword")
-      ) {
-        const fieldError = error.fieldErrors.find(
-          (item) => item.field === "newPassword",
-        );
-        form.setError("newPassword", { message: fieldError?.message });
-        return;
+      if (error instanceof ApiClientError && error.fieldErrors.length > 0) {
+        let mappedToField = false;
+        for (const fieldError of error.fieldErrors) {
+          if (
+            fieldError.field === "currentPassword" ||
+            fieldError.field === "newPassword"
+          ) {
+            form.setError(fieldError.field, { message: fieldError.message });
+            mappedToField = true;
+          }
+        }
+        if (mappedToField) {
+          return;
+        }
       }
 
       setFormError(
@@ -104,7 +121,36 @@ export function ResetPasswordForm() {
         </Alert>
       ) : null}
 
+      {justSaved ? (
+        <Alert className="border-primary/25 bg-primary/5">
+          <CheckCircle2Icon className="text-primary" />
+          <AlertDescription className="text-primary font-medium">
+            Password updated. You&apos;ll stay signed in here, but every other
+            session was signed out.
+          </AlertDescription>
+        </Alert>
+      ) : null}
+
       <FieldGroup>
+        <Field data-invalid={!!form.formState.errors.currentPassword}>
+          <FieldLabel htmlFor="currentPassword">Current password</FieldLabel>
+          <div className="relative">
+            <LockIcon className="text-muted-foreground pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2" />
+            <Input
+              id="currentPassword"
+              type="password"
+              autoComplete="current-password"
+              aria-invalid={!!form.formState.errors.currentPassword}
+              disabled={isSubmitting}
+              className="pl-8"
+              {...form.register("currentPassword", {
+                onChange: () => setFormError(null),
+              })}
+            />
+          </div>
+          <FieldError errors={[form.formState.errors.currentPassword]} />
+        </Field>
+
         <Field data-invalid={!!form.formState.errors.newPassword}>
           <FieldLabel htmlFor="newPassword">New password</FieldLabel>
           <div className="relative">
@@ -113,7 +159,6 @@ export function ResetPasswordForm() {
               id="newPassword"
               type={showPassword ? "text" : "password"}
               autoComplete="new-password"
-              autoFocus
               aria-invalid={!!form.formState.errors.newPassword}
               disabled={isSubmitting}
               className="pr-9 pl-8"
@@ -163,37 +208,27 @@ export function ResetPasswordForm() {
         </Field>
 
         <Field data-invalid={!!form.formState.errors.confirmPassword}>
-          <FieldLabel htmlFor="confirmPassword">
-            Confirm new password
-          </FieldLabel>
-          <div className="relative">
-            <LockIcon className="text-muted-foreground pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2" />
-            <Input
-              id="confirmPassword"
-              type={showPassword ? "text" : "password"}
-              autoComplete="new-password"
-              aria-invalid={!!form.formState.errors.confirmPassword}
-              disabled={isSubmitting}
-              className="pl-8"
-              {...form.register("confirmPassword", {
-                onChange: () => setFormError(null),
-              })}
-            />
-          </div>
+          <FieldLabel htmlFor="confirmPassword">Confirm new password</FieldLabel>
+          <Input
+            id="confirmPassword"
+            type={showPassword ? "text" : "password"}
+            autoComplete="new-password"
+            aria-invalid={!!form.formState.errors.confirmPassword}
+            disabled={isSubmitting}
+            {...form.register("confirmPassword", {
+              onChange: () => setFormError(null),
+            })}
+          />
           <FieldError errors={[form.formState.errors.confirmPassword]} />
         </Field>
       </FieldGroup>
 
-      <Button type="submit" disabled={isSubmitting} className="h-10 w-full">
-        {isSubmitting ? (
-          <>
-            <Spinner />
-            Setting password…
-          </>
-        ) : (
-          "Set new password"
-        )}
-      </Button>
+      <div className="flex items-center gap-2 border-t pt-4">
+        <Button type="submit" disabled={isSubmitting}>
+          {isSubmitting ? <Spinner /> : null}
+          Update password
+        </Button>
+      </div>
     </form>
   );
 }

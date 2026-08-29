@@ -32,7 +32,7 @@ import { ApiClientError, apiRequest } from "@/lib/api-client";
 import {
   avatarGradient,
   initialsFor,
-  staffAvatarSrc,
+  resolveAvatarSrc,
 } from "@/lib/tenant-avatar";
 import {
   startMaintenanceTaskSchema,
@@ -44,7 +44,7 @@ export function StartMaintenanceTaskDialog({
   staffOptions,
 }: {
   taskId: string;
-  staffOptions: { id: string; firstName: string; lastName: string }[];
+  staffOptions: { id: string; firstName: string; lastName: string; avatarUrl: string | null }[];
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -60,6 +60,10 @@ export function StartMaintenanceTaskDialog({
     ...Object.fromEntries(
       staffOptions.map((s) => [s.id, `${s.firstName} ${s.lastName}`.trim()]),
     ),
+  };
+  const staffAvatarUrls: Record<string, string | null> = {
+    "": null,
+    ...Object.fromEntries(staffOptions.map((s) => [s.id, s.avatarUrl])),
   };
 
   const onSubmit = form.handleSubmit(async (values) => {
@@ -146,7 +150,7 @@ export function StartMaintenanceTaskDialog({
                             <span className="flex min-w-0 items-center gap-2">
                               <Avatar className="size-5 shrink-0">
                                 <AvatarImage
-                                  src={staffAvatarSrc(name)}
+                                  src={resolveAvatarSrc(staffAvatarUrls[value], name)}
                                   alt={name}
                                 />
                                 <AvatarFallback
@@ -173,7 +177,7 @@ export function StartMaintenanceTaskDialog({
                             <span className="flex min-w-0 items-center gap-2">
                               <Avatar className="size-5 shrink-0">
                                 <AvatarImage
-                                  src={staffAvatarSrc(name)}
+                                  src={resolveAvatarSrc(staffMember.avatarUrl, name)}
                                   alt={name}
                                 />
                                 <AvatarFallback

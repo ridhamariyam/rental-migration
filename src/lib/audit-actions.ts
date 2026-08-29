@@ -13,6 +13,7 @@ export const AuditAction = {
   STAFF_UPDATED: "staff.updated",
   STAFF_ROLE_CHANGED: "staff.role_changed",
   STAFF_STATUS_CHANGED: "staff.status_changed",
+  STAFF_PASSWORD_RESET: "staff.password_reset",
   SALARY_CONFIGURED: "salary.configured",
   SALARY_UPDATED: "salary.updated",
   SALARY_DELETED: "salary.deleted",
@@ -25,6 +26,7 @@ export const AuditAction = {
   BOOKING_RETURNED: "booking.returned",
   PAYMENT_RECORDED: "payment.recorded",
   PAYMENT_REFUNDED: "payment.refunded",
+  SHOP_UPDATED: "shop.updated",
 } as const;
 
 export type AuditActionValue = (typeof AuditAction)[keyof typeof AuditAction];

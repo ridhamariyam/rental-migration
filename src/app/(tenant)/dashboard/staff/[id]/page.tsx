@@ -16,6 +16,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { StaffStatusAction } from "@/components/tenant/staff-status-action";
+import { StaffResetPasswordAction } from "@/components/tenant/staff-reset-password-action";
 import { getCurrentUser } from "@/lib/auth/session";
 import { hasPermission, Permission } from "@/lib/auth/permissions";
 import { tenantPaths } from "@/lib/tenant-paths";
@@ -23,7 +24,7 @@ import { formatDate } from "@/lib/format";
 import {
   avatarGradient,
   initialsFor,
-  staffAvatarSrc,
+  resolveAvatarSrc,
 } from "@/lib/tenant-avatar";
 import { getStaffById } from "@/server/staff/service";
 
@@ -111,7 +112,7 @@ export default async function StaffDetailPage({
         <div className="flex flex-wrap items-start justify-between gap-6">
           <div className="flex items-center gap-5">
             <Avatar className="size-16 shadow-md">
-              <AvatarImage src={staffAvatarSrc(name)} alt={name} />
+              <AvatarImage src={resolveAvatarSrc(staff.avatarUrl, name)} alt={name} />
               <AvatarFallback
                 className="text-lg font-semibold text-white"
                 style={{ backgroundImage: avatarGradient(name) }}
@@ -216,6 +217,7 @@ export default async function StaffDetailPage({
             {canManage ? (
               <>
                 <Separator />
+                <StaffResetPasswordAction staffId={staff.id} email={staff.email} />
                 <StaffStatusAction
                   staffId={staff.id}
                   isActive={staff.isActive}

@@ -10,6 +10,12 @@ export const shops = pgTable("shops", {
   email: text("email").notNull().unique(),
   phone: text("phone").notNull().unique(),
   address: text("address"),
+  //: The business's own logo, set by the tenant owner via the tenant-
+  //: dashboard "Business Settings" page (admin-only) — uploaded to
+  //: Cloudinary, same as a user's `avatarUrl`. Null falls back to the
+  //: deterministic gradient/initials avatar wherever the shop's identity
+  //: is rendered.
+  logoUrl: text("logo_url"),
   isActive: boolean("is_active").notNull().default(true),
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()
