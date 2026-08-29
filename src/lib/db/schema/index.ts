@@ -15,3 +15,4 @@ export * from "@/lib/db/schema/staff-leaves";
 export * from "@/lib/db/schema/salary";
 export * from "@/lib/db/schema/settlements";
 export * from "@/lib/db/schema/audit-logs";
+export * from "@/lib/db/schema/notifications";

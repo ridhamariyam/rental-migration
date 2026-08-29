@@ -1,0 +1,241 @@
+import "server-only";
+
+import { env } from "@/lib/env";
+
+type UnknownRecord = Record<string, unknown>;
+
+export type Msg91Number = {
+  integratedNumber: string;
+  displayName: string | null;
+  wabaId: string | null;
+  metaBusinessId: string | null;
+  status: string;
+  raw: UnknownRecord;
+};
+
+export type Msg91Template = {
+  name: string;
+  namespace: string | null;
+  language: string;
+  category: string | null;
+  status: string;
+  body: string | null;
+  components: UnknownRecord;
+  variableSlots: string[];
+  raw: UnknownRecord;
+};
+
+export type Msg91SendResult = {
+  providerMessageId: string | null;
+  providerRequestId: string | null;
+  raw: UnknownRecord;
+};
+
+function asRecord(value: unknown): UnknownRecord {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? (value as UnknownRecord)
+    : {};
+}
+
+function stringValue(value: unknown): string | null {
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function pickArray(payload: unknown): UnknownRecord[] {
+  if (Array.isArray(payload)) return payload.map(asRecord);
+  const record = asRecord(payload);
+  for (const key of ["data", "numbers", "result", "templates"]) {
+    const value = record[key];
+    if (Array.isArray(value)) return value.map(asRecord);
+  }
+  if (Array.isArray(asRecord(record.data).data)) {
+    return (asRecord(record.data).data as unknown[]).map(asRecord);
+  }
+  return [];
+}
+
+function extractTemplateBody(record: UnknownRecord): string | null {
+  const direct = stringValue(record.body) ?? stringValue(record.template_body);
+  if (direct) return direct;
+
+  const components = Array.isArray(record.components) ? record.components : [];
+  const body = components
+    .map(asRecord)
+    .find((component) => stringValue(component.type)?.toLowerCase() === "body");
+
+  return stringValue(body?.text) ?? stringValue(body?.body);
+}
+
+function extractVariableSlots(body: string | null, components: UnknownRecord): string[] {
+  const slots = new Set<string>();
+  const source = `${body ?? ""} ${JSON.stringify(components)}`;
+  for (const match of source.matchAll(/{{\s*([a-zA-Z0-9_]+)\s*}}/g)) {
+    slots.add(/^\d+$/.test(match[1]) ? `body_${match[1]}` : match[1]);
+  }
+  return [...slots];
+}
+
+export class Msg91Client {
+  private readonly baseUrl: string;
+  private readonly authkey: string;
+
+  constructor() {
+    this.baseUrl = env.MSG91_WHATSAPP_BASE_URL.replace(/\/$/, "");
+    this.authkey = env.MSG91_AUTHKEY;
+  }
+
+  private async request(path: string, init: RequestInit = {}): Promise<UnknownRecord> {
+    if (!this.authkey || this.authkey === "change-me") {
+      throw new Error("MSG91_AUTHKEY is not configured");
+    }
+
+    const response = await fetch(`${this.baseUrl}${path}`, {
+      ...init,
+      headers: {
+        accept: "application/json",
+        authkey: this.authkey,
+        ...(init.body ? { "content-type": "application/json" } : {}),
+        ...init.headers,
+      },
+    });
+
+    const payload = (await response.json().catch(() => ({}))) as UnknownRecord;
+    if (!response.ok) {
+      const message =
+        stringValue(payload.message) ??
+        stringValue(payload.error) ??
+        `MSG91 request failed with status ${response.status}`;
+      throw new Error(message);
+    }
+
+    return payload;
+  }
+
+  async fetchNumbers(): Promise<Msg91Number[]> {
+    const payload = await this.request("/whatsapp-activation/");
+
+    return pickArray(payload)
+      .map((record) => {
+        const integratedNumber =
+          stringValue(record.integrated_number) ??
+          stringValue(record.integratedNumber) ??
+          stringValue(record.number) ??
+          stringValue(record.phone_number);
+
+        if (!integratedNumber) return null;
+
+        return {
+          integratedNumber,
+          displayName:
+            stringValue(record.display_name) ??
+            stringValue(record.displayName) ??
+            stringValue(record.name),
+          wabaId: stringValue(record.waba_id) ?? stringValue(record.wabaId),
+          metaBusinessId:
+            stringValue(record.meta_business_id) ??
+            stringValue(record.business_id) ??
+            stringValue(record.metaBusinessId),
+          status:
+            stringValue(record.status) ??
+            stringValue(record.number_status) ??
+            "unknown",
+          raw: record,
+        };
+      })
+      .filter((number): number is Msg91Number => Boolean(number));
+  }
+
+  async fetchTemplates(integratedNumber: string): Promise<Msg91Template[]> {
+    const params = new URLSearchParams({
+      template_status: "approved",
+      pagination: "true",
+      page_size: "500",
+      page_num: "1",
+    });
+    const payload = await this.request(
+      `/get-template-client/${encodeURIComponent(integratedNumber)}?${params}`,
+      { headers: { "content-type": "text/plain" } },
+    );
+
+    return pickArray(payload)
+      .map((record) => {
+        const name =
+          stringValue(record.name) ??
+          stringValue(record.template_name) ??
+          stringValue(record.templateName);
+        if (!name) return null;
+
+        const componentsValue = record.components ?? record.template_components ?? {};
+        const components = Array.isArray(componentsValue)
+          ? { items: componentsValue }
+          : asRecord(componentsValue);
+        const body = extractTemplateBody(record);
+
+        return {
+          name,
+          namespace:
+            stringValue(record.namespace) ?? stringValue(record.template_namespace),
+          language:
+            stringValue(record.language) ??
+            stringValue(record.template_language) ??
+            "en",
+          category: stringValue(record.category) ?? stringValue(record.template_category),
+          status: stringValue(record.status) ?? "approved",
+          body,
+          components,
+          variableSlots: extractVariableSlots(body, components),
+          raw: record,
+        };
+      })
+      .filter((template): template is Msg91Template => Boolean(template));
+  }
+
+  async sendTemplate(params: {
+    integratedNumber: string;
+    to: string;
+    templateName: string;
+    templateNamespace: string | null;
+    language: string;
+    components: UnknownRecord;
+    crqid: string;
+  }): Promise<Msg91SendResult> {
+    const payload = {
+      integrated_number: params.integratedNumber,
+      content_type: "template",
+      CRQID: params.crqid,
+      payload: {
+        messaging_product: "whatsapp",
+        type: "template",
+        template: {
+          name: params.templateName,
+          language: { code: params.language, policy: "deterministic" },
+          ...(params.templateNamespace ? { namespace: params.templateNamespace } : {}),
+          to_and_components: [
+            {
+              to: [params.to],
+              components: params.components,
+              CRQID: params.crqid,
+            },
+          ],
+        },
+      },
+    };
+
+    const raw = await this.request("/whatsapp-outbound-message/bulk/", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+
+    return {
+      providerMessageId:
+        stringValue(raw.message_uuid) ??
+        stringValue(raw.message_id) ??
+        stringValue(raw.id),
+      providerRequestId:
+        stringValue(raw.request_id) ??
+        stringValue(raw.requestId) ??
+        stringValue(raw.campaign_request_id),
+      raw,
+    };
+  }
+}

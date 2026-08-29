@@ -22,6 +22,7 @@ import { getVariationForBooking } from "@/server/variations/service";
 import { openMaintenanceTasksForReturn } from "@/server/maintenance/service";
 import { recordSettlementForBooking } from "@/server/settlements/service";
 import { AuditAction, recordAudit } from "@/server/audit/service";
+import { queueBookingNotification } from "@/server/notifications/service";
 import type {
   ConfirmPickupInput,
   ReturnBookingInput,
@@ -175,6 +176,8 @@ export async function confirmPickup(
       before: { status: booking.status },
       after: { status: updatedBooking.status, paymentStatus: updatedBooking.paymentStatus },
     });
+
+    await queueBookingNotification(tx, updatedBooking, "pickup_confirmed");
 
     return { booking: updatedBooking, summary: paymentSummary };
   });
@@ -371,6 +374,13 @@ export async function returnBooking(
         returnCondition: updatedBooking.returnCondition,
         damageCharge: updatedBooking.damageCharge,
         depositRefunded: updatedBooking.depositRefunded,
+      },
+    });
+
+    await queueBookingNotification(tx, updatedBooking, "booking_returned", {
+      extraContext: {
+        damage_charge: formatMoney(updatedBooking.damageCharge),
+        deposit_refunded: formatMoney(updatedBooking.depositRefunded),
       },
     });
 

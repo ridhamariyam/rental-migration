@@ -66,6 +66,7 @@ export enum Permission {
   // granted as broadly as `MAINTENANCE_VIEW` since every role that touches
   // a booking will eventually want to see its notification status.
   NOTIFICATION_VIEW = "notification:view",
+  NOTIFICATION_MANAGE = "notification:manage",
   // Reports & owner dashboard (doc §19/§21, Phase 18). Granted to manager
   // too (not just the owner) — mirrors the legacy backend's own
   // `_MANAGER_PERMISSIONS` including `REPORT_VIEW`, unlike
@@ -135,6 +136,7 @@ const MANAGER_PERMISSIONS: ReadonlySet<Permission> = new Set([
   Permission.LEAVE_MANAGE,
   Permission.SALARY_VIEW,
   Permission.NOTIFICATION_VIEW,
+  Permission.NOTIFICATION_MANAGE,
   Permission.REPORT_VIEW,
 ]);
 

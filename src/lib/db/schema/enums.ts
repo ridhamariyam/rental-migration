@@ -204,3 +204,28 @@ export const settlementStatusEnum = pgEnum("settlement_status", [
   "paid",
   "cancelled",
 ]);
+
+export const notificationEventEnum = pgEnum("notification_event", [
+  "booking_created",
+  "booking_confirmed",
+  "payment_received",
+  "pickup_reminder",
+  "pickup_today",
+  "pickup_confirmed",
+  "return_reminder",
+  "return_due_today",
+  "overdue_reminder",
+  "booking_returned",
+  "booking_cancelled",
+  "staff_welcome",
+]);
+
+export const notificationLogStatusEnum = pgEnum("notification_log_status", [
+  "queued",
+  "sending",
+  "sent",
+  "delivered",
+  "read",
+  "failed",
+  "cancelled",
+]);

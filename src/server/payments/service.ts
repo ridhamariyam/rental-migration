@@ -9,6 +9,7 @@ import { formatMoney } from "@/lib/format";
 import { Permission, hasPermission } from "@/lib/auth/permissions";
 import type { TenantSessionUser } from "@/server/auth/guard";
 import { AuditAction, recordAudit } from "@/server/audit/service";
+import { queueBookingNotification } from "@/server/notifications/service";
 import {
   addMoney,
   compareMoney,
@@ -327,6 +328,16 @@ export async function recordPayment(
         paymentMethod: payment.paymentMethod,
       },
     });
+
+    if (!REFUND_TYPES.includes(input.paymentType)) {
+      await queueBookingNotification(tx, booking, "payment_received", {
+        extraContext: { payment_amount: formatMoney(input.amount) },
+      });
+    }
+
+    if (booking.status === "draft" && !REFUND_TYPES.includes(input.paymentType)) {
+      await queueBookingNotification(tx, booking, "booking_confirmed");
+    }
 
     return { payment, summary: paymentSummary };
   });
