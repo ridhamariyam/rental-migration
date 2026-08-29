@@ -1,0 +1,2 @@
+ALTER TABLE "bookings" ADD COLUMN "booking_group_id" uuid DEFAULT gen_random_uuid() NOT NULL;--> statement-breakpoint
+CREATE INDEX "ix_bookings_group_id" ON "bookings" USING btree ("booking_group_id");

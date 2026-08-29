@@ -1,0 +1,189 @@
+"use client";
+
+import { useRef, useState } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { SearchIcon } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { maintenanceTaskStatusLabel } from "@/components/tenant/maintenance-task-status-badge";
+import { maintenanceTaskTypeLabel } from "@/components/tenant/maintenance-task-type-badge";
+import type { MaintenanceTask } from "@/lib/db/schema";
+
+const SEARCH_DEBOUNCE_MS = 350;
+
+const STATUS_VALUES: (MaintenanceTask["status"] | "all")[] = [
+  "all",
+  "pending",
+  "in_progress",
+  "completed",
+  "cancelled",
+];
+
+const STATUS_LABELS: Record<string, string> = {
+  all: "All statuses",
+  ...Object.fromEntries(
+    STATUS_VALUES.filter((v) => v !== "all").map((v) => [
+      v,
+      maintenanceTaskStatusLabel(v as MaintenanceTask["status"]),
+    ]),
+  ),
+};
+
+const TYPE_VALUES: (MaintenanceTask["taskType"] | "all")[] = [
+  "all",
+  "cleaning",
+  "maintenance",
+];
+
+const TYPE_LABELS: Record<string, string> = {
+  all: "All types",
+  ...Object.fromEntries(
+    TYPE_VALUES.filter((v) => v !== "all").map((v) => [
+      v,
+      maintenanceTaskTypeLabel(v as MaintenanceTask["taskType"]),
+    ]),
+  ),
+};
+
+/**
+ * Search + status + task-type + outlet filters for the work queue —
+ * same URL-driven approach as `BookingFilters`/`ProductFilters` (every
+ * change navigates to a new query string, so filtering happens in the
+ * database, not client-side array filtering).
+ */
+export function MaintenanceFilters({
+  defaultQuery,
+  defaultStatus,
+  defaultTaskType,
+  defaultOutletId,
+  outlets,
+}: {
+  defaultQuery: string;
+  defaultStatus: string;
+  defaultTaskType: string;
+  defaultOutletId: string;
+  outlets: { id: string; name: string }[];
+}) {
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const [value, setValue] = useState(defaultQuery);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const outletLabels: Record<string, string> = {
+    all: "All outlets",
+    ...Object.fromEntries(outlets.map((o) => [o.id, o.name])),
+  };
+
+  function updateParams(next: Record<string, string | null>) {
+    const params = new URLSearchParams(searchParams.toString());
+
+    for (const [key, val] of Object.entries(next)) {
+      if (!val) {
+        params.delete(key);
+      } else {
+        params.set(key, val);
+      }
+    }
+
+    params.delete("page");
+    const query = params.toString();
+    router.replace(`${pathname}${query ? `?${query}` : ""}`);
+  }
+
+  function onSearchChange(next: string) {
+    setValue(next);
+
+    if (debounceRef.current) {
+      clearTimeout(debounceRef.current);
+    }
+
+    debounceRef.current = setTimeout(() => {
+      updateParams({ q: next.trim() || null });
+    }, SEARCH_DEBOUNCE_MS);
+  }
+
+  return (
+    <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
+      <div className="relative sm:max-w-xs sm:flex-1">
+        <SearchIcon className="text-muted-foreground pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2" />
+        <Input
+          value={value}
+          onChange={(event) => onSearchChange(event.target.value)}
+          placeholder="Search by SKU, barcode, or product…"
+          aria-label="Search tasks"
+          className="pl-8"
+        />
+      </div>
+
+      <Select
+        defaultValue={defaultTaskType}
+        onValueChange={(next) =>
+          updateParams({ taskType: next === "all" ? null : next })
+        }
+      >
+        <SelectTrigger className="w-full sm:w-36">
+          <SelectValue placeholder="Type">
+            {(value: string) => TYPE_LABELS[value] ?? "Type"}
+          </SelectValue>
+        </SelectTrigger>
+        <SelectContent alignItemWithTrigger={false}>
+          {TYPE_VALUES.map((type) => (
+            <SelectItem key={type} value={type}>
+              {TYPE_LABELS[type]}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+
+      <Select
+        defaultValue={defaultStatus}
+        onValueChange={(next) =>
+          updateParams({ status: next === "all" ? null : next })
+        }
+      >
+        <SelectTrigger className="w-full sm:w-40">
+          <SelectValue placeholder="Status">
+            {(value: string) => STATUS_LABELS[value] ?? "Status"}
+          </SelectValue>
+        </SelectTrigger>
+        <SelectContent alignItemWithTrigger={false}>
+          {STATUS_VALUES.map((status) => (
+            <SelectItem key={status} value={status}>
+              {STATUS_LABELS[status]}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+
+      {outlets.length > 0 ? (
+        <Select
+          defaultValue={defaultOutletId}
+          onValueChange={(next) =>
+            updateParams({ outletId: next === "all" ? null : next })
+          }
+        >
+          <SelectTrigger className="w-full sm:w-40">
+            <SelectValue placeholder="Outlet">
+              {(value: string) => outletLabels[value] ?? "Outlet"}
+            </SelectValue>
+          </SelectTrigger>
+          <SelectContent alignItemWithTrigger={false}>
+            <SelectItem value="all">All outlets</SelectItem>
+            {outlets.map((outlet) => (
+              <SelectItem key={outlet.id} value={outlet.id}>
+                {outlet.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      ) : null}
+    </div>
+  );
+}

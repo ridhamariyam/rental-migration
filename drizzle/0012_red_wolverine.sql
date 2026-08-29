@@ -1,0 +1,1 @@
+ALTER TABLE "salary_payslips" ADD COLUMN "total_worked_minutes" integer DEFAULT 0 NOT NULL;

@@ -1,0 +1,40 @@
+# Local Postgres for the rental-migration app only.
+#
+# Runs on a DIFFERENT host port (5435) than the legacy backend's compose
+# file at the repo root (which uses 5432) and than any other project's own
+# Postgres containers on this machine — so all of them can run side by side
+# without a port clash. Override the port/credentials with a local `.env`
+# next to this file if 5435 is ever taken too; docker compose reads it
+# automatically.
+#
+# Usage:
+#   docker compose up -d       # start
+#   docker compose down        # stop (add -v to also drop the data volume)
+#   docker compose logs -f     # tail logs
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    container_name: rental-migration-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-rental_migration}
+    ports:
+      - "${POSTGRES_PORT:-5435}:5432"
+    volumes:
+      - rental_migration_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-rental_migration}",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+volumes:
+  rental_migration_postgres_data:
