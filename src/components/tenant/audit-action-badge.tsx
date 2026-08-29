@@ -9,6 +9,7 @@ const ACTION_META: Record<string, { label: string; tone: "neutral" | "positive" 
   [AuditAction.STAFF_UPDATED]: { label: "Staff updated", tone: "neutral" },
   [AuditAction.STAFF_ROLE_CHANGED]: { label: "Role changed", tone: "neutral" },
   [AuditAction.STAFF_STATUS_CHANGED]: { label: "Status changed", tone: "neutral" },
+  [AuditAction.STAFF_PASSWORD_RESET]: { label: "Password reset", tone: "negative" },
   [AuditAction.SALARY_CONFIGURED]: { label: "Salary configured", tone: "positive" },
   [AuditAction.SALARY_UPDATED]: { label: "Salary updated", tone: "neutral" },
   [AuditAction.SALARY_DELETED]: { label: "Salary deleted", tone: "negative" },
@@ -21,6 +22,7 @@ const ACTION_META: Record<string, { label: string; tone: "neutral" | "positive" 
   [AuditAction.BOOKING_RETURNED]: { label: "Booking returned", tone: "positive" },
   [AuditAction.PAYMENT_RECORDED]: { label: "Payment recorded", tone: "positive" },
   [AuditAction.PAYMENT_REFUNDED]: { label: "Payment refunded", tone: "negative" },
+  [AuditAction.SHOP_UPDATED]: { label: "Business settings updated", tone: "neutral" },
 };
 
 const TONE_CLASSES: Record<string, string> = {

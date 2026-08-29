@@ -24,4 +24,6 @@ export const tenantPaths = {
   notifications: "/dashboard/notifications",
   reports: "/dashboard/reports",
   auditLog: "/dashboard/audit-log",
+  profile: "/dashboard/profile",
+  business: "/dashboard/business",
 } as const;

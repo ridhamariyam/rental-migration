@@ -13,7 +13,7 @@ import {
 import { useSidebar } from "@/components/ui/sidebar";
 import { Spinner } from "@/components/ui/spinner";
 import { apiRequest } from "@/lib/api-client";
-import { staffAvatarSrc } from "@/lib/tenant-avatar";
+import { resolveAvatarSrc } from "@/lib/tenant-avatar";
 
 function initialsFor(firstName: string, lastName: string): string {
   const initials = `${firstName[0] ?? ""}${lastName[0] ?? ""}`;
@@ -24,10 +24,12 @@ export function TenantAccountButton({
   firstName,
   lastName,
   email,
+  avatarUrl,
 }: {
   firstName: string;
   lastName: string;
   email: string;
+  avatarUrl: string | null;
 }) {
   const router = useRouter();
   const { isMobile } = useSidebar();
@@ -51,7 +53,7 @@ export function TenantAccountButton({
         <div className="flex items-center gap-2">
           <Avatar className="size-8 rounded-lg shrink-0">
             <AvatarImage
-              src={staffAvatarSrc(`${firstName} ${lastName}`)}
+              src={resolveAvatarSrc(avatarUrl, `${firstName} ${lastName}`)}
               alt={`${firstName} ${lastName}`}
             />
             <AvatarFallback className="rounded-lg">{initialsFor(firstName, lastName)}</AvatarFallback>

@@ -103,6 +103,7 @@ export async function listStaff(
         email: users.email,
         phone: users.phone,
         passwordHash: users.passwordHash,
+        avatarUrl: users.avatarUrl,
         mustChangePassword: users.mustChangePassword,
         isActive: users.isActive,
         createdAt: users.createdAt,
@@ -136,12 +137,15 @@ export async function listStaff(
  * separate staff yet, but the owner still wants to assign themselves). */
 export async function listActiveStaffForSelect(
   shopId: string,
-): Promise<{ id: string; firstName: string; lastName: string }[]> {
+): Promise<
+  { id: string; firstName: string; lastName: string; avatarUrl: string | null }[]
+> {
   return db
     .select({
       id: users.id,
       firstName: users.firstName,
       lastName: users.lastName,
+      avatarUrl: users.avatarUrl,
     })
     .from(users)
     .where(
@@ -161,12 +165,15 @@ export async function listActiveStaffForSelect(
  * would let the owner pick themselves and then hit a 404. */
 export async function listPayableStaffForSelect(
   shopId: string,
-): Promise<{ id: string; firstName: string; lastName: string }[]> {
+): Promise<
+  { id: string; firstName: string; lastName: string; avatarUrl: string | null }[]
+> {
   return db
     .select({
       id: users.id,
       firstName: users.firstName,
       lastName: users.lastName,
+      avatarUrl: users.avatarUrl,
     })
     .from(users)
     .where(
@@ -235,6 +242,7 @@ export async function getStaffById(
       email: users.email,
       phone: users.phone,
       passwordHash: users.passwordHash,
+      avatarUrl: users.avatarUrl,
       mustChangePassword: users.mustChangePassword,
       isActive: users.isActive,
       createdAt: users.createdAt,
@@ -426,4 +434,64 @@ export async function setStaffStatus(
   }
 
   return staff;
+}
+
+/**
+ * Admin-initiated password reset for a staff/manager account — for when
+ * someone forgot their password, or an account may have been compromised
+ * and the owner wants to rotate its credentials without waiting for the
+ * account holder to do it themselves. Scoped through `getStaffById`, so
+ * this can only ever target a staff/manager row that both belongs to the
+ * caller's own tenant *and* is one of the two staff-managed roles — never
+ * another tenant's user, and never the caller's own `admin` row (which
+ * isn't reachable through this staff-only lookup at all).
+ *
+ * Same security posture as account creation: a fresh cryptographically
+ * random temporary password, `mustChangePassword` forced back to `true`
+ * so the account holder must set their own new one on next login, and
+ * (unlike creation) every existing session for the account is invalidated
+ * immediately — otherwise a still-open session elsewhere (e.g. the very
+ * device this reset is protecting against) would keep working right up
+ * until it happened to expire on its own, defeating the point of the
+ * reset.
+ */
+export async function resetStaffPassword(
+  actor: TenantSessionUser,
+  id: string,
+): Promise<{ staff: StaffRow; temporaryPassword: string }> {
+  const existing = await getStaffById(actor.shopId, id);
+  if (!existing) {
+    throw AppError.notFound("Staff member not found");
+  }
+
+  const temporaryPassword = generateTemporaryPassword();
+  const passwordHash = await hashPassword(temporaryPassword);
+
+  const [staff] = await db
+    .update(users)
+    .set({
+      passwordHash,
+      mustChangePassword: true,
+      updatedAt: new Date(),
+    })
+    .where(and(eq(users.id, id), eq(users.shopId, actor.shopId)))
+    .returning();
+
+  if (!staff) {
+    throw AppError.notFound("Staff member not found");
+  }
+
+  await destroyAllSessionsForUser(id);
+
+  await recordAudit(db, {
+    shopId: actor.shopId,
+    outletId: staff.outletId,
+    userId: actor.id,
+    action: AuditAction.STAFF_PASSWORD_RESET,
+    entityType: "user",
+    entityId: staff.id,
+    summary: `${staff.firstName} ${staff.lastName}'s password was reset`,
+  });
+
+  return { staff, temporaryPassword };
 }

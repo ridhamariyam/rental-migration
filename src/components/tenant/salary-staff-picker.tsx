@@ -12,7 +12,7 @@ import {
 import {
   avatarGradient,
   initialsFor,
-  staffAvatarSrc,
+  resolveAvatarSrc,
 } from "@/lib/tenant-avatar";
 
 export function SalaryStaffPicker({
@@ -20,16 +20,18 @@ export function SalaryStaffPicker({
   staffOptions,
 }: {
   defaultStaffId: string;
-  staffOptions: { id: string; firstName: string; lastName: string }[];
+  staffOptions: {
+    id: string;
+    firstName: string;
+    lastName: string;
+    avatarUrl: string | null;
+  }[];
 }) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
 
-  const nameFor = (id: string) => {
-    const staffMember = staffOptions.find((s) => s.id === id);
-    return staffMember ? `${staffMember.firstName} ${staffMember.lastName}`.trim() : null;
-  };
+  const staffFor = (id: string) => staffOptions.find((s) => s.id === id) ?? null;
 
   return (
     <Select
@@ -47,12 +49,13 @@ export function SalaryStaffPicker({
       <SelectTrigger className="w-full sm:w-64">
         <SelectValue placeholder="Choose a staff member">
           {(value: string) => {
-            const name = nameFor(value);
-            if (!name) return "Choose a staff member";
+            const staffMember = staffFor(value);
+            if (!staffMember) return "Choose a staff member";
+            const name = `${staffMember.firstName} ${staffMember.lastName}`.trim();
             return (
               <span className="flex min-w-0 items-center gap-2">
                 <Avatar className="size-5 shrink-0">
-                  <AvatarImage src={staffAvatarSrc(name)} alt={name} />
+                  <AvatarImage src={resolveAvatarSrc(staffMember.avatarUrl, name)} alt={name} />
                   <AvatarFallback
                     className="!text-white text-[10px] font-semibold"
                     style={{ backgroundImage: avatarGradient(name) }}
@@ -73,7 +76,7 @@ export function SalaryStaffPicker({
             <SelectItem key={staffMember.id} value={staffMember.id}>
               <span className="flex min-w-0 items-center gap-2">
                 <Avatar className="size-5 shrink-0">
-                  <AvatarImage src={staffAvatarSrc(name)} alt={name} />
+                  <AvatarImage src={resolveAvatarSrc(staffMember.avatarUrl, name)} alt={name} />
                   <AvatarFallback
                     className="!text-white text-[10px] font-semibold"
                     style={{ backgroundImage: avatarGradient(name) }}

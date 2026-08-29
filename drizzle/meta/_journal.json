@@ -99,6 +99,13 @@
       "when": 1787990400000,
       "tag": "0013_msg91_notifications",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1788001141321,
+      "tag": "0014_last_hex",
+      "breakpoints": true
     }
   ]
 }

@@ -69,6 +69,17 @@ export function ResetPasswordForm() {
       router.push("/dashboard");
       router.refresh();
     } catch (error) {
+      if (
+        error instanceof ApiClientError &&
+        error.fieldErrors.some((fieldError) => fieldError.field === "newPassword")
+      ) {
+        const fieldError = error.fieldErrors.find(
+          (item) => item.field === "newPassword",
+        );
+        form.setError("newPassword", { message: fieldError?.message });
+        return;
+      }
+
       setFormError(
         error instanceof ApiClientError
           ? error.message

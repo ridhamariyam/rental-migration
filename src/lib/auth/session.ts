@@ -53,6 +53,7 @@ export type SessionUser = {
   firstName: string;
   lastName: string;
   email: string;
+  avatarUrl: string | null;
   mustChangePassword: boolean;
   isActive: boolean;
 };
@@ -83,6 +84,7 @@ export async function getCurrentUser(): Promise<SessionUser | null> {
       firstName: users.firstName,
       lastName: users.lastName,
       email: users.email,
+      avatarUrl: users.avatarUrl,
       mustChangePassword: users.mustChangePassword,
       isActive: users.isActive,
     })
@@ -103,6 +105,7 @@ export async function getCurrentUser(): Promise<SessionUser | null> {
     firstName: row.firstName,
     lastName: row.lastName,
     email: row.email,
+    avatarUrl: row.avatarUrl,
     mustChangePassword: row.mustChangePassword,
     isActive: row.isActive,
   };

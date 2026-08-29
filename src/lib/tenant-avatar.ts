@@ -41,6 +41,21 @@ export function staffAvatarSrc(name: string): string {
   return `/avatars/${index}.png`;
 }
 
+/**
+ * A real, uploaded photo (Profile page for a person; Business Settings'
+ * logo for a shop) always takes priority over the deterministic
+ * placeholder/gradient — the placeholder only exists as a stand-in for
+ * when nobody has uploaded a real image yet. Every avatar render in the
+ * app should resolve its `src` through this helper rather than calling
+ * `staffAvatarSrc(name)` directly.
+ */
+export function resolveAvatarSrc(
+  uploadedUrl: string | null | undefined,
+  name: string,
+): string {
+  return uploadedUrl || staffAvatarSrc(name);
+}
+
 /** Frosted glassmorphism avatar style derived deterministically from customer name */
 export function customerGlassAvatarStyle(seed: string): React.CSSProperties {
   const hash = hashString(seed);

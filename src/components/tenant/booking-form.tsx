@@ -43,7 +43,7 @@ import {
 import { tenantPaths } from "@/lib/tenant-paths";
 import { ApiClientError, apiRequest } from "@/lib/api-client";
 import { formatMoney, toDateString } from "@/lib/format";
-import { avatarGradient, initialsFor, staffAvatarSrc } from "@/lib/tenant-avatar";
+import { avatarGradient, initialsFor, resolveAvatarSrc } from "@/lib/tenant-avatar";
 import type { VariationSearchResult } from "@/server/variations/service";
 
 const SELF = "self";
@@ -79,7 +79,7 @@ export function BookingForm({
   /** Non-empty only for an `admin` actor (see `NewBookingPage`) — every
    * other role's bookings are always attributed to themselves, so there's
    * nothing to pick and this field never renders for them. */
-  staffOptions?: { id: string; firstName: string; lastName: string }[];
+  staffOptions?: { id: string; firstName: string; lastName: string; avatarUrl: string | null }[];
 }) {
   const router = useRouter();
   const [formError, setFormError] = useState<string | null>(null);
@@ -385,7 +385,7 @@ export function BookingForm({
                                 <span className="flex min-w-0 items-center gap-2">
                                   <Avatar className="size-5 shrink-0">
                                     <AvatarImage
-                                      src={staffAvatarSrc(name)}
+                                      src={resolveAvatarSrc(staff.avatarUrl, name)}
                                       alt={name}
                                     />
                                     <AvatarFallback
@@ -415,7 +415,7 @@ export function BookingForm({
                                 <span className="flex min-w-0 items-center gap-2">
                                   <Avatar className="size-5 shrink-0">
                                     <AvatarImage
-                                      src={staffAvatarSrc(name)}
+                                      src={resolveAvatarSrc(staff.avatarUrl, name)}
                                       alt={name}
                                     />
                                     <AvatarFallback

@@ -77,6 +77,12 @@ export enum Permission {
   // sensitive record of *who did what*, not an operational tool a manager
   // needs day to day.
   AUDIT_VIEW = "audit:view",
+  // Business Settings (the tenant's own shop profile — name/email/phone/
+  // address/logo). Deliberately owner-only, never granted to `manager`:
+  // this mirrors the client's own request that only the shop owner sees
+  // this screen. `ALL_PERMISSIONS` already covers `admin`/`super_admin`;
+  // this is never added to `MANAGER_PERMISSIONS`/`STAFF_PERMISSIONS`.
+  SHOP_MANAGE = "shop:manage",
 }
 
 const ALL_PERMISSIONS = new Set(Object.values(Permission));
