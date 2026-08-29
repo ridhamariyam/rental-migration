@@ -1,36 +1,116 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Rental Migration
 
-## Getting Started
+Local Next.js app for the bridal rental dashboard.
 
-First, run the development server:
+## Setup
+
+Install dependencies:
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+pnpm install
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Create the local env file:
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```bash
+cp .env.example .env.local
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Required local env values:
 
-## Learn More
+```env
+DATABASE_URL="postgresql://postgres:postgres@localhost:5435/rental_migration"
+SESSION_SECRET="change-me-to-a-long-random-value-min-32-chars"
+SUPER_ADMIN_EMAIL="admin@example.com"
+SUPER_ADMIN_PASSWORD="change-me-to-a-strong-password"
+NODE_ENV="development"
+NEXT_PUBLIC_APP_URL="http://localhost:3003"
 
-To learn more about Next.js, take a look at the following resources:
+CLOUDINARY_CLOUD_NAME="change-me"
+CLOUDINARY_API_KEY="change-me"
+CLOUDINARY_API_SECRET="change-me"
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+NEXT_PUBLIC_MAPBOX_TOKEN="change-me"
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+MSG91_AUTHKEY="change-me"
+MSG91_WHATSAPP_BASE_URL="https://api.msg91.com/api/v5/whatsapp"
+NOTIFICATION_WORKER_SECRET="change-me-to-a-long-random-value-min-32-chars"
+WHATSAPP_DEFAULT_COUNTRY_CODE="91"
+```
 
-## Deploy on Vercel
+Use real Cloudinary, Mapbox, and MSG91 values when testing those integrations.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## Database
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Start local Postgres with Docker:
+
+```bash
+docker compose up -d
+```
+
+The database runs on:
+
+```text
+localhost:5435
+```
+
+Run migrations:
+
+```bash
+pnpm db:migrate
+```
+
+Optional seed data:
+
+```bash
+pnpm db:seed:tenants
+```
+
+Stop Postgres:
+
+```bash
+docker compose down
+```
+
+Stop Postgres and delete local data:
+
+```bash
+docker compose down -v
+```
+
+## Run
+
+Start the dev server:
+
+```bash
+pnpm dev
+```
+
+Open:
+
+```text
+http://localhost:3003
+```
+
+## Checks
+
+```bash
+pnpm typecheck
+pnpm lint
+pnpm test
+```
+
+## WhatsApp Worker
+
+Dispatch queued MSG91 notifications:
+
+```bash
+curl -X POST http://localhost:3003/api/internal/notifications/dispatch \
+  -H "x-worker-secret: YOUR_NOTIFICATION_WORKER_SECRET"
+```
+
+MSG91 webhook URL:
+
+```text
+https://your-domain.com/api/webhooks/msg91/whatsapp
+```
