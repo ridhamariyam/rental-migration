@@ -38,9 +38,24 @@ const envSchema = z.object({
     .string()
     .url("MSG91_WHATSAPP_BASE_URL must be a valid URL")
     .default("https://api.msg91.com/api/v5/whatsapp"),
+  // Shared secret the cron/worker must present (as `x-worker-secret`) to
+  // trigger `/api/internal/notifications/dispatch`. Previously defaulted
+  // to `""`, which meant an operator who never set this could be bypassed
+  // by an attacker who simply sent an empty header value — required with
+  // a real minimum length now, same floor as `SESSION_SECRET`. Generate
+  // with: openssl rand -hex 32
   NOTIFICATION_WORKER_SECRET: z
     .string()
-    .default(""),
+    .min(32, "NOTIFICATION_WORKER_SECRET must be at least 32 characters"),
+  // Shared secret MSG91 must include as a `?token=` query param on its
+  // webhook callback URL (`/api/webhooks/msg91/whatsapp?token=...`) —
+  // MSG91 doesn't sign its webhook payloads, so without this anyone on the
+  // internet could POST a forged delivery-status update for any
+  // notification whose `crqid`/message id they happened to observe.
+  // Generate with: openssl rand -hex 32
+  MSG91_WEBHOOK_SECRET: z
+    .string()
+    .min(32, "MSG91_WEBHOOK_SECRET must be at least 32 characters"),
   WHATSAPP_DEFAULT_COUNTRY_CODE: z
     .string()
     .regex(/^\d{1,4}$/, "WHATSAPP_DEFAULT_COUNTRY_CODE must be numeric")

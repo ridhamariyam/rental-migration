@@ -3,6 +3,7 @@ import { Permission } from "@/lib/auth/permissions";
 import { AppError } from "@/lib/errors/app-error";
 import { apiError, apiSuccess } from "@/lib/errors/api-response";
 import { uploadImageToCloudinary } from "@/lib/cloudinary";
+import { sniffImageType } from "@/lib/uploads/sniff-image-type";
 
 const MAX_FILE_BYTES = 5 * 1024 * 1024; // 5 MB
 
@@ -53,6 +54,17 @@ export async function POST(request: Request) {
     }
 
     const buffer = Buffer.from(await file.arrayBuffer());
+
+    // Defense-in-depth: `file.type` above is just a client-supplied label
+    // read off the request — cross-check the bytes actually match one of
+    // the three formats we claim to accept before this ever reaches
+    // Cloudinary.
+    if (!sniffImageType(buffer)) {
+      throw new AppError("The uploaded file is not a valid image", 400, [
+        { field: "file", message: "The uploaded file is not a valid image" },
+      ]);
+    }
+
     const url = await uploadImageToCloudinary(buffer, UPLOAD_FOLDER);
 
     return apiSuccess({ url }, "Uploaded", 201);

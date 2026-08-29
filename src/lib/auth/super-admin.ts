@@ -1,19 +1,7 @@
 import "server-only";
 
-import { timingSafeEqual, createHash } from "node:crypto";
 import { env } from "@/lib/env";
-
-/**
- * Constant-time string comparison: hash both sides to a fixed-length
- * digest first so `timingSafeEqual` (which throws on unequal-length
- * buffers) never has to see the raw, variable-length input, and so the
- * comparison time never leaks the correct value's length either.
- */
-function constantTimeEquals(a: string, b: string): boolean {
-  const digestA = createHash("sha256").update(a).digest();
-  const digestB = createHash("sha256").update(b).digest();
-  return timingSafeEqual(digestA, digestB);
-}
+import { constantTimeEquals } from "@/lib/crypto/constant-time-equals";
 
 /**
  * There is exactly one super admin account for this MVP, defined by
