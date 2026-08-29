@@ -2,12 +2,13 @@ import { NextResponse } from "next/server";
 import { env } from "@/lib/env";
 import { apiError, apiSuccess } from "@/lib/errors/api-response";
 import { AppError } from "@/lib/errors/app-error";
+import { constantTimeEquals } from "@/lib/crypto/constant-time-equals";
 import { dispatchDueNotifications } from "@/server/notifications/service";
 
 export async function POST(request: Request) {
   try {
     const token = request.headers.get("x-worker-secret");
-    if (token !== env.NOTIFICATION_WORKER_SECRET) {
+    if (!token || !constantTimeEquals(token, env.NOTIFICATION_WORKER_SECRET)) {
       throw AppError.unauthorized("Invalid worker secret");
     }
 
