@@ -1,0 +1,97 @@
+{
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1787304088571,
+      "tag": "0000_wise_prima",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1787376957881,
+      "tag": "0001_outlets_and_staff",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1787382898539,
+      "tag": "0002_product_catalogue",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1787472084577,
+      "tag": "0003_customers",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1787475260076,
+      "tag": "0004_bookings",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1787477110309,
+      "tag": "0005_bookings_group_id",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1787480454573,
+      "tag": "0006_jittery_big_bertha",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1787483129560,
+      "tag": "0007_far_bedlam",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1787485567275,
+      "tag": "0008_sweet_pyro",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1787487779163,
+      "tag": "0009_curved_chimera",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1787506143382,
+      "tag": "0010_superb_iron_patriot",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1787510203793,
+      "tag": "0011_illegal_nighthawk",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1787829207066,
+      "tag": "0012_red_wolverine",
+      "breakpoints": true
+    }
+  ]
+}

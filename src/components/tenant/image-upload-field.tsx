@@ -1,0 +1,149 @@
+"use client";
+
+import { useRef, useState } from "react";
+import Image from "next/image";
+import { ImageIcon, UploadIcon, XIcon } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Spinner } from "@/components/ui/spinner";
+import { ApiClientError } from "@/lib/api-client";
+
+type UploadResponse = { url: string };
+
+/**
+ * A single image upload field — separate from the surrounding form's own
+ * submit (see `createProductSchema`'s doc comment): picking a file uploads
+ * it to `POST /api/uploads` immediately and the field's value becomes the
+ * resulting URL string, so a failed *catalogue* save never leaves an
+ * orphaned upload behind, and a failed *upload* never blocks the rest of
+ * the form.
+ */
+export function ImageUploadField({
+  value,
+  onChange,
+  disabled,
+}: {
+  value: string;
+  onChange: (url: string) => void;
+  disabled?: boolean;
+}) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [isUploading, setIsUploading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const handleFileChange = async (
+    event: React.ChangeEvent<HTMLInputElement>,
+  ) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+
+    setIsUploading(true);
+    setError(null);
+
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+
+      const response = await fetch("/api/uploads", {
+        method: "POST",
+        body: formData,
+      });
+      const payload = (await response.json().catch(() => null)) as {
+        success: boolean;
+        message: string;
+        data: UploadResponse | null;
+      } | null;
+
+      if (!response.ok || !payload?.success || !payload.data) {
+        throw new ApiClientError(
+          payload?.message ?? "Upload failed. Please try again.",
+          response.status,
+        );
+      }
+
+      onChange(payload.data.url);
+    } catch (uploadError) {
+      setError(
+        uploadError instanceof ApiClientError
+          ? uploadError.message
+          : "Upload failed. Please try again.",
+      );
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
+  return (
+    <div className="flex flex-col gap-2">
+      <div className="flex items-center gap-4">
+        <div className="bg-muted flex size-20 shrink-0 items-center justify-center overflow-hidden rounded-lg border">
+          {value ? (
+            <Image
+              src={value}
+              alt=""
+              width={80}
+              height={80}
+              className="size-full object-cover"
+              unoptimized
+            />
+          ) : (
+            <ImageIcon
+              className="text-muted-foreground size-6"
+              aria-hidden="true"
+            />
+          )}
+        </div>
+
+        <div className="flex flex-col gap-2">
+          <div className="flex items-center gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={disabled || isUploading}
+              onClick={() => inputRef.current?.click()}
+            >
+              {isUploading ? (
+                <>
+                  <Spinner />
+                  Uploading…
+                </>
+              ) : (
+                <>
+                  <UploadIcon />
+                  {value ? "Change image" : "Upload image"}
+                </>
+              )}
+            </Button>
+
+            {value ? (
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-sm"
+                aria-label="Remove image"
+                disabled={disabled || isUploading}
+                onClick={() => onChange("")}
+              >
+                <XIcon />
+              </Button>
+            ) : null}
+          </div>
+          <p className="text-muted-foreground text-xs">
+            JPEG, PNG, or WebP — up to 5 MB.
+          </p>
+        </div>
+
+        <input
+          ref={inputRef}
+          type="file"
+          accept="image/jpeg,image/png,image/webp"
+          className="hidden"
+          onChange={handleFileChange}
+        />
+      </div>
+
+      {error ? <p className="text-destructive text-xs">{error}</p> : null}
+    </div>
+  );
+}
