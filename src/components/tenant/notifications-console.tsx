@@ -56,9 +56,13 @@ type WhatsappNumber = {
 
 type WhatsappTemplate = {
   id: string;
+  integratedNumber: string;
   name: string;
+  namespace: string | null;
   language: string;
+  category: string | null;
   status: string;
+  body: string | null;
   variableSlots: string[];
 };
 
@@ -338,6 +342,68 @@ export function NotificationsConsole({
                 <TableRow>
                   <TableCell colSpan={4} className="text-muted-foreground h-24 text-center">
                     No WhatsApp number has been connected yet.
+                  </TableCell>
+                </TableRow>
+              )}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Templates</CardTitle>
+        </CardHeader>
+        <CardContent className="overflow-x-auto">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Template</TableHead>
+                <TableHead>Number</TableHead>
+                <TableHead>Language</TableHead>
+                <TableHead>Category</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead>Variables</TableHead>
+                <TableHead>Body</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {dashboard.templates.map((template) => (
+                <TableRow key={template.id}>
+                  <TableCell className="min-w-48 font-medium">
+                    {template.name}
+                  </TableCell>
+                  <TableCell>{template.integratedNumber}</TableCell>
+                  <TableCell>{template.language}</TableCell>
+                  <TableCell>{template.category ?? "-"}</TableCell>
+                  <TableCell>
+                    <Badge
+                      variant={
+                        template.status.toLowerCase() === "approved"
+                          ? "default"
+                          : "secondary"
+                      }
+                    >
+                      {template.status}
+                    </Badge>
+                  </TableCell>
+                  <TableCell className="min-w-40">
+                    {template.variableSlots.length > 0
+                      ? template.variableSlots.join(", ")
+                      : "-"}
+                  </TableCell>
+                  <TableCell className="text-muted-foreground max-w-md truncate">
+                    {template.body ?? "-"}
+                  </TableCell>
+                </TableRow>
+              ))}
+              {dashboard.templates.length === 0 && (
+                <TableRow>
+                  <TableCell
+                    colSpan={7}
+                    className="text-muted-foreground h-24 text-center"
+                  >
+                    No approved templates have been synced yet.
                   </TableCell>
                 </TableRow>
               )}
