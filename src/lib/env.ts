@@ -33,6 +33,18 @@ const envSchema = z.object({
   CLOUDINARY_CLOUD_NAME: z.string().min(1, "CLOUDINARY_CLOUD_NAME is required"),
   CLOUDINARY_API_KEY: z.string().min(1, "CLOUDINARY_API_KEY is required"),
   CLOUDINARY_API_SECRET: z.string().min(1, "CLOUDINARY_API_SECRET is required"),
+  MSG91_AUTHKEY: z.string().default(""),
+  MSG91_WHATSAPP_BASE_URL: z
+    .string()
+    .url("MSG91_WHATSAPP_BASE_URL must be a valid URL")
+    .default("https://api.msg91.com/api/v5/whatsapp"),
+  NOTIFICATION_WORKER_SECRET: z
+    .string()
+    .default(""),
+  WHATSAPP_DEFAULT_COUNTRY_CODE: z
+    .string()
+    .regex(/^\d{1,4}$/, "WHATSAPP_DEFAULT_COUNTRY_CODE must be numeric")
+    .default("91"),
 });
 
 const parsed = envSchema.safeParse(process.env);

@@ -6,6 +6,7 @@
     "dev": "next dev -p 3003",
     "build": "next build",
     "start": "next start",
+    "test": "tsx --test src/**/*.test.ts",
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
     "format": "prettier --write .",

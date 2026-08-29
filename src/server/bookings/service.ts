@@ -19,6 +19,10 @@ import { Permission, hasPermission } from "@/lib/auth/permissions";
 import type { TenantSessionUser } from "@/server/auth/guard";
 import { AuditAction, recordAudit } from "@/server/audit/service";
 import {
+  queueBookingLifecycleNotifications,
+  queueBookingNotification,
+} from "@/server/notifications/service";
+import {
   assertAvailable,
   assertCapacityAvailable,
   checkAvailability,
@@ -741,7 +745,11 @@ export async function createBookingGroup(
 
   try {
     return await db.transaction(async (tx) => {
-      return tx.insert(bookings).values(rows).returning();
+      const created = await tx.insert(bookings).values(rows).returning();
+      for (const booking of created) {
+        await queueBookingLifecycleNotifications(tx, booking);
+      }
+      return created;
     });
   } catch (error) {
     if (isUniqueViolation(error)) {
@@ -852,6 +860,8 @@ export async function cancelBooking(
     before: { status: booking.status },
     after: { status: "cancelled", cancellationReason: reason || null },
   });
+
+  await queueBookingNotification(db, updated, "booking_cancelled");
 
   return updated;
 }
