@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import "mapbox-gl/dist/mapbox-gl.css";
 import type mapboxgl from "mapbox-gl";
 import { AlertCircleIcon, MapPinIcon } from "lucide-react";
@@ -22,6 +22,31 @@ export type AttendanceOutletGeofence = {
 // Same default centre used by the outlet location picker, for consistency
 // when neither the outlet nor the staff member's position is known yet.
 const DEFAULT_CENTER = { latitude: 10.8505, longitude: 76.2673 };
+
+// `navigator.geolocation`'s presence never changes at runtime, so there's
+// nothing to subscribe to — this never notifies, it just lets
+// `useSyncExternalStore` supply the right snapshot per environment (same
+// `use-mobile.ts` pattern: no `setState` in an effect, no hydration
+// mismatch, since React expects the server/client snapshots to disagree).
+function subscribeNever() {
+  return () => {};
+}
+
+function getGeolocationSupportSnapshot() {
+  return typeof navigator !== "undefined" && "geolocation" in navigator;
+}
+
+function getServerGeolocationSupportSnapshot() {
+  return true;
+}
+
+function useHasGeolocationSupport() {
+  return useSyncExternalStore(
+    subscribeNever,
+    getGeolocationSupportSnapshot,
+    getServerGeolocationSupportSnapshot,
+  );
+}
 
 /**
  * Read-only "am I close enough" map shown on the self check-in/out card —
@@ -49,11 +74,10 @@ export function AttendanceGeofenceMap({
   const [position, setPosition] = useState<GeolocationCoordinates | null>(null);
   const [locationError, setLocationError] = useState<string | null>(null);
   const [mapReady, setMapReady] = useState(false);
+  const hasGeolocationSupport = useHasGeolocationSupport();
 
   const configured = isMapboxConfigured();
   const hasGeofence = outlet?.latitude != null && outlet?.longitude != null;
-  const hasGeolocationSupport =
-    typeof navigator !== "undefined" && "geolocation" in navigator;
 
   // Live-track the staff member's own position purely for on-map feedback.
   useEffect(() => {
