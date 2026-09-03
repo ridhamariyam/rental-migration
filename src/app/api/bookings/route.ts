@@ -6,6 +6,7 @@ import {
   createBookingSchema,
 } from "@/lib/validation/bookings";
 import { createBookingGroup, listBookings } from "@/server/bookings/service";
+import { dispatchAfterResponse } from "@/server/notifications/dispatch-after-response";
 
 export async function GET(request: Request) {
   try {
@@ -33,6 +34,8 @@ export async function POST(request: Request) {
 
     const body = createBookingSchema.parse(await request.json());
     const created = await createBookingGroup(user, body);
+
+    dispatchAfterResponse(created.map((booking) => booking.id));
 
     const message =
       created.length > 1

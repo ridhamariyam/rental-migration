@@ -3,6 +3,7 @@ import { Permission } from "@/lib/auth/permissions";
 import { apiError, apiSuccess } from "@/lib/errors/api-response";
 import { cancelBookingSchema } from "@/lib/validation/bookings";
 import { cancelBooking } from "@/server/bookings/service";
+import { dispatchAfterResponse } from "@/server/notifications/dispatch-after-response";
 
 export async function POST(
   request: Request,
@@ -16,6 +17,8 @@ export async function POST(
       await request.json().catch(() => ({})),
     );
     const booking = await cancelBooking(user, id, body.reason);
+
+    dispatchAfterResponse([id]);
 
     return apiSuccess(booking, "Booking cancelled");
   } catch (error) {

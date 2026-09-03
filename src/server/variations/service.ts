@@ -19,6 +19,13 @@ export type VariationListItem = VariationRow & {
   outletCode: string | null;
 };
 
+/** Same "inferred from `db.transaction`'s own callback" shape as
+ * `PaymentTx`/`MaintenanceTx`. Reads issued *inside* a transaction must go
+ * through this handle, never the pool: the dev pool is `max: 1`, so a query
+ * sent to the pool while a transaction holds that one connection would wait
+ * on itself forever. */
+type VariationTx = Parameters<Parameters<typeof db.transaction>[0]>[0];
+
 function isUniqueViolation(error: unknown): error is { code: string } {
   return (
     typeof error === "object" &&
@@ -132,13 +139,14 @@ export async function getVariationById(
  * helper. SKU/barcode are unique **globally**, not per tenant (see the
  * table-level doc comment in `schema/product-variations.ts`). */
 async function allocateUnique(
+  tx: VariationTx,
   generator: () => string,
   column: typeof productVariations.sku | typeof productVariations.barcode,
   attempts = 12,
 ): Promise<string> {
   for (let i = 0; i < attempts; i += 1) {
     const candidate = generator();
-    const [existing] = await db
+    const [existing] = await tx
       .select({ id: productVariations.id })
       .from(productVariations)
       .where(eq(column, candidate))
@@ -153,13 +161,14 @@ async function allocateUnique(
 }
 
 async function allocateIdentifiers(
+  tx: VariationTx,
   productName: string,
   manualSku: string | undefined,
   manualBarcode: string | undefined,
 ): Promise<{ sku: string; barcode: string }> {
   let sku: string;
   if (manualSku) {
-    const [existing] = await db
+    const [existing] = await tx
       .select({ id: productVariations.id })
       .from(productVariations)
       .where(eq(productVariations.sku, manualSku))
@@ -172,6 +181,7 @@ async function allocateIdentifiers(
     sku = manualSku;
   } else {
     sku = await allocateUnique(
+      tx,
       () => generateSku(productName),
       productVariations.sku,
     );
@@ -179,7 +189,7 @@ async function allocateIdentifiers(
 
   let barcode: string;
   if (manualBarcode) {
-    const [existing] = await db
+    const [existing] = await tx
       .select({ id: productVariations.id })
       .from(productVariations)
       .where(eq(productVariations.barcode, manualBarcode))
@@ -191,7 +201,11 @@ async function allocateIdentifiers(
     }
     barcode = manualBarcode;
   } else {
-    barcode = await allocateUnique(generateBarcode, productVariations.barcode);
+    barcode = await allocateUnique(
+      tx,
+      generateBarcode,
+      productVariations.barcode,
+    );
   }
 
   return { sku, barcode };
@@ -232,6 +246,7 @@ export async function createVariation(
         // other outlet in the batch always gets a freshly auto-generated
         // pair.
         const { sku, barcode } = await allocateIdentifiers(
+          tx,
           product.name,
           input.outletIds.length === 1 ? input.sku : undefined,
           input.outletIds.length === 1 ? input.barcode : undefined,
