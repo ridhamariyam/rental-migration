@@ -274,6 +274,38 @@ export async function recordPayment(
           ],
         );
       }
+    } else {
+      // Inflows (advance/balance/security_deposit) must not exceed what's
+      // actually still owed for that bucket — otherwise the ledger ends up
+      // "overpaid" with no way to reconcile it. Rent and deposit are kept
+      // separate on purpose (a rent overpayment can't silently cover the
+      // deposit or vice versa).
+      const existingSummary = computePaymentSummary(booking, existingRows);
+      const isDepositPayment = input.paymentType === "security_deposit";
+      const remaining = nonNegativeMoney(
+        isDepositPayment
+          ? existingSummary.depositBalance
+          : existingSummary.rentBalance,
+      );
+
+      if (compareMoney(input.amount, remaining) > 0) {
+        const bucket = isDepositPayment ? "deposit" : "rent";
+        throw new AppError(
+          compareMoney(remaining, ZERO_MONEY) <= 0
+            ? `The ${bucket} for this booking is already fully paid`
+            : `Cannot exceed the ${formatMoney(remaining)} ${bucket} balance remaining`,
+          400,
+          [
+            {
+              field: "amount",
+              message:
+                compareMoney(remaining, ZERO_MONEY) <= 0
+                  ? `${bucket === "deposit" ? "Deposit" : "Rent"} is already fully paid`
+                  : `Cannot exceed ${formatMoney(remaining)} remaining`,
+            },
+          ],
+        );
+      }
     }
 
     const [payment] = await tx

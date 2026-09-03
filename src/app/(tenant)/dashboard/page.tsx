@@ -12,6 +12,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { DashboardAnalyticsSection } from "@/components/tenant/dashboard-analytics-section";
 import { DashboardStatsTiles } from "@/components/tenant/dashboard-stats-tiles";
 import { DashboardStatsTilesSkeleton } from "@/components/tenant/dashboard-stats-tiles-skeleton";
+import { OnboardingChecklist } from "@/components/tenant/onboarding-checklist";
+import { OnboardingChecklistSkeleton } from "@/components/tenant/onboarding-checklist-skeleton";
 import { RevenueTrendSectionSkeleton } from "@/components/tenant/revenue-trend-section-skeleton";
 import { getCurrentUser } from "@/lib/auth/session";
 import { hasPermission, Permission } from "@/lib/auth/permissions";
@@ -101,6 +103,9 @@ export default async function TenantDashboardPage() {
 
       {canViewReports ? (
         <>
+          <Suspense fallback={<OnboardingChecklistSkeleton />}>
+            <OnboardingChecklist shopId={(user as TenantSessionUser).shopId} />
+          </Suspense>
           <Suspense fallback={<DashboardStatsTilesSkeleton />}>
             <DashboardStatsTiles actor={user as TenantSessionUser} />
           </Suspense>
