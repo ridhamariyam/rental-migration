@@ -1,5 +1,9 @@
 import { z } from "zod";
-import { moneySchema, optionalUuidSchema, percentageSchema } from "@/lib/validation/common";
+import {
+  moneySchema,
+  optionalPercentageSchema,
+  optionalUuidSchema,
+} from "@/lib/validation/common";
 
 export const variationIdParamSchema = z.uuid("Invalid item id");
 
@@ -79,7 +83,7 @@ export const createVariationSchema = z
       .max(30, "Must be at most 30 characters")
       .optional(),
     ownerCustomerId: optionalUuidSchema,
-    ownerSharePercentage: percentageSchema.optional(),
+    ownerSharePercentage: optionalPercentageSchema,
     ownerNotes: z
       .string()
       .trim()
@@ -154,7 +158,7 @@ export const updateVariationSchema = z
       .max(30, "Must be at most 30 characters")
       .optional(),
     ownerCustomerId: optionalUuidSchema,
-    ownerSharePercentage: percentageSchema.optional(),
+    ownerSharePercentage: optionalPercentageSchema,
     ownerNotes: z
       .string()
       .trim()

@@ -2,6 +2,7 @@ import { requireTenantUser } from "@/server/auth/guard";
 import { apiError, apiSuccess } from "@/lib/errors/api-response";
 import { returnBookingSchema } from "@/lib/validation/booking-lifecycle";
 import { returnBooking } from "@/server/bookings/lifecycle";
+import { dispatchAfterResponse } from "@/server/notifications/dispatch-after-response";
 
 /**
  * Records a return + damage/deposit settlement for a booking (doc
@@ -20,6 +21,8 @@ export async function POST(
     const { id } = await params;
     const body = returnBookingSchema.parse(await request.json());
     const result = await returnBooking(user, id, body);
+
+    dispatchAfterResponse([id]);
 
     return apiSuccess(result, "Item returned");
   } catch (error) {

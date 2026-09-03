@@ -11,6 +11,7 @@ import {
   isNull,
   lte,
   or,
+  sql,
 } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import {
@@ -693,28 +694,49 @@ export async function retryNotification(
   return log;
 }
 
-export async function dispatchDueNotifications(now = new Date()): Promise<number> {
-  const due = await db
-    .select()
+/**
+ * Moves up to `limit` due rows from `queued` to `sending` and returns them.
+ * The claim is a single `UPDATE ... WHERE id IN (SELECT ... FOR UPDATE SKIP
+ * LOCKED)` rather than a select followed by an update because there are now
+ * two dispatchers in play — the cron and the post-commit `after()` nudge —
+ * and a read-then-write gap between them would let both claim the same row
+ * and send the customer the same WhatsApp message twice.
+ */
+async function claimDueNotifications(
+  now: Date,
+  bookingId: string | null,
+  limit: number,
+): Promise<NotificationLog[]> {
+  const due = db
+    .select({ id: notificationLogs.id })
     .from(notificationLogs)
     .where(
       and(
         eq(notificationLogs.status, "queued"),
         lte(notificationLogs.attempts, MAX_ATTEMPTS - 1),
         or(isNull(notificationLogs.scheduledFor), lte(notificationLogs.scheduledFor, now)),
+        ...(bookingId ? [eq(notificationLogs.bookingId, bookingId)] : []),
       ),
     )
     .orderBy(notificationLogs.createdAt)
-    .limit(50);
+    .limit(limit)
+    .for("update", { skipLocked: true });
 
+  return db
+    .update(notificationLogs)
+    .set({
+      status: "sending",
+      attempts: sql`${notificationLogs.attempts} + 1`,
+      updatedAt: new Date(),
+    })
+    .where(inArray(notificationLogs.id, due))
+    .returning();
+}
+
+async function sendClaimedNotifications(claimed: NotificationLog[]): Promise<number> {
   const client = new Msg91Client();
 
-  for (const log of due) {
-    await db
-      .update(notificationLogs)
-      .set({ status: "sending", attempts: log.attempts + 1, updatedAt: new Date() })
-      .where(eq(notificationLogs.id, log.id));
-
+  for (const log of claimed) {
     try {
       const result = await client.sendTemplate({
         integratedNumber: log.integratedNumber,
@@ -739,18 +761,40 @@ export async function dispatchDueNotifications(now = new Date()): Promise<number
         })
         .where(eq(notificationLogs.id, log.id));
     } catch (error) {
+      const lastError = error instanceof Error ? error.message : "MSG91 send failed";
+      console.error(`[notifications] ${log.event} ${log.id} failed: ${lastError}`);
+
       await db
         .update(notificationLogs)
         .set({
           status: "failed",
-          lastError: error instanceof Error ? error.message : "MSG91 send failed",
+          lastError,
           updatedAt: new Date(),
         })
         .where(eq(notificationLogs.id, log.id));
     }
   }
 
-  return due.length;
+  return claimed.length;
+}
+
+export async function dispatchDueNotifications(now = new Date()): Promise<number> {
+  return sendClaimedNotifications(await claimDueNotifications(now, null, 50));
+}
+
+/**
+ * Sends one booking's already-queued messages immediately instead of
+ * waiting for the next cron tick. Must only be called *after* the
+ * transaction that queued them has committed — see `dispatchAfterResponse`.
+ * Future-dated reminders are left untouched by the `scheduledFor` filter,
+ * so this only ever sends the event that just happened.
+ */
+export async function dispatchNotificationsForBooking(
+  bookingId: string,
+): Promise<number> {
+  return sendClaimedNotifications(
+    await claimDueNotifications(new Date(), bookingId, 10),
+  );
 }
 
 export async function applyMsg91Webhook(payload: Record<string, unknown>): Promise<void> {

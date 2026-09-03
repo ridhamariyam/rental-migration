@@ -157,3 +157,22 @@ export const percentageSchema = z
     (value) => /^\d{1,3}(\.\d{1,2})?$/.test(value) && Number(value) <= 100,
     { message: "Enter a percentage between 0 and 100" },
   );
+
+/**
+ * Same format as `percentageSchema`, but the field may be left blank —
+ * **not** the same as `percentageSchema.optional()`, for the exact reason
+ * spelled out on `optionalMoneySchema`: `.optional()` only excuses
+ * `undefined`, so a blank input's `""` still trips `.min(1, "Required")`.
+ * On a conditionally-rendered field (the ownership share, only shown for
+ * customer-owned items) that error is invisible and silently blocks submit.
+ */
+export const optionalPercentageSchema = z
+  .string()
+  .trim()
+  .optional()
+  .refine(
+    (value) =>
+      !value ||
+      (/^\d{1,3}(\.\d{1,2})?$/.test(value) && Number(value) <= 100),
+    { message: "Enter a percentage between 0 and 100" },
+  );

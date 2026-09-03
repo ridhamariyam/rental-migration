@@ -2,6 +2,7 @@ import { requireTenantUser } from "@/server/auth/guard";
 import { apiError, apiSuccess } from "@/lib/errors/api-response";
 import { recordPaymentSchema } from "@/lib/validation/payments";
 import { recordPayment } from "@/server/payments/service";
+import { dispatchAfterResponse } from "@/server/notifications/dispatch-after-response";
 
 /**
  * Records one payment against a booking. Deliberately not gated by a
@@ -20,6 +21,8 @@ export async function POST(
     const { id } = await params;
     const body = recordPaymentSchema.parse(await request.json());
     const result = await recordPayment(user, id, body);
+
+    dispatchAfterResponse([id]);
 
     return apiSuccess(result, "Payment recorded", 201);
   } catch (error) {

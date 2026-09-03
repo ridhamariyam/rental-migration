@@ -145,6 +145,10 @@ export function NotificationsConsole({
     () => new Map(dashboard.templates.map((template) => [template.id, template])),
     [dashboard.templates],
   );
+  const numberById = useMemo(
+    () => new Map(dashboard.numbers.map((number) => [number.id, number])),
+    [dashboard.numbers],
+  );
 
   function run(action: () => Promise<void>) {
     setError(null);
@@ -460,7 +464,14 @@ export function NotificationsConsole({
                             })
                           }
                         >
-                          <SelectTrigger><SelectValue /></SelectTrigger>
+                          <SelectTrigger>
+                            <SelectValue>
+                              {(value: string) =>
+                                numberById.get(value)?.integratedNumber ??
+                                "Choose number"
+                              }
+                            </SelectValue>
+                          </SelectTrigger>
                           <SelectContent>
                             <SelectItem value="none">Choose number</SelectItem>
                             {dashboard.numbers.map((number) => (
@@ -481,7 +492,16 @@ export function NotificationsConsole({
                             })
                           }
                         >
-                          <SelectTrigger><SelectValue /></SelectTrigger>
+                          <SelectTrigger>
+                            <SelectValue>
+                              {(value: string) => {
+                                const selected = templateById.get(value);
+                                return selected
+                                  ? `${selected.name} (${selected.language})`
+                                  : "Choose template";
+                              }}
+                            </SelectValue>
+                          </SelectTrigger>
                           <SelectContent>
                             <SelectItem value="none">Choose template</SelectItem>
                             {approvedTemplates.map((template) => (
