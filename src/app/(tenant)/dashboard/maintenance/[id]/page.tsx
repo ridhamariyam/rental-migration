@@ -95,6 +95,8 @@ export default async function MaintenanceTaskDetailPage({
   ];
 
   const TypeIcon = task.taskType === "cleaning" ? SparklesIcon : WrenchIcon;
+  const blockedUnits = task.bookingQuantity ?? 1;
+  const unitsLabel = `${blockedUnits} unit${blockedUnits === 1 ? "" : "s"}`;
 
   const STATUS_STATE: Record<
     typeof task.status,
@@ -102,7 +104,7 @@ export default async function MaintenanceTaskDetailPage({
   > = {
     pending: {
       title: "Waiting to start",
-      description: "Item stays off the shelf until this is closed out.",
+      description: `${unitsLabel} of this item ${blockedUnits === 1 ? "is" : "are"} tied up until this is closed out.`,
     },
     in_progress: {
       title: "In progress",

@@ -74,12 +74,24 @@ async function sumPayments(
   return normalizeMoneyFromSql(row?.total);
 }
 
+/** `null` means there's no honest baseline to compare against (no income
+ * in the prior period) — the dashboard shows no trend badge rather than a
+ * misleading "+100%" or a divide-by-zero artifact. */
+function computePercentChange(current: string, previous: string): number | null {
+  const currentNum = Number(current);
+  const previousNum = Number(previous);
+  if (previousNum === 0) return null;
+  return Math.round(((currentNum - previousNum) / previousNum) * 100);
+}
+
 export type DashboardStats = {
   date: string;
   todaysBookings: number;
   todaysReturns: number;
   todaysIncome: string;
+  todaysIncomeChangePercent: number | null;
   monthIncome: string;
+  monthIncomeChangePercent: number | null;
   activeRentals: number;
   availableProducts: number;
   pendingReturns: number;
@@ -103,6 +115,20 @@ export async function getDashboardStats(
 
   const today = toDateString(new Date());
   const monthStart = `${today.slice(0, 7)}-01`;
+  const yesterday = toDateString(new Date(Date.now() - 86_400_000));
+
+  // Last month's same window as "month start -> today" (e.g. the 1st-5th of
+  // last month, for a fair day-count comparison), clamped to that month's
+  // own last day when it's shorter (Feb has no 30th/31st).
+  const todayInMonth = Number(today.slice(8, 10));
+  const lastMonthEnd = new Date(`${monthStart}T00:00:00Z`);
+  lastMonthEnd.setUTCDate(0);
+  const lastMonthStart = `${toDateString(lastMonthEnd).slice(0, 7)}-01`;
+  const lastMonthSamePointDate = new Date(`${lastMonthStart}T00:00:00Z`);
+  lastMonthSamePointDate.setUTCDate(todayInMonth);
+  const lastMonthSamePoint = toDateString(
+    lastMonthSamePointDate > lastMonthEnd ? lastMonthEnd : lastMonthSamePointDate,
+  );
   const outletId = query.outletId;
 
   const bookingScope = [eq(bookings.shopId, actor.shopId)];
@@ -112,7 +138,9 @@ export async function getDashboardStats(
     todaysBookingsRow,
     todaysReturnsRow,
     todaysIncome,
+    yesterdaysIncome,
     monthIncome,
+    lastMonthSamePeriodIncome,
     activeRentalsRow,
     availableProductsRow,
     pendingReturnsRow,
@@ -127,7 +155,9 @@ export async function getDashboardStats(
       .from(bookings)
       .where(and(...bookingScope, eq(bookings.toDate, today))),
     sumPayments(actor.shopId, outletId, today, today),
+    sumPayments(actor.shopId, outletId, yesterday, yesterday),
     sumPayments(actor.shopId, outletId, monthStart, today),
+    sumPayments(actor.shopId, outletId, lastMonthStart, lastMonthSamePoint),
     db
       .select({ value: sql<string>`coalesce(sum(${bookings.quantity}), 0)` })
       .from(bookings)
@@ -174,7 +204,12 @@ export async function getDashboardStats(
     todaysBookings: todaysBookingsRow[0]?.value ?? 0,
     todaysReturns: todaysReturnsRow[0]?.value ?? 0,
     todaysIncome,
+    todaysIncomeChangePercent: computePercentChange(todaysIncome, yesterdaysIncome),
     monthIncome,
+    monthIncomeChangePercent: computePercentChange(
+      monthIncome,
+      lastMonthSamePeriodIncome,
+    ),
     activeRentals: Number(activeRentalsRow[0]?.value ?? 0),
     availableProducts: availableProductsRow[0]?.value ?? 0,
     pendingReturns: Number(pendingReturnsRow[0]?.value ?? 0),

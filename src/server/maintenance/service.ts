@@ -149,6 +149,7 @@ const TASK_SELECT = {
   itemStatus: productVariations.status,
   bookingId: maintenanceTasks.bookingId,
   bookingNumber: bookings.bookingNumber,
+  bookingQuantity: bookings.quantity,
   taskType: maintenanceTasks.taskType,
   status: maintenanceTasks.status,
   notes: maintenanceTasks.notes,
@@ -178,6 +179,7 @@ type TaskSelectRow = {
   itemStatus: ProductVariation["status"];
   bookingId: string | null;
   bookingNumber: string | null;
+  bookingQuantity: number | null;
   taskType: MaintenanceTask["taskType"];
   status: MaintenanceTask["status"];
   notes: string | null;
