@@ -10,6 +10,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
+  DialogBody,
   DialogContent,
   DialogDescription,
   DialogFooter,
@@ -222,9 +223,10 @@ export function RecordPaymentDialog({
         <form
           onSubmit={onSubmit}
           noValidate
-          className="flex flex-col gap-4"
+          className="flex flex-col flex-1 overflow-hidden min-h-0"
           id="record-payment-form"
         >
+          <DialogBody>
           {formError ? (
             <Alert
               variant="destructive"
@@ -350,6 +352,7 @@ export function RecordPaymentDialog({
               <FieldError errors={[form.formState.errors.note]} />
             </Field>
           </FieldGroup>
+          </DialogBody>
         </form>
 
         <DialogFooter>

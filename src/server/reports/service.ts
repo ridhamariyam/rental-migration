@@ -129,7 +129,7 @@ export async function getDashboardStats(
     sumPayments(actor.shopId, outletId, today, today),
     sumPayments(actor.shopId, outletId, monthStart, today),
     db
-      .select({ value: count() })
+      .select({ value: sql<string>`coalesce(sum(${bookings.quantity}), 0)` })
       .from(bookings)
       .where(and(...bookingScope, inArray(bookings.status, ACTIVE_STATUSES))),
     db
@@ -144,7 +144,7 @@ export async function getDashboardStats(
         ),
       ),
     db
-      .select({ value: count() })
+      .select({ value: sql<string>`coalesce(sum(${bookings.quantity}), 0)` })
       .from(bookings)
       .where(
         and(
@@ -175,9 +175,9 @@ export async function getDashboardStats(
     todaysReturns: todaysReturnsRow[0]?.value ?? 0,
     todaysIncome,
     monthIncome,
-    activeRentals: activeRentalsRow[0]?.value ?? 0,
+    activeRentals: Number(activeRentalsRow[0]?.value ?? 0),
     availableProducts: availableProductsRow[0]?.value ?? 0,
-    pendingReturns: pendingReturnsRow[0]?.value ?? 0,
+    pendingReturns: Number(pendingReturnsRow[0]?.value ?? 0),
     itemsNeedingCleaning: cleaningRow[0]?.value ?? 0,
     pendingOwnerSettlements,
   };

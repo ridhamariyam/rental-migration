@@ -5,6 +5,7 @@ import { PrinterIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
+  DialogBody,
   DialogContent,
   DialogDescription,
   DialogHeader,
@@ -86,21 +87,23 @@ export function BarcodeDisplay({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="flex flex-col items-center gap-4 rounded-lg border p-6">
-          <p className="text-sm font-medium">{productName}</p>
-          <BarcodeSvg value={barcode} />
-          <p className="text-muted-foreground text-xs">SKU {sku}</p>
-        </div>
+        <DialogBody>
+          <div className="flex flex-col items-center gap-4 rounded-lg border p-6">
+            <p className="text-sm font-medium">{productName}</p>
+            <BarcodeSvg value={barcode} />
+            <p className="text-muted-foreground text-xs">SKU {sku}</p>
+          </div>
 
-        <Button
-          type="button"
-          onClick={handlePrint}
-          disabled={printing}
-          className="print:hidden"
-        >
-          <PrinterIcon />
-          Print label
-        </Button>
+          <Button
+            type="button"
+            onClick={handlePrint}
+            disabled={printing}
+            className="print:hidden"
+          >
+            <PrinterIcon />
+            Print label
+          </Button>
+        </DialogBody>
       </DialogContent>
     </Dialog>
   );

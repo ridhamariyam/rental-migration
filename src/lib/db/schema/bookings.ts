@@ -33,12 +33,13 @@ export const bookings = pgTable(
   {
     id: uuid("id").defaultRandom().primaryKey(),
     bookingNumber: text("booking_number").notNull().unique(),
-    // Set to the same value for every line item created together in one
-    // "customer rents several items" submission (see
-    // `src/server/bookings/service.ts`'s `createBookingGroup`) — each item
-    // still gets its own row (its own dates/pricing/availability, since a
-    // customer might return one item before another), this is purely a
-    // "these were booked together" link, not a separate order entity.
+    // Set to the same value for every *distinct item* line created
+    // together in one "customer rents several different items"
+    // submission (see `createBookingGroup`) — e.g. a dress plus jewelry
+    // for the same event. It does **not** multiply for a repeat quantity
+    // of the *same* item/dates/discount; that's `quantity` below, kept as
+    // a single row so one order line is one booking, one receipt, one
+    // pickup/return event.
     bookingGroupId: uuid("booking_group_id").defaultRandom().notNull(),
     shopId: uuid("shop_id")
       .notNull()
@@ -62,6 +63,12 @@ export const bookings = pgTable(
     fromDate: date("from_date", { mode: "string" }).notNull(),
     toDate: date("to_date", { mode: "string" }).notNull(),
     totalDays: integer("total_days").notNull(),
+    //: How many identical physical units of this same item/dates this one
+    //: booking represents (e.g. 2 identical necklaces for the same
+    //: wedding) — priced, paid, picked up and returned together as a
+    //: single batch. Availability math sums this across every overlapping
+    //: booking rather than counting rows (see `availability.ts`).
+    quantity: integer("quantity").notNull().default(1),
 
     // Money -----------------------------------------------------------
     rentAmount: numeric("rent_amount", { precision: 12, scale: 2 }).notNull(),

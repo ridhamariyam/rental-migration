@@ -8,6 +8,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
+  DialogBody,
   DialogContent,
   DialogDescription,
   DialogFooter,
@@ -103,15 +104,17 @@ export function TenantStatusAction({
         </DialogHeader>
 
         {error ? (
-          <Alert
-            variant="destructive"
-            className="border-destructive/25 bg-destructive/5"
-          >
-            <AlertCircleIcon />
-            <AlertDescription className="text-destructive font-medium">
-              {error}
-            </AlertDescription>
-          </Alert>
+          <DialogBody>
+            <Alert
+              variant="destructive"
+              className="border-destructive/25 bg-destructive/5"
+            >
+              <AlertCircleIcon />
+              <AlertDescription className="text-destructive font-medium">
+                {error}
+              </AlertDescription>
+            </Alert>
+          </DialogBody>
         ) : null}
 
         <DialogFooter>

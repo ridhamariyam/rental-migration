@@ -1,6 +1,6 @@
 import "server-only";
 
-import { and, count, desc, eq, ilike, inArray, or } from "drizzle-orm";
+import { and, count, desc, eq, ilike, or } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { db } from "@/lib/db/client";
 import { AppError } from "@/lib/errors/app-error";
@@ -28,43 +28,55 @@ import type {
   MaintenanceListQuery,
   StartMaintenanceTaskInput,
 } from "@/lib/validation/maintenance";
+import {
+  getMaintenanceBlockedQuantity,
+  getRentedOutQuantity,
+} from "@/server/variations/capacity";
 
 /** Same "inferred from `db.transaction`'s own callback" shape as
  * `PaymentTx` in `src/server/payments/service.ts` — kept in sync with
  * whatever driver/schema `db` actually uses without hand-typing it. */
 export type MaintenanceTx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
-const OPEN_STATUSES: MaintenanceTask["status"][] = ["pending", "in_progress"];
-
 /**
- * The single chokepoint that decides a variation's post-return lifecycle
- * status from its own currently-open tasks — mirrors the legacy backend's
- * `MaintenanceService._release_if_ready` (maintenance outranks cleaning
- * while both are open; `available` only once nothing is left open).
- * Called after *any* task-open or task-close operation so the variation's
- * `status` can never drift out of sync with its own tasks.
+ * The single chokepoint that decides a variation's lifecycle status from
+ * its own currently-open tasks *and* how much of its total `quantity` is
+ * actually spoken for right now — mirrors the legacy backend's
+ * `MaintenanceService._release_if_ready`, generalised for a variation
+ * that represents several identical physical units (see `bookings
+ * .quantity`'s doc comment): one unit needing repair no longer parks the
+ * *entire* batch as unbookable — the status only moves off `available`
+ * once maintenance/cleaning/active rentals between them account for
+ * every unit (maintenance outranks cleaning outranks a plain rental).
+ * Called after *any* task-open, task-close, or pickup operation so the
+ * variation's `status` can never drift out of sync with its own tasks.
  */
-async function applyVariationLifecycleStatus(
+export async function applyVariationLifecycleStatus(
   tx: MaintenanceTx,
   variationId: string,
 ): Promise<ProductVariation["status"]> {
-  const openTasks = await tx
-    .select({ taskType: maintenanceTasks.taskType })
-    .from(maintenanceTasks)
-    .where(
-      and(
-        eq(maintenanceTasks.variationId, variationId),
-        inArray(maintenanceTasks.status, OPEN_STATUSES),
-      ),
-    );
+  const [variation] = await tx
+    .select({ quantity: productVariations.quantity })
+    .from(productVariations)
+    .where(eq(productVariations.id, variationId))
+    .limit(1);
 
-  const nextStatus: ProductVariation["status"] = openTasks.some(
-    (task) => task.taskType === "maintenance",
-  )
-    ? "maintenance"
-    : openTasks.some((task) => task.taskType === "cleaning")
-      ? "needs_cleaning"
-      : "available";
+  const capacity = Math.max(1, variation?.quantity ?? 1);
+  const { maintenanceQty, cleaningQty, cleaningInProgress } =
+    await getMaintenanceBlockedQuantity(variationId, tx);
+  const rentedQty = await getRentedOutQuantity(variationId, tx);
+
+  const blocked = maintenanceQty + cleaningQty + rentedQty;
+  const nextStatus: ProductVariation["status"] =
+    blocked < capacity
+      ? "available"
+      : maintenanceQty > 0
+        ? "maintenance"
+        : cleaningQty > 0
+          ? cleaningInProgress
+            ? "cleaning"
+            : "needs_cleaning"
+          : "rented";
 
   await tx
     .update(productVariations)
@@ -441,11 +453,10 @@ export async function createMaintenanceTask(
 
 /**
  * Starts the work: moves `pending -> in_progress`, records who's doing it
- * (defaults to the caller), and — only for a cleaning task — moves the
- * item's own status to `cleaning` (mirrors the legacy backend exactly;
- * a maintenance task's variation is already sitting at `maintenance` since
- * the task was opened, no separate "in progress" item status exists for
- * repairs).
+ * (defaults to the caller), and re-runs `applyVariationLifecycleStatus` so
+ * a cleaning task moving to "started" is reflected in the item's own
+ * status — but only once every unit is actually accounted for (mirrors the
+ * legacy backend's binary behaviour exactly when `quantity` is 1).
  */
 export async function startMaintenanceTask(
   actor: TenantSessionUser,
@@ -478,10 +489,7 @@ export async function startMaintenanceTask(
       .where(eq(maintenanceTasks.id, taskId));
 
     if (task.taskType === "cleaning") {
-      await tx
-        .update(productVariations)
-        .set({ status: "cleaning", updatedAt: new Date() })
-        .where(eq(productVariations.id, task.variationId));
+      await applyVariationLifecycleStatus(tx, task.variationId);
     }
   });
 

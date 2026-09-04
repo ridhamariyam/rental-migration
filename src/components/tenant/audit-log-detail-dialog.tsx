@@ -3,6 +3,7 @@
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
+  DialogBody,
   DialogContent,
   DialogDescription,
   DialogHeader,
@@ -108,7 +109,7 @@ export function AuditLogDetailDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="flex flex-col gap-3">
+        <DialogBody>
           <div className="text-muted-foreground flex items-center justify-between text-xs">
             <span>{formatDateTime(createdAt)}</span>
             <span>{userName || "Platform admin"}</span>
@@ -117,7 +118,7 @@ export function AuditLogDetailDialog({
           <p className="text-muted-foreground text-xs capitalize">
             Entity: {entityType.replace("_", " ")}
           </p>
-        </div>
+        </DialogBody>
       </DialogContent>
     </Dialog>
   );

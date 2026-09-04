@@ -14,7 +14,7 @@ import {
 } from "@/lib/db/schema";
 import { assertTransition, isEditable } from "@/lib/booking-state";
 import { generateBookingNumberCandidate } from "@/lib/booking-number";
-import { compareMoney, ZERO_MONEY } from "@/lib/money";
+import { compareMoney, addMoney, ZERO_MONEY } from "@/lib/money";
 import { Permission, hasPermission } from "@/lib/auth/permissions";
 import type { TenantSessionUser } from "@/server/auth/guard";
 import { AuditAction, recordAudit } from "@/server/audit/service";
@@ -147,6 +147,7 @@ export async function listBookings(
       fromDate: bookings.fromDate,
       toDate: bookings.toDate,
       totalDays: bookings.totalDays,
+      quantity: bookings.quantity,
       rentAmount: bookings.rentAmount,
       grossRent: bookings.grossRent,
       discountAmount: bookings.discountAmount,
@@ -216,11 +217,13 @@ export async function listBookings(
   ];
 
   const groupItemsMap: Record<string, BookingGroupItemInfo[]> = {};
+  const groupAmountMap: Record<string, string> = {};
 
   if (groupIds.length > 0) {
     const groupRows = await db
       .select({
         bookingGroupId: bookings.bookingGroupId,
+        totalAmount: bookings.totalAmount,
         productName: products.name,
         productImage: products.image,
         variationColor: productVariations.color,
@@ -243,6 +246,7 @@ export async function listBookings(
       if (item.bookingGroupId) {
         if (!groupItemsMap[item.bookingGroupId]) {
           groupItemsMap[item.bookingGroupId] = [];
+          groupAmountMap[item.bookingGroupId] = ZERO_MONEY;
         }
         groupItemsMap[item.bookingGroupId].push({
           productName: item.productName,
@@ -250,32 +254,62 @@ export async function listBookings(
           variationColor: item.variationColor,
           variationSize: item.variationSize,
         });
+        groupAmountMap[item.bookingGroupId] = addMoney(
+          groupAmountMap[item.bookingGroupId],
+          item.totalAmount,
+        );
       }
     }
   }
 
-  return {
-    items: rows.map((row) => ({
+  // One order can span several bookings (one per physical unit — see
+  // `createBooking`'s doc comment on why each unit gets its own pickup/
+  // return lifecycle). The list still only ever shows one row per order:
+  // the first booking encountered for a `bookingGroupId` stands in for
+  // the whole group, with its amount replaced by the group's combined
+  // total so it doesn't read as several near-duplicate ₹X charges.
+  const seenGroupIds = new Set<string>();
+  const items: BookingListItem[] = [];
+  for (const row of rows) {
+    if (row.bookingGroupId) {
+      if (seenGroupIds.has(row.bookingGroupId)) {
+        continue;
+      }
+      seenGroupIds.add(row.bookingGroupId);
+    }
+
+    const groupItems =
+      row.bookingGroupId && groupItemsMap[row.bookingGroupId]?.length
+        ? groupItemsMap[row.bookingGroupId]
+        : [
+            {
+              productName: row.productName,
+              productImage: row.productImage,
+              variationColor: row.variationColor,
+              variationSize: row.variationSize,
+            },
+          ];
+
+    items.push({
       ...row,
       outletName: null,
-      groupItems:
-        row.bookingGroupId && groupItemsMap[row.bookingGroupId]?.length
-          ? groupItemsMap[row.bookingGroupId]
-          : [
-              {
-                productName: row.productName,
-                productImage: row.productImage,
-                variationColor: row.variationColor,
-                variationSize: row.variationSize,
-              },
-            ],
-    })),
+      groupItems,
+      totalAmount:
+        row.bookingGroupId && groupItems.length > 1
+          ? groupAmountMap[row.bookingGroupId]
+          : row.totalAmount,
+    });
+  }
+
+  return {
+    items,
     total,
     page,
     pageSize,
     totalPages: Math.max(1, Math.ceil(total / pageSize)),
   };
 }
+
 
 export type BookingStats = {
   total: number;
@@ -351,6 +385,7 @@ export async function getBookingById(
       fromDate: bookings.fromDate,
       toDate: bookings.toDate,
       totalDays: bookings.totalDays,
+      quantity: bookings.quantity,
       rentAmount: bookings.rentAmount,
       grossRent: bookings.grossRent,
       discountAmount: bookings.discountAmount,
@@ -437,6 +472,7 @@ export async function getBookingsInGroup(
     variationSize: string | null;
     status: Booking["status"];
     totalAmount: string;
+    quantity: number;
   }[]
 > {
   return db
@@ -448,6 +484,7 @@ export async function getBookingsInGroup(
       variationSize: productVariations.size,
       status: bookings.status,
       totalAmount: bookings.totalAmount,
+      quantity: bookings.quantity,
     })
     .from(bookings)
     .innerJoin(products, eq(bookings.productId, products.id))
@@ -583,11 +620,17 @@ export async function quoteBooking(
     input.barcode,
   );
 
+  const requestedQuantity = Math.max(
+    1,
+    Math.trunc(Number(input.quantity ?? "1")),
+  );
+
   const quote = quoteRental(
     variation,
     input.fromDate,
     input.toDate,
     input.discountAmount ?? ZERO_MONEY,
+    requestedQuantity,
   );
 
   // Narrows the check for an edit-in-progress: verify the excluded booking
@@ -613,8 +656,9 @@ export async function quoteBooking(
     input.fromDate,
     input.toDate,
     excludeBookingId,
-    Math.max(1, Math.trunc(Number(input.quantity ?? "1"))),
+    requestedQuantity,
   );
+
 
   return {
     ...quote,
@@ -629,15 +673,18 @@ export async function quoteBooking(
 }
 
 /**
- * Creates every item in a "cart" as one atomic batch — a customer often
- * rents several items for the same event (an outfit plus accessories),
- * and each becomes its own `bookings` row (its own dates/pricing/
- * availability, since one item might come back before another) linked by
- * a shared `bookingGroupId`. Availability/pricing/permission checks run
- * for every line *before* anything is written, so a problem with item 3
- * of 5 never leaves items 1-2 half-booked; the actual insert is one
- * multi-row `INSERT` inside a transaction, so it is all-or-nothing at the
- * database level too.
+ * Creates every item *line* in a "cart" as one atomic batch — a customer
+ * often rents several different items for the same event (an outfit plus
+ * accessories), and each distinct line becomes its own `bookings` row
+ * (its own dates/pricing/availability, since one item might come back
+ * before another), linked by a shared `bookingGroupId`. Renting more than
+ * one identical unit of the *same* line (e.g. 2 of the same necklace) is
+ * a single row instead — `quantity` on that one booking, priced/paid/
+ * picked-up/returned together as a batch, not one row per unit. Every
+ * availability/pricing/permission check runs for every line *before*
+ * anything is written, so a problem with item 3 of 5 never leaves items
+ * 1-2 half-booked; the actual insert is one multi-row `INSERT` inside a
+ * transaction, so it is all-or-nothing at the database level too.
  */
 export async function createBookingGroup(
   actor: TenantSessionUser,
@@ -670,7 +717,13 @@ export async function createBookingGroup(
     }
 
     const quantity = Math.max(1, Math.trunc(Number(item.quantity ?? "1")));
-    const quote = quoteRental(variation, item.fromDate, item.toDate, discount);
+    const quote = quoteRental(
+      variation,
+      item.fromDate,
+      item.toDate,
+      discount,
+      quantity,
+    );
     prepared.push({
       variation,
       quote,
@@ -710,38 +763,35 @@ export async function createBookingGroup(
   const rows: (typeof bookings.$inferInsert)[] = [];
 
   for (const item of prepared) {
-    // `quantity` identical physical units of the same line — each still
-    // gets its own row/booking number/pickup-return lifecycle (one might
-    // come back before another), just sharing dates, pricing and customer.
-    for (let unit = 0; unit < item.quantity; unit += 1) {
-      let bookingNumber = await generateBookingNumber();
-      while (usedNumbers.has(bookingNumber)) {
-        bookingNumber = await generateBookingNumber();
-      }
-      usedNumbers.add(bookingNumber);
-
-      rows.push({
-        bookingNumber,
-        bookingGroupId,
-        shopId: actor.shopId,
-        outletId: item.variation.outletId,
-        customerId: input.customerId,
-        productId: item.variation.productId,
-        variationId: item.variation.id,
-        fromDate: item.fromDate,
-        toDate: item.toDate,
-        totalDays: item.quote.totalDays,
-        rentAmount: item.quote.rentAmount,
-        grossRent: item.quote.grossRent,
-        discountAmount: item.quote.discountAmount,
-        securityDeposit: item.quote.securityDeposit,
-        totalAmount: item.quote.totalAmount,
-        notes: input.notes || null,
-        createdById: actor.id,
-        handledById,
-      });
+    let bookingNumber = await generateBookingNumber();
+    while (usedNumbers.has(bookingNumber)) {
+      bookingNumber = await generateBookingNumber();
     }
+    usedNumbers.add(bookingNumber);
+
+    rows.push({
+      bookingNumber,
+      bookingGroupId,
+      shopId: actor.shopId,
+      outletId: item.variation.outletId,
+      customerId: input.customerId,
+      productId: item.variation.productId,
+      variationId: item.variation.id,
+      fromDate: item.fromDate,
+      toDate: item.toDate,
+      totalDays: item.quote.totalDays,
+      quantity: item.quantity,
+      rentAmount: item.quote.rentAmount,
+      grossRent: item.quote.grossRent,
+      discountAmount: item.quote.discountAmount,
+      securityDeposit: item.quote.securityDeposit,
+      totalAmount: item.quote.totalAmount,
+      notes: input.notes || null,
+      createdById: actor.id,
+      handledById,
+    });
   }
+
 
   try {
     return await db.transaction(async (tx) => {
@@ -806,9 +856,21 @@ export async function updateBooking(
     undefined,
   );
 
-  await assertAvailable(variation, input.fromDate, input.toDate, booking.id);
+  await assertAvailable(
+    variation,
+    input.fromDate,
+    input.toDate,
+    booking.id,
+    booking.quantity,
+  );
 
-  const quote = quoteRental(variation, input.fromDate, input.toDate, discount);
+  const quote = quoteRental(
+    variation,
+    input.fromDate,
+    input.toDate,
+    discount,
+    booking.quantity,
+  );
 
   const [updated] = await db
     .update(bookings)

@@ -310,11 +310,7 @@ export function BookingItemRow({
                   Available
                 </Badge>
                 <span className="text-sm font-medium">
-                  {Number(quantity) > 1
-                    ? `${formatMoney(quote.totalReceivable)} × ${quantity} = ${formatMoney(
-                        (Number(quote.totalReceivable) * Number(quantity)).toFixed(2),
-                      )}`
-                    : formatMoney(quote.totalReceivable)}
+                  {formatMoney(quote.totalReceivable)}
                 </span>
               </div>
             ) : (

@@ -38,6 +38,13 @@ export function multiplyMoneyByDays(amount: string, days: number): string {
   return fromCents(toCents(amount) * BigInt(Math.trunc(days)));
 }
 
+/** `amount * quantity` — identical integer-cents arithmetic to
+ * `multiplyMoneyByDays`, just named for booking-line quantity call sites
+ * instead of day counts. */
+export function multiplyMoneyByQuantity(amount: string, quantity: number): string {
+  return multiplyMoneyByDays(amount, quantity);
+}
+
 /**
  * `amount / divisor`, rounded half-up to 2dp — the legacy backend's
  * `quantize(base_salary / working_days)` (Python `Decimal` with

@@ -3,7 +3,7 @@ import "server-only";
 import { and, eq } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { AppError } from "@/lib/errors/app-error";
-import { bookings, payments, productVariations, type Booking } from "@/lib/db/schema";
+import { bookings, payments, type Booking } from "@/lib/db/schema";
 import { assertTransition } from "@/lib/booking-state";
 import { formatMoney } from "@/lib/format";
 import { Permission, hasPermission } from "@/lib/auth/permissions";
@@ -19,7 +19,14 @@ import {
   type PaymentSummary,
 } from "@/server/payments/service";
 import { getVariationForBooking } from "@/server/variations/service";
-import { openMaintenanceTasksForReturn } from "@/server/maintenance/service";
+import {
+  applyVariationLifecycleStatus,
+  openMaintenanceTasksForReturn,
+} from "@/server/maintenance/service";
+import {
+  getMaintenanceBlockedQuantity,
+  getRentedOutQuantity,
+} from "@/server/variations/capacity";
 import { recordSettlementForBooking } from "@/server/settlements/service";
 import { AuditAction, recordAudit } from "@/server/audit/service";
 import { queueBookingNotification } from "@/server/notifications/service";
@@ -85,9 +92,38 @@ export async function confirmPickup(
     ]);
   }
 
-  if (variation.status !== "available") {
+  if (variation.status === "retired" || variation.status === "in_transfer") {
     throw new AppError(
       `Item is '${variation.status.replace("_", " ")}' and cannot leave the counter`,
+      409,
+    );
+  }
+
+  if (!variation.isAvailable) {
+    throw new AppError("Item is withdrawn from rental and cannot leave the counter", 409);
+  }
+
+  // A variation can represent several identical physical units (see
+  // `bookings.quantity`'s doc comment) — its own `status` is informational
+  // once some units are still free, so pickup is only actually blocked
+  // when maintenance/cleaning/other active rentals leave too few of them
+  // for *this* booking's own quantity, never by the status label alone.
+  const capacity = Math.max(1, variation.quantity || 1);
+  const { maintenanceQty, cleaningQty } = await getMaintenanceBlockedQuantity(
+    variation.id,
+  );
+  const rentedQty = await getRentedOutQuantity(variation.id);
+  const freeNow = capacity - maintenanceQty - cleaningQty - rentedQty;
+
+  if (freeNow < booking.quantity) {
+    const reasons: string[] = [];
+    if (maintenanceQty > 0) reasons.push(`${maintenanceQty} in maintenance`);
+    if (cleaningQty > 0) reasons.push(`${cleaningQty} in cleaning`);
+    if (rentedQty > 0) reasons.push(`${rentedQty} already picked up`);
+    throw new AppError(
+      `Only ${Math.max(freeNow, 0)} of ${capacity} unit(s) are free right now${
+        reasons.length ? ` (${reasons.join(", ")})` : ""
+      } — this booking needs ${booking.quantity}`,
       409,
     );
   }
@@ -160,10 +196,12 @@ export async function confirmPickup(
       .where(eq(bookings.id, booking.id))
       .returning();
 
-    await tx
-      .update(productVariations)
-      .set({ status: "rented", updatedAt: new Date() })
-      .where(eq(productVariations.id, variation.id));
+    // Recomputed rather than set directly — with this pickup now counted
+    // as "rented", the variation only shows `rented` once every unit is
+    // actually spoken for (see `applyVariationLifecycleStatus`), so other
+    // free units of the same variation stay pickable for their own
+    // bookings.
+    await applyVariationLifecycleStatus(tx, variation.id);
 
     await recordAudit(tx, {
       shopId: actor.shopId,

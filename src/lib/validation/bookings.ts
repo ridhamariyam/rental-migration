@@ -91,10 +91,9 @@ const pickupNotInPastRefinement = <T extends { fromDate: string }>(
   }
 };
 
-/** How many identical physical units of the same item/dates one cart line
- * requests — expands into that many separate `bookings` rows at creation
- * (each still its own row/booking number/pickup-return lifecycle), the
- * "several friends of the groom all want the same size" case. Kept as a
+/** How many identical physical units of the same item/dates one booking
+ * line requests — priced, paid, picked up and returned together as a
+ * single `bookings` row/booking number (not one row per unit). Kept as a
  * string for the same `zodResolver` input/output type-equality reason as
  * `quantitySchema` in `validation/variations.ts`, and capped well below
  * that field's 9,999 ceiling since this is units *per order line*, not a
@@ -118,10 +117,9 @@ export const quoteRequestSchema = z
     fromDate: dateStringSchema,
     toDate: dateStringSchema,
     discountAmount: optionalMoneySchema,
-    // How many units of this line are wanted — only affects the live
-    // preview's availability check ("is there room for N more units"),
-    // never the pricing itself (each unit still prices the same, one at a
-    // time, since it becomes its own booking row).
+    // How many units of this line are wanted — scales both the live
+    // preview's price (rent and deposit each multiply by this) and its
+    // availability check ("is there room for N units").
     quantity: bookingQuantitySchema.optional(),
     // Set when previewing an edit to an *existing* draft booking, so the
     // availability check doesn't flag the booking's own reservation as a
@@ -139,12 +137,13 @@ export const quoteRequestSchema = z
 export type QuoteRequestInput = z.infer<typeof quoteRequestSchema>;
 
 /**
- * One "cart line" — a customer can rent several items in the same
- * transaction (e.g. an outfit plus accessories for the same event), each
- * with its own item and its own dates/discount, since one might be
+ * One "cart line" — a customer can rent several *different* items in the
+ * same transaction (e.g. an outfit plus accessories for the same event),
+ * each with its own item and its own dates/discount, since one might be
  * returned before another. `quantity` requests that many *identical*
- * units of this same line (same item, same dates, same discount) in one
- * go — see `bookingQuantitySchema`.
+ * units of this same line (same item, same dates, same discount) — still
+ * just this one line/one `bookings` row, priced at `rate × quantity` (see
+ * `bookingQuantitySchema`).
  */
 export const bookingItemSchema = z
   .object({

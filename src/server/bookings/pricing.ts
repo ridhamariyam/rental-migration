@@ -3,6 +3,7 @@ import {
   addMoney,
   isNegativeMoney,
   multiplyMoneyByDays,
+  multiplyMoneyByQuantity,
   subtractMoneyNonNegative,
   compareMoney,
   ZERO_MONEY,
@@ -19,14 +20,15 @@ import { validateDateRange } from "@/server/bookings/availability";
  * so there is no override to guard in the first place.
  *
  * Definitions (matching the legacy service exactly):
- * - `rentAmount`     – the per-day rate charged (`variation.rentPrice`)
- * - `grossRent`      – `rentAmount * totalDays`
+ * - `rentAmount`     – the per-day, per-unit rate charged (`variation.rentPrice`)
+ * - `grossRent`      – `rentAmount * totalDays * quantity`
  * - `discountAmount` – reduction agreed at the counter, clamped to `grossRent`
  * - `totalAmount`    – rent payable after discount, **deposit excluded**
- * - `securityDeposit`– refundable, tracked separately from revenue
+ * - `securityDeposit`– refundable, tracked separately from revenue, `variation.securityDeposit * quantity`
  */
 export type RentalQuote = {
   totalDays: number;
+  quantity: number;
   rentAmount: string;
   grossRent: string;
   discountAmount: string;
@@ -40,6 +42,7 @@ export function quoteRental(
   fromDate: string,
   toDate: string,
   discountAmount: string = ZERO_MONEY,
+  quantity: number = 1,
 ): RentalQuote {
   const totalDays = validateDateRange(fromDate, toDate);
 
@@ -48,7 +51,10 @@ export function quoteRental(
     throw new AppError("Rent amount cannot be negative", 400);
   }
 
-  const grossRent = multiplyMoneyByDays(rentAmount, totalDays);
+  const grossRent = multiplyMoneyByQuantity(
+    multiplyMoneyByDays(rentAmount, totalDays),
+    quantity,
+  );
 
   if (isNegativeMoney(discountAmount)) {
     throw new AppError("Discount cannot be negative", 400, [
@@ -65,7 +71,10 @@ export function quoteRental(
     ]);
   }
 
-  const securityDeposit = variation.securityDeposit;
+  const securityDeposit = multiplyMoneyByQuantity(
+    variation.securityDeposit,
+    quantity,
+  );
   if (isNegativeMoney(securityDeposit)) {
     throw new AppError("Security deposit cannot be negative", 400);
   }
@@ -74,6 +83,7 @@ export function quoteRental(
 
   return {
     totalDays,
+    quantity,
     rentAmount,
     grossRent,
     discountAmount,
@@ -82,3 +92,4 @@ export function quoteRental(
     totalReceivable: addMoney(totalAmount, securityDeposit),
   };
 }
+

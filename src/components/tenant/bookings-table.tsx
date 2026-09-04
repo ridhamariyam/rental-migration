@@ -204,6 +204,7 @@ export async function BookingsTable({
                   {booking.variationColor || booking.variationSize
                     ? ` (${[booking.variationColor, booking.variationSize].filter(Boolean).join(", ")})`
                     : ""}
+                  {booking.quantity > 1 ? ` × ${booking.quantity}` : ""}
                   {groupItems.length > 1
                     ? ` (+${groupItems.length - 1} more)`
                     : ""}
