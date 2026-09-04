@@ -28,20 +28,31 @@ export async function DashboardStatsTiles({
 }) {
   const stats = await getDashboardStats(actor, { outletId });
 
+  function trendBadge(percent: number | null): { badge: string | null; badgeVariant: "positive" | "warning" | "neutral" } {
+    if (percent === null) return { badge: null, badgeVariant: "neutral" };
+    return {
+      badge: `${percent > 0 ? "+" : ""}${percent}%`,
+      badgeVariant: percent >= 0 ? "positive" : "warning",
+    };
+  }
+
+  const todaysTrend = trendBadge(stats.todaysIncomeChangePercent);
+  const monthTrend = trendBadge(stats.monthIncomeChangePercent);
+
   const kpis = [
     {
       title: "Today's Revenue",
       value: formatMoney(stats.todaysIncome),
-      badge: "+12%",
-      badgeVariant: "positive",
+      badge: todaysTrend.badge,
+      badgeVariant: todaysTrend.badgeVariant,
       subtitle: "vs yesterday",
       icon: BadgeIndianRupeeIcon,
     },
     {
       title: "Monthly Revenue",
       value: formatMoney(stats.monthIncome),
-      badge: "+8%",
-      badgeVariant: "positive",
+      badge: monthTrend.badge,
+      badgeVariant: monthTrend.badgeVariant,
       subtitle: "vs last month",
       icon: HandCoinsIcon,
     },
@@ -72,19 +83,21 @@ export async function DashboardStatsTiles({
               <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/80">
                 {kpi.title}
               </span>
-              <span
-                className={cn(
-                  "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold",
-                  kpi.badgeVariant === "positive"
-                    ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20"
-                    : kpi.badgeVariant === "warning"
-                    ? "bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20"
-                    : "bg-muted text-muted-foreground border border-border/40",
-                )}
-              >
-                {kpi.badgeVariant === "positive" ? <TrendingUpIcon className="size-3" /> : null}
-                {kpi.badge}
-              </span>
+              {kpi.badge ? (
+                <span
+                  className={cn(
+                    "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold",
+                    kpi.badgeVariant === "positive"
+                      ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20"
+                      : kpi.badgeVariant === "warning"
+                      ? "bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20"
+                      : "bg-muted text-muted-foreground border border-border/40",
+                  )}
+                >
+                  {kpi.badgeVariant === "positive" ? <TrendingUpIcon className="size-3" /> : null}
+                  {kpi.badge}
+                </span>
+              ) : null}
             </div>
 
             <div className="flex flex-col gap-0.5">

@@ -192,9 +192,23 @@ export function BookingReturnDialog({
 
             <FieldGroup>
               <Field data-invalid={!!form.formState.errors.barcode}>
-                <FieldLabel htmlFor="return-barcode">
-                  Scan barcode (optional)
-                </FieldLabel>
+                <div className="flex items-center justify-between">
+                  <FieldLabel htmlFor="return-barcode">
+                    Scan barcode (optional)
+                  </FieldLabel>
+                  <button
+                    type="button"
+                    className="text-primary text-xs font-medium hover:underline disabled:pointer-events-none disabled:opacity-50"
+                    disabled={isSubmitting}
+                    onClick={() =>
+                      form.setValue("barcode", expectedBarcode, {
+                        shouldValidate: true,
+                      })
+                    }
+                  >
+                    Autofill
+                  </button>
+                </div>
                 <Input
                   id="return-barcode"
                   autoFocus

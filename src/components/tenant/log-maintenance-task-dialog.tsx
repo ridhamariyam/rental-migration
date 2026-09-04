@@ -121,8 +121,9 @@ export function LogMaintenanceTaskDialog() {
         <DialogHeader>
           <DialogTitle>Log a cleaning or maintenance task</DialogTitle>
           <DialogDescription>
-            For an item that needs work outside a normal return — it stops
-            being bookable until this is closed out.
+            For an item that needs work outside a normal return — this ties
+            up one of its units until the task is closed out (the whole SKU
+            only stops being bookable once every unit is tied up).
           </DialogDescription>
         </DialogHeader>
 

@@ -11,6 +11,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { cn } from "@/lib/utils";
 import { CategoryDonutChart, type DonutItem } from "@/components/tenant/category-donut-chart";
 import { RevenueTrendChart } from "@/components/tenant/revenue-trend-chart";
 import { formatMoney, toDateString } from "@/lib/format";
@@ -31,18 +32,28 @@ export async function DashboardAnalyticsSection({
   const now = new Date();
   const toDate = toDateString(now);
   const fromDate = toDateString(new Date(now.getTime() - 13 * 86_400_000));
+  const previousToDate = toDateString(new Date(now.getTime() - 14 * 86_400_000));
+  const previousFromDate = toDateString(new Date(now.getTime() - 27 * 86_400_000));
 
   const [
     { total, rows: trendRows },
+    { total: previousTotal },
     stats,
     mostRented,
     outletRevenues,
   ] = await Promise.all([
     getDailyIncome(actor, { fromDate, toDate }),
+    getDailyIncome(actor, { fromDate: previousFromDate, toDate: previousToDate }),
     getDashboardStats(actor, {}),
     getMostRentedProducts(actor, { limit: 4 }),
     getRevenueByOutlet(actor, {}),
   ]);
+
+  const previousTotalNum = Number(previousTotal);
+  const revenueChangePercent =
+    previousTotalNum === 0
+      ? null
+      : Math.round(((Number(total) - previousTotalNum) / previousTotalNum) * 100);
 
   // Convert outlet revenue data for the Donut Chart widget
   const donutData: DonutItem[] = outletRevenues.map((o) => ({
@@ -98,10 +109,20 @@ export async function DashboardAnalyticsSection({
                 <CardTitle className="text-sm font-semibold tracking-tight">
                   Revenue Analytics
                 </CardTitle>
-                <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-0.5 text-[11px] font-semibold text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
-                  <TrendingUpIcon className="size-3" />
-                  +14% vs last period
-                </span>
+                {revenueChangePercent !== null ? (
+                  <span
+                    className={cn(
+                      "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold border",
+                      revenueChangePercent >= 0
+                        ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20"
+                        : "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20",
+                    )}
+                  >
+                    <TrendingUpIcon className="size-3" />
+                    {revenueChangePercent > 0 ? "+" : ""}
+                    {revenueChangePercent}% vs last period
+                  </span>
+                ) : null}
               </div>
               <p className="text-[11px] text-muted-foreground">
                 Total earnings: <span className="font-semibold text-foreground">{formatMoney(total)}</span> (last 14 days)

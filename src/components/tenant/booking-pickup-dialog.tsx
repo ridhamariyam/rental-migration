@@ -167,7 +167,21 @@ export function BookingPickupDialog({
 
             <FieldGroup>
               <Field data-invalid={!!form.formState.errors.barcode}>
-                <FieldLabel htmlFor="pickup-barcode">Scan barcode</FieldLabel>
+                <div className="flex items-center justify-between">
+                  <FieldLabel htmlFor="pickup-barcode">Scan barcode</FieldLabel>
+                  <button
+                    type="button"
+                    className="text-primary text-xs font-medium hover:underline disabled:pointer-events-none disabled:opacity-50"
+                    disabled={isSubmitting}
+                    onClick={() =>
+                      form.setValue("barcode", expectedBarcode, {
+                        shouldValidate: true,
+                      })
+                    }
+                  >
+                    Autofill
+                  </button>
+                </div>
                 <Input
                   id="pickup-barcode"
                   autoFocus
