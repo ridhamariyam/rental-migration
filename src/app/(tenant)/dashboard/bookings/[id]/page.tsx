@@ -108,7 +108,7 @@ export default async function BookingDetailPage({
     },
     {
       label: "Item",
-      value: `${booking.productName}${itemLabel ? ` (${itemLabel})` : ""} · ${booking.variationSku}`,
+      value: `${booking.productName}${itemLabel ? ` (${itemLabel})` : ""} · ${booking.variationSku}${booking.quantity > 1 ? ` × ${booking.quantity}` : ""}`,
       icon: ShirtIcon,
     },
     {
@@ -292,6 +292,7 @@ export default async function BookingDetailPage({
                 <span className="text-muted-foreground">
                   {formatMoney(booking.rentAmount)} × {booking.totalDays} day
                   {booking.totalDays === 1 ? "" : "s"}
+                  {booking.quantity > 1 ? ` × ${booking.quantity}` : ""}
                 </span>
                 <span className="font-medium">
                   {formatMoney(booking.grossRent)}
@@ -404,6 +405,7 @@ export default async function BookingDetailPage({
                         <span className="truncate text-sm font-medium">
                           {sibling.bookingNumber} · {sibling.productName}
                           {siblingLabel ? ` (${siblingLabel})` : ""}
+                          {sibling.quantity > 1 ? ` × ${sibling.quantity}` : ""}
                         </span>
                       </div>
                       <div className="flex shrink-0 items-center gap-3">

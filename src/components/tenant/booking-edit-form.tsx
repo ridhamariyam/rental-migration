@@ -77,9 +77,12 @@ export function BookingEditForm({
             variationId: booking.variationId,
             fromDate,
             toDate,
-            // The discount is frozen at creation — always re-quote with the
-            // booking's own existing discount, never a value from this form.
+            // The discount and quantity are both frozen at creation —
+            // always re-quote with the booking's own existing values,
+            // never anything from this form (dates are all that's
+            // editable here).
             discountAmount: booking.discountAmount,
+            quantity: String(booking.quantity),
             excludeBookingId: booking.id,
           }),
         });
@@ -98,7 +101,14 @@ export function BookingEditForm({
     }, QUOTE_DEBOUNCE_MS);
 
     return () => clearTimeout(timeout);
-  }, [fromDate, toDate, booking.discountAmount, booking.id, booking.variationId]);
+  }, [
+    fromDate,
+    toDate,
+    booking.discountAmount,
+    booking.quantity,
+    booking.id,
+    booking.variationId,
+  ]);
 
   const onSubmit = form.handleSubmit(async (values) => {
     setFormError(null);

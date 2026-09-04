@@ -397,6 +397,7 @@ export type BookingReceipt = {
   charges: {
     rentAmount: string;
     totalDays: number;
+    quantity: number;
     grossRent: string;
     discountAmount: string;
     totalAmount: string;
@@ -507,6 +508,7 @@ export async function getReceipt(
     charges: {
       rentAmount: row.booking.rentAmount,
       totalDays: row.booking.totalDays,
+      quantity: row.booking.quantity,
       grossRent: row.booking.grossRent,
       discountAmount: row.booking.discountAmount,
       totalAmount: row.booking.totalAmount,

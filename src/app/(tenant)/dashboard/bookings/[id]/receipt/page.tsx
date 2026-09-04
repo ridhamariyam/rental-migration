@@ -130,6 +130,7 @@ export default async function BookingReceiptPage({
               <span className="font-medium">
                 {receipt.item.productName}
                 {itemLabel ? ` (${itemLabel})` : ""}
+                {receipt.charges.quantity > 1 ? ` × ${receipt.charges.quantity}` : ""}
               </span>
               <span className="text-muted-foreground">
                 SKU {receipt.item.sku}
@@ -145,6 +146,7 @@ export default async function BookingReceiptPage({
                 {formatMoney(receipt.charges.rentAmount)} ×{" "}
                 {receipt.charges.totalDays} day
                 {receipt.charges.totalDays === 1 ? "" : "s"}
+                {receipt.charges.quantity > 1 ? ` × ${receipt.charges.quantity}` : ""}
               </span>
               <span className="font-medium">
                 {formatMoney(receipt.charges.grossRent)}

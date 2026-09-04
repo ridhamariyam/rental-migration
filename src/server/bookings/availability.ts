@@ -5,22 +5,26 @@ import { db } from "@/lib/db/client";
 import { AppError } from "@/lib/errors/app-error";
 import { bookings, type Booking } from "@/lib/db/schema";
 import { BLOCKING_STATUSES } from "@/lib/booking-state";
+import { getMaintenanceBlockedQuantity } from "@/server/variations/capacity";
 
 /**
  * Date-range availability for physical rental items, ported from the
  * legacy backend's `AvailabilityService`. Availability is never decided by
  * `ProductVariation.status` alone: an item is rentable for a window only
  * when its lifecycle state allows renting **and** the number of blocking
- * bookings overlapping that window is below its `quantity`.
+ * bookings overlapping that window, plus whatever's tied up in an open
+ * maintenance/cleaning task, is below its `quantity` — one unit needing
+ * repair no longer parks a whole 10-unit batch as unbookable.
  */
 
-/** Lifecycle states from which a *future* booking may still be taken. An
- * item currently out on rent can be booked for later dates; one in
- * cleaning/maintenance/retired cannot be promised until the work is signed
- * off (or, for `retired`, ever again). */
-export const BOOKABLE_VARIATION_STATUSES: readonly string[] = [
-  "available",
-  "rented",
+/** Statuses that block booking outright, regardless of `quantity` — the
+ * item is either gone for good (`retired`) or not physically on-site
+ * (`in_transfer`), so there's nothing to count units against. Every other
+ * status (`available`/`rented`/`maintenance`/`needs_cleaning`/`cleaning`)
+ * is capacity-checked instead: see `getMaintenanceBlockedQuantity`. */
+export const HARD_BLOCKED_VARIATION_STATUSES: readonly string[] = [
+  "retired",
+  "in_transfer",
 ];
 
 export const MAX_RENTAL_DAYS = 365;
@@ -66,12 +70,12 @@ type VariationForAvailability = {
   quantity: number;
 };
 
-async function overlappingBookingNumbers(
+async function overlappingBookings(
   variationId: string,
   fromDate: string,
   toDate: string,
   excludeBookingId?: string,
-): Promise<string[]> {
+): Promise<{ bookingNumber: string; quantity: number }[]> {
   const conditions = [
     eq(bookings.variationId, variationId),
     inArray(
@@ -86,12 +90,10 @@ async function overlappingBookingNumbers(
     conditions.push(ne(bookings.id, excludeBookingId));
   }
 
-  const rows = await db
-    .select({ bookingNumber: bookings.bookingNumber })
+  return db
+    .select({ bookingNumber: bookings.bookingNumber, quantity: bookings.quantity })
     .from(bookings)
     .where(and(...conditions));
-
-  return rows.map((row) => row.bookingNumber);
 }
 
 export async function checkAvailability(
@@ -103,10 +105,10 @@ export async function checkAvailability(
 ): Promise<AvailabilityResult> {
   validateDateRange(fromDate, toDate);
 
-  if (!BOOKABLE_VARIATION_STATUSES.includes(variation.status)) {
+  if (HARD_BLOCKED_VARIATION_STATUSES.includes(variation.status)) {
     return {
       available: false,
-      reason: `Item is currently marked '${variation.status}' and cannot be booked`,
+      reason: `Item is currently marked '${variation.status.replace("_", " ")}' and cannot be booked`,
       conflictingBookingNumbers: [],
     };
   }
@@ -119,28 +121,42 @@ export async function checkAvailability(
     };
   }
 
-  const conflicts = await overlappingBookingNumbers(
+  const conflicts = await overlappingBookings(
     variation.id,
     fromDate,
     toDate,
     excludeBookingId,
   );
 
-  const capacity = Math.max(1, variation.quantity || 1);
-  const remaining = capacity - conflicts.length;
+  const { maintenanceQty, cleaningQty } =
+    await getMaintenanceBlockedQuantity(variation.id);
+  const capacity = Math.max(
+    0,
+    Math.max(1, variation.quantity || 1) - maintenanceQty - cleaningQty,
+  );
+  const conflictingQuantity = conflicts.reduce(
+    (sum, conflict) => sum + conflict.quantity,
+    0,
+  );
+  const remaining = capacity - conflictingQuantity;
 
-  // `requestedQuantity` lets one cart line ask for several identical units
+  // `requestedQuantity` lets one booking ask for several identical units
   // at once (e.g. the same size booked for several friends attending the
   // same wedding) — it's still available only when *all* of them fit
   // within what's left of the physical stock for these dates.
   if (remaining < Math.max(1, requestedQuantity)) {
+    const blockedForRepair = maintenanceQty + cleaningQty;
+    const note =
+      blockedForRepair > 0
+        ? ` (${blockedForRepair} unit(s) currently in maintenance/cleaning)`
+        : "";
     return {
       available: false,
       reason:
         remaining <= 0
-          ? "Item is already booked for these dates"
-          : `Only ${remaining} unit(s) of this item are free for these dates`,
-      conflictingBookingNumbers: conflicts,
+          ? `Item is already booked for these dates${note}`
+          : `Only ${remaining} unit(s) of this item are free for these dates${note}`,
+      conflictingBookingNumbers: conflicts.map((conflict) => conflict.bookingNumber),
     };
   }
 
@@ -206,9 +222,9 @@ export async function assertCapacityAvailable(
 ): Promise<void> {
   if (requests.length === 0) return;
 
-  if (!BOOKABLE_VARIATION_STATUSES.includes(variation.status)) {
+  if (HARD_BLOCKED_VARIATION_STATUSES.includes(variation.status)) {
     throw new AppError(
-      `Item is currently marked '${variation.status}' and cannot be booked`,
+      `Item is currently marked '${variation.status.replace("_", " ")}' and cannot be booked`,
       409,
     );
   }
@@ -221,7 +237,12 @@ export async function assertCapacityAvailable(
     validateDateRange(request.fromDate, request.toDate);
   }
 
-  const capacity = Math.max(1, variation.quantity || 1);
+  const { maintenanceQty, cleaningQty } =
+    await getMaintenanceBlockedQuantity(variation.id);
+  const capacity = Math.max(
+    0,
+    Math.max(1, variation.quantity || 1) - maintenanceQty - cleaningQty,
+  );
 
   const overallFrom = requests.reduce(
     (min, request) => (request.fromDate < min ? request.fromDate : min),
@@ -247,14 +268,18 @@ export async function assertCapacityAvailable(
   }
 
   const persisted = await db
-    .select({ fromDate: bookings.fromDate, toDate: bookings.toDate })
+    .select({
+      fromDate: bookings.fromDate,
+      toDate: bookings.toDate,
+      quantity: bookings.quantity,
+    })
     .from(bookings)
     .where(and(...conditions));
 
   const usageByDay = new Map<string, number>();
   for (const row of persisted) {
     for (const day of eachDate(row.fromDate, row.toDate)) {
-      usageByDay.set(day, (usageByDay.get(day) ?? 0) + 1);
+      usageByDay.set(day, (usageByDay.get(day) ?? 0) + row.quantity);
     }
   }
   for (const request of requests) {
