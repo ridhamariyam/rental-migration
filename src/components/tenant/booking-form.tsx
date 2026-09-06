@@ -2,9 +2,15 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Controller, useForm, useWatch } from "react-hook-form";
+import { Controller, useFieldArray, useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { AlertCircleIcon, ReceiptTextIcon, ShieldCheckIcon, TagIcon } from "lucide-react";
+import {
+  AlertCircleIcon,
+  PlusIcon,
+  ReceiptTextIcon,
+  ShieldCheckIcon,
+  TagIcon,
+} from "lucide-react";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -35,21 +41,26 @@ import {
   BookingItemRow,
   type BookingItemQuote,
 } from "@/components/tenant/booking-item-row";
+import { BookingDocumentsField } from "@/components/tenant/booking-documents-field";
 import {
   createBookingSchema,
+  MAX_TOTAL_BOOKING_UNITS,
   type CreateBookingInput,
 } from "@/lib/validation/bookings";
 import { tenantPaths } from "@/lib/tenant-paths";
 import { ApiClientError, apiRequest } from "@/lib/api-client";
+import { addMoney, ZERO_MONEY } from "@/lib/money";
 import { formatMoney, toDateString } from "@/lib/format";
 import { avatarGradient, initialsFor, resolveAvatarSrc } from "@/lib/tenant-avatar";
 import type { VariationSearchResult } from "@/server/variations/service";
 
 const SELF = "self";
-// `BookingItemRow` reports its quote up through a keyed callback (a
-// leftover from when a booking could hold several lines) — there's only
-// ever one row now, so this key never varies.
-const ITEM_KEY = "item-0";
+
+/** How many separate item lines one order may hold — mirrors
+ * `createBookingSchema`'s own `.max(20)` so the "Add another item" button
+ * disappears at the cap instead of letting someone discover it from a
+ * failed submit. */
+const MAX_ITEM_LINES = 20;
 
 function todayIso(): string {
   return toDateString(new Date());
@@ -61,16 +72,23 @@ function emptyItem(canDiscount: boolean) {
     fromDate: todayIso(),
     toDate: todayIso(),
     discountAmount: canDiscount ? "0.00" : undefined,
+    additionalCost: "",
+    additionalCostReason: "",
+    securityDeposit: "",
     quantity: "1",
   };
 }
 
 /**
- * Booking creation — one customer, one item, any quantity of it (see
- * `bookings.quantity`'s doc comment): its own dates/discount and a live
- * availability + price check. Submitting posts the single line
- * (`createBookingGroup`, still array-shaped server-side) and returns one
- * `bookings` row.
+ * Booking creation — one customer, any number of *different* items (each
+ * with its own dates, quantity, discount, extra charge and deposit) and a
+ * live availability + price check per line. Submitting posts every line at
+ * once (`createBookingGroup`), which returns one `bookings` row per line
+ * sharing a `bookingGroupId`.
+ *
+ * Per-line state that isn't a form field — the picked item and its latest
+ * quote — is keyed by the field array's own stable row id, not by index,
+ * so removing line 2 of 3 never re-points line 3's item at line 2's quote.
  */
 export function BookingForm({
   canDiscount,
@@ -86,9 +104,12 @@ export function BookingForm({
   const [formError, setFormError] = useState<string | null>(null);
   const [selectedCustomer, setSelectedCustomer] =
     useState<PickedCustomer | null>(null);
-  const [selectedItem, setSelectedItem] =
-    useState<VariationSearchResult | null>(null);
-  const [quote, setQuote] = useState<BookingItemQuote | null>(null);
+  const [selectedItems, setSelectedItems] = useState<
+    Record<string, VariationSearchResult | null>
+  >({});
+  const [quotes, setQuotes] = useState<Record<string, BookingItemQuote | null>>(
+    {},
+  );
 
   const form = useForm<CreateBookingInput>({
     resolver: zodResolver(createBookingSchema),
@@ -96,16 +117,19 @@ export function BookingForm({
       customerId: "",
       items: [emptyItem(canDiscount)],
       notes: "",
+      documents: [],
       handledById: "",
     },
     mode: "onTouched",
     reValidateMode: "onChange",
   });
 
-  // Only read for its `quantity` (to scale the total in the summary panel
-  // below) — everything else about the item still flows through
-  // `selectedItem`/`quote`, set imperatively by `BookingItemRow`.
-  const watchedItem = useWatch({ control: form.control, name: "items.0" });
+  const { fields, append, remove } = useFieldArray({
+    control: form.control,
+    name: "items",
+  });
+
+  const watchedItems = useWatch({ control: form.control, name: "items" });
 
   useEffect(() => {
     form.setValue("customerId", selectedCustomer?.id ?? "", {
@@ -114,40 +138,88 @@ export function BookingForm({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedCustomer]);
 
-  function handleSelectItem(item: VariationSearchResult | null) {
-    setSelectedItem(item);
-    form.setValue("items.0.variationId", item?.id ?? "", {
+  function handleSelectItem(
+    index: number,
+    key: string,
+    item: VariationSearchResult | null,
+  ) {
+    setSelectedItems((current) => ({ ...current, [key]: item }));
+    form.setValue(`items.${index}.variationId`, item?.id ?? "", {
       shouldValidate: form.formState.isSubmitted,
     });
     setFormError(null);
   }
 
-  function handleQuoteChange(_key: string, nextQuote: BookingItemQuote | null) {
-    setQuote(nextQuote);
+  function handleQuoteChange(key: string, nextQuote: BookingItemQuote | null) {
+    setQuotes((current) => ({ ...current, [key]: nextQuote }));
   }
 
-  const quantity = Math.max(1, Number(watchedItem?.quantity) || 1);
-  const itemChosen = Boolean(selectedItem);
+  function handleAddItem() {
+    append(emptyItem(canDiscount));
+    setFormError(null);
+  }
+
+  function handleRemoveItem(index: number, key: string) {
+    remove(index);
+    setSelectedItems((current) => {
+      const next = { ...current };
+      delete next[key];
+      return next;
+    });
+    setQuotes((current) => {
+      const next = { ...current };
+      delete next[key];
+      return next;
+    });
+    setFormError(null);
+  }
+
+  const totalUnits = (watchedItems ?? []).reduce(
+    (sum, item) => sum + Math.max(1, Number(item?.quantity) || 1),
+    0,
+  );
+  const overUnitCap = totalUnits > MAX_TOTAL_BOOKING_UNITS;
+
+  const lines = fields.map((field, index) => ({
+    key: field.id,
+    index,
+    item: selectedItems[field.id] ?? null,
+    quote: quotes[field.id] ?? null,
+    quantity: Math.max(1, Number(watchedItems?.[index]?.quantity) || 1),
+  }));
+
+  const everyLineReady = lines.every(
+    (line) => line.item && line.quote?.available === true,
+  );
   const canSubmit =
-    Boolean(selectedCustomer) && itemChosen && Boolean(quote) && quote?.available === true;
+    Boolean(selectedCustomer) &&
+    lines.length > 0 &&
+    everyLineReady &&
+    !overUnitCap;
 
-  // The quote already reflects the item's own `quantity` (the server
-  // prices `rentPrice/securityDeposit × totalDays × quantity` in one go —
-  // see `quoteRental`), so these are plain reads, never a second multiply.
-  const grossRentCents = quote?.available
-    ? Math.round(Number(quote.grossRent) * 100)
-    : 0;
-  const discountCents = quote?.available
-    ? Math.round(Number(quote.discountAmount) * 100)
-    : 0;
-  const netRentCents = quote?.available
-    ? Math.round(Number(quote.totalAmount) * 100)
-    : 0;
-  const securityDepositCents = quote?.available
-    ? Math.round(Number(quote.securityDeposit) * 100)
-    : 0;
-
-  const grandTotalCents = netRentCents + securityDepositCents;
+  // Every figure below is added straight off the server's own quotes (which
+  // already account for quantity, discount, extras and the deposit) — the
+  // summary never re-derives a price of its own, so what staff review here
+  // is exactly what gets frozen onto the booking.
+  const priced = lines.filter((line) => line.quote?.available);
+  const totals = priced.reduce(
+    (acc, line) => ({
+      grossRent: addMoney(acc.grossRent, line.quote!.grossRent),
+      discount: addMoney(acc.discount, line.quote!.discountAmount),
+      additionalCost: addMoney(acc.additionalCost, line.quote!.additionalCost),
+      netRent: addMoney(acc.netRent, line.quote!.totalAmount),
+      deposit: addMoney(acc.deposit, line.quote!.securityDeposit),
+      grandTotal: addMoney(acc.grandTotal, line.quote!.totalReceivable),
+    }),
+    {
+      grossRent: ZERO_MONEY,
+      discount: ZERO_MONEY,
+      additionalCost: ZERO_MONEY,
+      netRent: ZERO_MONEY,
+      deposit: ZERO_MONEY,
+      grandTotal: ZERO_MONEY,
+    },
+  );
 
   const onSubmit = form.handleSubmit(async (values) => {
     setFormError(null);
@@ -157,8 +229,8 @@ export function BookingForm({
       return;
     }
 
-    if (!itemChosen) {
-      setFormError("Choose an item to continue.");
+    if (!everyLineReady) {
+      setFormError("Every item needs to be chosen and available to continue.");
       return;
     }
 
@@ -167,7 +239,9 @@ export function BookingForm({
         method: "POST",
         body: JSON.stringify(values),
       });
-      router.push(`${tenantPaths.bookings}/${created[0].id}?created=1`);
+      const query =
+        created.length > 1 ? `?created=1&count=${created.length}` : "?created=1";
+      router.push(`${tenantPaths.bookings}/${created[0].id}${query}`);
       router.refresh();
     } catch (error) {
       if (error instanceof ApiClientError && error.fieldErrors.length > 0) {
@@ -192,7 +266,6 @@ export function BookingForm({
   });
 
   const isSubmitting = form.formState.isSubmitting;
-  const itemErrors = form.formState.errors.items?.[0];
 
   return (
     <form
@@ -231,24 +304,79 @@ export function BookingForm({
               </Field>
 
               <div className="flex flex-col gap-3">
-                <FieldLabel>Item</FieldLabel>
-                <BookingItemRow
-                  index={0}
-                  itemKey={ITEM_KEY}
-                  control={form.control}
-                  register={form.register}
-                  setValue={form.setValue}
-                  trigger={form.trigger}
-                  errors={itemErrors}
-                  selectedItem={selectedItem}
-                  onSelectItem={handleSelectItem}
-                  canDiscount={canDiscount}
-                  canRemove={false}
-                  onRemove={() => {}}
-                  disabled={isSubmitting}
-                  onQuoteChange={handleQuoteChange}
-                />
+                <div className="flex items-center justify-between gap-3">
+                  <FieldLabel>
+                    Items
+                    {lines.length > 1 ? (
+                      <span className="text-muted-foreground ml-1 font-normal">
+                        ({lines.length} lines · {totalUnits} units)
+                      </span>
+                    ) : null}
+                  </FieldLabel>
+                  {lines.length < MAX_ITEM_LINES ? (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      disabled={isSubmitting}
+                      onClick={handleAddItem}
+                    >
+                      <PlusIcon />
+                      Add another item
+                    </Button>
+                  ) : null}
+                </div>
+
+                {lines.map((line) => (
+                  <BookingItemRow
+                    key={line.key}
+                    index={line.index}
+                    itemKey={line.key}
+                    control={form.control}
+                    register={form.register}
+                    setValue={form.setValue}
+                    trigger={form.trigger}
+                    errors={form.formState.errors.items?.[line.index]}
+                    selectedItem={line.item}
+                    onSelectItem={(item) =>
+                      handleSelectItem(line.index, line.key, item)
+                    }
+                    canDiscount={canDiscount}
+                    canRemove={lines.length > 1}
+                    onRemove={() => handleRemoveItem(line.index, line.key)}
+                    disabled={isSubmitting}
+                    onQuoteChange={handleQuoteChange}
+                  />
+                ))}
+
+                {overUnitCap ? (
+                  <Alert
+                    variant="destructive"
+                    className="border-destructive/25 bg-destructive/5"
+                  >
+                    <AlertCircleIcon />
+                    <AlertDescription className="text-destructive font-medium">
+                      One order can request at most {MAX_TOTAL_BOOKING_UNITS}{" "}
+                      units in total — this one asks for {totalUnits}.
+                    </AlertDescription>
+                  </Alert>
+                ) : null}
               </div>
+
+              <Field>
+                <FieldLabel>Documents (optional)</FieldLabel>
+                <Controller
+                  control={form.control}
+                  name="documents"
+                  render={({ field }) => (
+                    <BookingDocumentsField
+                      value={field.value ?? []}
+                      onChange={field.onChange}
+                      disabled={isSubmitting}
+                    />
+                  )}
+                />
+              </Field>
 
               {staffOptions.length > 0 ? (
                 <Field data-invalid={!!form.formState.errors.handledById}>
@@ -388,39 +516,48 @@ export function BookingForm({
         <CardContent className="p-5 flex flex-col gap-4">
           <div className="flex flex-col gap-2.5">
             <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/80">
-              Item
+              {lines.length > 1 ? `Items (${lines.length})` : "Item"}
             </span>
-            <div className="flex flex-col gap-1 rounded-lg bg-muted/40 p-2.5 border border-border/40 text-sm">
-              <div className="flex items-center justify-between gap-2">
-                <span className="font-semibold text-foreground truncate">
-                  {selectedItem ? selectedItem.productName : "No item selected"}
-                  {quantity > 1 ? ` × ${quantity}` : ""}
-                </span>
-                <span className="shrink-0 font-semibold text-foreground">
-                  {quote
-                    ? quote.available
-                      ? formatMoney(quote.totalReceivable)
-                      : "Unavailable"
-                    : "—"}
-                </span>
-              </div>
-              {selectedItem ? (
-                <div className="flex items-center justify-between text-xs text-muted-foreground">
-                  <span>
-                    {selectedItem.color ? selectedItem.color : ""}
-                    {selectedItem.size ? ` (${selectedItem.size})` : ""}
-                    {quote ? ` · ${quote.totalDays} day${quote.totalDays > 1 ? "s" : ""}` : ""}
-                  </span>
-                  {quote && quote.available ? (
-                    <span>
-                      Rent: {formatMoney(quote.totalAmount)}
-                      {Number(quote.securityDeposit) > 0
-                        ? ` + Dep: ${formatMoney(quote.securityDeposit)}`
-                        : ""}
+            <div className="flex flex-col gap-1.5">
+              {lines.map((line) => (
+                <div
+                  key={line.key}
+                  className="flex flex-col gap-1 rounded-lg bg-muted/40 p-2.5 border border-border/40 text-sm"
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-semibold text-foreground truncate">
+                      {line.item ? line.item.productName : "No item selected"}
+                      {line.quantity > 1 ? ` × ${line.quantity}` : ""}
                     </span>
+                    <span className="shrink-0 font-semibold text-foreground">
+                      {line.quote
+                        ? line.quote.available
+                          ? formatMoney(line.quote.totalReceivable)
+                          : "Unavailable"
+                        : "—"}
+                    </span>
+                  </div>
+                  {line.item ? (
+                    <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
+                      <span className="truncate">
+                        {line.item.color ? line.item.color : ""}
+                        {line.item.size ? ` (${line.item.size})` : ""}
+                        {line.quote
+                          ? ` · ${line.quote.totalDays} day${line.quote.totalDays > 1 ? "s" : ""}`
+                          : ""}
+                      </span>
+                      {line.quote && line.quote.available ? (
+                        <span className="shrink-0">
+                          Rent: {formatMoney(line.quote.totalAmount)}
+                          {Number(line.quote.securityDeposit) > 0
+                            ? ` + Dep: ${formatMoney(line.quote.securityDeposit)}`
+                            : ""}
+                        </span>
+                      ) : null}
+                    </div>
                   ) : null}
                 </div>
-              ) : null}
+              ))}
             </div>
           </div>
 
@@ -430,25 +567,34 @@ export function BookingForm({
             <div className="flex items-center justify-between text-muted-foreground">
               <span>Rental Charges</span>
               <span className="font-medium text-foreground">
-                {formatMoney((grossRentCents / 100).toFixed(2))}
+                {formatMoney(totals.grossRent)}
               </span>
             </div>
 
-            {discountCents > 0 ? (
+            {Number(totals.discount) > 0 ? (
               <div className="flex items-center justify-between text-emerald-600 dark:text-emerald-400 font-medium">
                 <span className="flex items-center gap-1">
                   <TagIcon className="size-3.5" />
                   Discount
                 </span>
-                <span>-{formatMoney((discountCents / 100).toFixed(2))}</span>
+                <span>-{formatMoney(totals.discount)}</span>
               </div>
             ) : null}
 
-            {discountCents > 0 ? (
+            {Number(totals.additionalCost) > 0 ? (
+              <div className="flex items-center justify-between text-muted-foreground">
+                <span>Additional charges</span>
+                <span className="font-medium text-foreground">
+                  {formatMoney(totals.additionalCost)}
+                </span>
+              </div>
+            ) : null}
+
+            {Number(totals.discount) > 0 || Number(totals.additionalCost) > 0 ? (
               <div className="flex items-center justify-between text-muted-foreground font-medium">
                 <span>Net Rent Subtotal</span>
                 <span className="text-foreground">
-                  {formatMoney((netRentCents / 100).toFixed(2))}
+                  {formatMoney(totals.netRent)}
                 </span>
               </div>
             ) : null}
@@ -461,7 +607,7 @@ export function BookingForm({
                 </Badge>
               </span>
               <span className="font-medium text-foreground">
-                {formatMoney((securityDepositCents / 100).toFixed(2))}
+                {formatMoney(totals.deposit)}
               </span>
             </div>
           </div>
@@ -474,15 +620,15 @@ export function BookingForm({
               <span className="text-[11px] text-muted-foreground">Rent + Security Deposit</span>
             </div>
             <span className="text-xl font-bold text-primary">
-              {formatMoney((grandTotalCents / 100).toFixed(2))}
+              {formatMoney(totals.grandTotal)}
             </span>
           </div>
 
-          {securityDepositCents > 0 ? (
+          {Number(totals.deposit) > 0 ? (
             <div className="flex items-center gap-2 rounded-lg bg-emerald-500/10 border border-emerald-500/20 p-2.5 text-xs text-emerald-700 dark:text-emerald-400">
               <ShieldCheckIcon className="size-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
               <span>
-                Includes <strong>{formatMoney((securityDepositCents / 100).toFixed(2))}</strong> in refundable security deposit, returned after item check.
+                Includes <strong>{formatMoney(totals.deposit)}</strong> in refundable security deposit, returned after item check.
               </span>
             </div>
           ) : null}

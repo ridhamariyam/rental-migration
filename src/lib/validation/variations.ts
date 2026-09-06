@@ -42,7 +42,11 @@ const optionalBarcodeSchema = z
 
 /**
  * "+ Add item" form for a product variation, shared between the client
- * form and the `POST /api/products/[id]/variations` route handler. Leaving
+ * form and the `POST /api/products/[id]/variations` route handler. The
+ * item's photo is captured here rather than on the product form: two
+ * copies of the same catalogue entry differ in exactly the ways a renter
+ * cares about (colour, wear), which one shared catalogue photo can't show.
+ * Leaving
  * `sku`/`barcode` blank auto-generates both (see `src/lib/barcode.ts` +
  * the uniqueness-checked allocation in `src/server/variations/service.ts`);
  * providing one lets an owner match an existing physical label rather than
@@ -71,6 +75,12 @@ export const createVariationSchema = z
       .min(1, "Choose at least one outlet"),
     sku: optionalSkuSchema,
     barcode: optionalBarcodeSchema,
+    // A photo of *this* physical copy — a URL string, not a file: the file
+    // itself is uploaded first via `POST /api/uploads` and only the
+    // resulting URL ever reaches this schema, so a failed upload never
+    // leaves a half-created item behind. When several outlets are picked,
+    // every copy created in the batch starts from the same photo.
+    image: z.string().trim().optional(),
     ownershipType: z.enum(["shop_owned", "customer_owned"]),
     ownerName: z
       .string()
@@ -146,6 +156,7 @@ export const updateVariationSchema = z
     securityDeposit: moneySchema,
     quantity: quantitySchema,
     outletId: z.uuid("Choose an outlet"),
+    image: z.string().trim().optional(),
     ownershipType: z.enum(["shop_owned", "customer_owned"]),
     ownerName: z
       .string()

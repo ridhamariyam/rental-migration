@@ -34,6 +34,7 @@ import {
 import { Spinner } from "@/components/ui/spinner";
 import { Textarea } from "@/components/ui/textarea";
 import { CustomerPicker, type PickedCustomer } from "@/components/tenant/customer-picker";
+import { ImageUploadField } from "@/components/tenant/image-upload-field";
 import {
   updateVariationSchema,
   type UpdateVariationInput,
@@ -69,6 +70,7 @@ export function EditVariationDialog({
       securityDeposit: variation?.securityDeposit ?? "0",
       quantity: variation ? String(variation.quantity) : "1",
       outletId: variation?.outletId ?? outlets[0]?.id ?? "",
+      image: variation?.image ?? "",
       ownershipType: variation?.ownershipType ?? "shop_owned",
       ownerName: variation?.ownerName ?? "",
       ownerPhone: variation?.ownerPhone ?? "",
@@ -91,6 +93,7 @@ export function EditVariationDialog({
         securityDeposit: variation.securityDeposit,
         quantity: String(variation.quantity),
         outletId: variation.outletId ?? outlets[0]?.id ?? "",
+        image: variation.image ?? "",
         ownershipType: variation.ownershipType,
         ownerName: variation.ownerName ?? "",
         ownerPhone: variation.ownerPhone ?? "",
@@ -176,6 +179,21 @@ export function EditVariationDialog({
             ) : null}
 
             <FieldGroup>
+              <Field>
+                <FieldLabel htmlFor="edit-image">Item photo (optional)</FieldLabel>
+                <Controller
+                  control={form.control}
+                  name="image"
+                  render={({ field }) => (
+                    <ImageUploadField
+                      value={field.value ?? ""}
+                      onChange={field.onChange}
+                      disabled={isSubmitting}
+                    />
+                  )}
+                />
+              </Field>
+
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <Field data-invalid={!!form.formState.errors.color}>
                   <FieldLabel htmlFor="edit-color">Color (optional)</FieldLabel>

@@ -39,6 +39,7 @@ import { formatMoney } from "@/lib/format";
 import {
   addMoney,
   compareMoney,
+  nonNegativeMoney,
   subtractMoneyNonNegative,
   ZERO_MONEY,
 } from "@/lib/money";
@@ -49,11 +50,27 @@ import {
 import type { PaymentSummary } from "@/server/payments/service";
 
 const PAYMENT_TYPE_LABELS: Record<string, string> = {
+  full_payment: "Full payment",
   advance: "Advance",
   balance: "Balance",
   security_deposit: "Security deposit",
   refund: "Refund",
+  deposit_release: "Deposit refund",
 };
+
+/** Ordered as the counter thinks about them: settle everything first (the
+ * common case), then the partial buckets, then the two ways money goes
+ * back out. */
+const PAYMENT_TYPE_ORDER = [
+  "full_payment",
+  "advance",
+  "balance",
+  "security_deposit",
+  "refund",
+  "deposit_release",
+] as const;
+
+const REFUND_TYPES = new Set(["refund", "deposit_release"]);
 
 const PAYMENT_METHOD_LABELS: Record<string, string> = {
   cash: "Cash",
@@ -86,6 +103,15 @@ function outstandingHint(
   summary: PaymentSummary,
 ): string | null {
   switch (type) {
+    case "full_payment":
+      return compareMoney(summary.outstanding, ZERO_MONEY) > 0
+        ? `Settles everything outstanding: ${formatMoney(nonNegativeMoney(summary.rentBalance))} rent + ${formatMoney(nonNegativeMoney(summary.depositBalance))} deposit`
+        : "Nothing is outstanding on this booking.";
+    case "deposit_release": {
+      return compareMoney(summary.depositHeld, ZERO_MONEY) > 0
+        ? `Deposit held: ${formatMoney(summary.depositHeld)}`
+        : "No deposit is being held.";
+    }
     case "advance":
     case "balance":
       return compareMoney(summary.rentBalance, ZERO_MONEY) > 0
@@ -120,10 +146,7 @@ export function RecordPaymentDialog({
   const [formError, setFormError] = useState<string | null>(null);
 
   const paymentTypeOptions = useMemo(
-    () =>
-      (["advance", "balance", "security_deposit", "refund"] as const).filter(
-        (type) => type !== "refund" || canRefund,
-      ),
+    () => PAYMENT_TYPE_ORDER.filter((type) => canRefund || !REFUND_TYPES.has(type)),
     [canRefund],
   );
 
@@ -249,7 +272,21 @@ export function RecordPaymentDialog({
                   render={({ field }) => (
                     <Select
                       value={field.value}
-                      onValueChange={field.onChange}
+                      onValueChange={(next) => {
+                        field.onChange(next);
+                        // "Full payment" means the whole outstanding
+                        // amount — fill it in rather than making staff
+                        // add the two balances up by hand. Still
+                        // editable: a customer can hand over part of it.
+                        if (
+                          next === "full_payment" &&
+                          compareMoney(summary.outstanding, ZERO_MONEY) > 0
+                        ) {
+                          form.setValue("amount", summary.outstanding, {
+                            shouldValidate: true,
+                          });
+                        }
+                      }}
                       disabled={isSubmitting}
                     >
                       <SelectTrigger>

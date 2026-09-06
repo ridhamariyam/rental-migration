@@ -1,6 +1,6 @@
 import "server-only";
 
-import { and, count, desc, eq, ilike, or } from "drizzle-orm";
+import { and, asc, count, desc, eq, ilike, isNotNull, or } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { AppError } from "@/lib/errors/app-error";
 import { categories, productVariations, products } from "@/lib/db/schema";
@@ -16,6 +16,11 @@ export type ProductRow = typeof products.$inferSelect;
 export type ProductListItem = ProductRow & {
   categoryName: string;
   variationCount: number;
+  /** The picture to show for this product — the photo of its oldest
+   * physical item that has one (photos live on `productVariations` now,
+   * see that table's doc comment), falling back to the catalogue row's own
+   * `image` for products created before the upload moved to "Add item". */
+  coverImage: string | null;
 };
 
 export type ProductListResult = {
@@ -95,10 +100,36 @@ export async function listProducts(
     variationCounts.map((row) => [row.productId, row.value]),
   );
 
+  // One query for the whole page's covers rather than one per row — the
+  // oldest photographed item per product wins, so a product's cover stays
+  // put as newer copies are added.
+  const variationImages = rows.length
+    ? await db
+        .select({
+          productId: productVariations.productId,
+          image: productVariations.image,
+        })
+        .from(productVariations)
+        .where(
+          and(
+            or(...rows.map((row) => eq(productVariations.productId, row.id))),
+            isNotNull(productVariations.image),
+          ),
+        )
+        .orderBy(asc(productVariations.createdAt))
+    : [];
+  const imageByProduct = new Map<string, string>();
+  for (const row of variationImages) {
+    if (row.image && !imageByProduct.has(row.productId)) {
+      imageByProduct.set(row.productId, row.image);
+    }
+  }
+
   return {
     items: rows.map((row) => ({
       ...row,
       variationCount: countByProduct.get(row.id) ?? 0,
+      coverImage: imageByProduct.get(row.id) ?? row.image,
     })),
     total,
     page,
@@ -172,7 +203,23 @@ export async function getProductById(
     .from(productVariations)
     .where(eq(productVariations.productId, row.id));
 
-  return { ...row, variationCount };
+  const [firstPhotographedItem] = await db
+    .select({ image: productVariations.image })
+    .from(productVariations)
+    .where(
+      and(
+        eq(productVariations.productId, row.id),
+        isNotNull(productVariations.image),
+      ),
+    )
+    .orderBy(asc(productVariations.createdAt))
+    .limit(1);
+
+  return {
+    ...row,
+    variationCount,
+    coverImage: firstPhotographedItem?.image ?? row.image,
+  };
 }
 
 async function requireCategory(shopId: string, categoryId: string) {
@@ -202,7 +249,6 @@ export async function createProduct(
       categoryId: input.categoryId,
       name: input.name,
       description: input.description || null,
-      image: input.image || null,
     })
     .returning();
 
@@ -227,7 +273,6 @@ export async function updateProduct(
       categoryId: input.categoryId,
       name: input.name,
       description: input.description || null,
-      image: input.image || existing.image,
       updatedAt: new Date(),
     })
     .where(and(eq(products.id, id), eq(products.shopId, shopId)))

@@ -51,6 +51,12 @@ export const productVariations = pgTable("product_variations", {
   quantity: integer("quantity").notNull().default(1),
   sku: text("sku").notNull().unique(),
   barcode: text("barcode").notNull().unique(),
+  //: The photo of *this* physical copy — the image now lives here rather
+  //: than on the catalogue row, because two copies of the same product can
+  //: differ in the ways a renter actually cares about (colour, wear), and
+  //: one shared catalogue photo can't show that. `products.image` is kept
+  //: for rows created before the move and is still rendered as a fallback.
+  image: text("image"),
   gallery: jsonb("gallery").$type<string[]>().notNull().default([]),
   //: The owner's manual "listed for rental" switch — distinct from
   //: `status` (the lifecycle). See the table-level doc comment.

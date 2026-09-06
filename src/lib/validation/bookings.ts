@@ -39,12 +39,14 @@ export type BookingListQuery = z.infer<typeof bookingListQuerySchema>;
 /**
  * A booking must identify its physical item by either its id (picked from
  * a search list) or its barcode (scanned at the counter) — mirrors the
- * legacy `BookingCreate`'s own either/or requirement. `rentAmount`/
- * `securityDeposit` are deliberately **not** accepted here at all: the
- * legacy backend let a caller override both with no permission check
- * (plan.md § 3.2's flagged bug) — the fix is to not expose an override
- * field in the first place, always pricing from the variation's own
- * `rentPrice`/`securityDeposit`.
+ * legacy `BookingCreate`'s own either/or requirement. `rentAmount` is
+ * deliberately **not** accepted here at all: the legacy backend let a
+ * caller override the rent with no permission check (plan.md § 3.2's
+ * flagged bug) — the fix is to not expose that field in the first place,
+ * always pricing rent from the variation's own `rentPrice`. The deposit
+ * *is* accepted as an optional override (see `bookingItemSchema`): it is
+ * refundable money held, not revenue, and the counter genuinely varies it
+ * per customer.
  */
 const itemIdentifierRefinement = <
   T extends { variationId?: string; barcode?: string },
@@ -57,6 +59,27 @@ const itemIdentifierRefinement = <
       code: "custom",
       path: ["barcode"],
       message: "Scan a barcode or choose an item",
+    });
+  }
+};
+
+/** The extra-charge pair every priced line accepts. A charge the customer
+ * can’t see a reason for on their bill is exactly the kind of "what is
+ * this ₹500 for?" dispute this field exists to prevent, so a non-zero
+ * amount always has to be explained. */
+const additionalCostRefinement = <
+  T extends { additionalCost?: string; additionalCostReason?: string },
+>(
+  data: T,
+  ctx: z.RefinementCtx,
+) => {
+  const hasCost =
+    !!data.additionalCost && Number(data.additionalCost) > 0;
+  if (hasCost && !data.additionalCostReason?.trim()) {
+    ctx.addIssue({
+      code: "custom",
+      path: ["additionalCostReason"],
+      message: "Say what this extra charge is for",
     });
   }
 };
@@ -117,6 +140,16 @@ export const quoteRequestSchema = z
     fromDate: dateStringSchema,
     toDate: dateStringSchema,
     discountAmount: optionalMoneySchema,
+    // Extra charge + its reason, previewed here so the summary panel's
+    // total is the same number the server will freeze onto the booking.
+    additionalCost: optionalMoneySchema,
+    additionalCostReason: z
+      .string()
+      .trim()
+      .max(200, "Must be at most 200 characters")
+      .optional(),
+    // Blank keeps the item's own deposit; a value replaces it (per unit).
+    securityDeposit: optionalMoneySchema,
     // How many units of this line are wanted — scales both the live
     // preview's price (rent and deposit each multiply by this) and its
     // availability check ("is there room for N units").
@@ -152,12 +185,27 @@ export const bookingItemSchema = z
     fromDate: dateStringSchema,
     toDate: dateStringSchema,
     discountAmount: optionalMoneySchema,
+    /** A one-off extra charge on this line (alteration, delivery, …) —
+     * unlike `discountAmount` this needs no special permission: any role
+     * that can create a booking can bill for work the shop actually did,
+     * as long as it says what it was for. */
+    additionalCost: optionalMoneySchema,
+    additionalCostReason: z
+      .string()
+      .trim()
+      .max(200, "Must be at most 200 characters")
+      .optional(),
+    /** Deposit to hold per unit. Blank keeps the item's own default — the
+     * counter only fills this in when it has agreed something else (a
+     * regular customer, a higher-value piece). */
+    securityDeposit: optionalMoneySchema,
     quantity: bookingQuantitySchema,
   })
   .superRefine((data, ctx) => {
     itemIdentifierRefinement(data, ctx);
     dateRangeRefinement(data, ctx);
     pickupNotInPastRefinement(data, ctx);
+    additionalCostRefinement(data, ctx);
   });
 
 export type BookingItemInput = z.infer<typeof bookingItemSchema>;
@@ -171,6 +219,26 @@ export type BookingItemInput = z.infer<typeof bookingItemSchema>;
  * otherwise-invisible failed validation after clicking submit. */
 export const MAX_TOTAL_BOOKING_UNITS = 40;
 
+/** One piece of paperwork attached to a booking. The file itself is
+ * uploaded first (`POST /api/uploads/document`) and only this URL/label
+ * pair is submitted with the booking — same two-step shape as an item
+ * photo, so a failed upload never leaves a half-created booking. */
+export const bookingDocumentSchema = z.object({
+  url: z.url("Invalid document"),
+  name: z
+    .string()
+    .trim()
+    .min(1, "Required")
+    .max(200, "Must be at most 200 characters"),
+});
+
+export type BookingDocumentInput = z.infer<typeof bookingDocumentSchema>;
+
+/** Ten is well past what a rental counter attaches in practice (an ID
+ * proof, a signed agreement, a couple of handover photos) while still
+ * bounding what one request can carry. */
+export const MAX_BOOKING_DOCUMENTS = 10;
+
 export const createBookingSchema = z
   .object({
     customerId: uuidSchema,
@@ -182,6 +250,15 @@ export const createBookingSchema = z
       .string()
       .trim()
       .max(2000, "Notes must be at most 2000 characters")
+      .optional(),
+    // Order-level paperwork — copied onto every line the submission
+    // creates, exactly like `notes` is.
+    documents: z
+      .array(bookingDocumentSchema)
+      .max(
+        MAX_BOOKING_DOCUMENTS,
+        `At most ${MAX_BOOKING_DOCUMENTS} documents per booking`,
+      )
       .optional(),
     // Who this booking is attributed to. Only ever honoured for an
     // `admin` actor (see `resolveHandledById` in `bookings/service.ts`) —

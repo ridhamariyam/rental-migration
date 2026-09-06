@@ -336,8 +336,8 @@ export async function calculateSalary(
     presentDays > 0 ? workedHours.totalMinutes / presentDays : 0;
 
   // Decimal-safe multiply (cents-based `BigInt` arithmetic, never a
-  // binary float) — same `multiplyMoneyByDays` helper booking pricing
-  // uses for `rentAmount * totalDays`.
+  // binary float) — the same `multiplyMoneyByDays` helper every other
+  // money calculation in this app goes through.
   const netAmount = nonNegativeMoney(multiplyMoneyByDays(perDay, payableDays));
 
   return {

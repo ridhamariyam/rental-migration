@@ -34,6 +34,7 @@ import {
 import { Spinner } from "@/components/ui/spinner";
 import { Textarea } from "@/components/ui/textarea";
 import { CustomerPicker, type PickedCustomer } from "@/components/tenant/customer-picker";
+import { ImageUploadField } from "@/components/tenant/image-upload-field";
 import { OutletMultiSelect } from "@/components/tenant/outlet-multi-select";
 import {
   createVariationSchema,
@@ -74,6 +75,7 @@ export function AddVariationDialog({
       outletIds: outlets[0] ? [outlets[0].id] : [],
       sku: "",
       barcode: "",
+      image: "",
       ownershipType: "shop_owned",
       ownerName: "",
       ownerPhone: "",
@@ -107,6 +109,7 @@ export function AddVariationDialog({
         outletIds: outlets[0] ? [outlets[0].id] : [],
         sku: "",
         barcode: "",
+        image: "",
         ownershipType: "shop_owned",
         ownerName: "",
         ownerPhone: "",
@@ -179,6 +182,27 @@ export function AddVariationDialog({
           ) : null}
 
           <FieldGroup>
+            <Field>
+              <FieldLabel htmlFor="image">Item photo (optional)</FieldLabel>
+              <Controller
+                control={form.control}
+                name="image"
+                render={({ field }) => (
+                  <ImageUploadField
+                    value={field.value ?? ""}
+                    onChange={field.onChange}
+                    disabled={isSubmitting}
+                  />
+                )}
+              />
+              {multipleOutlets ? (
+                <p className="text-muted-foreground text-xs">
+                  Each outlet&rsquo;s copy starts with this photo — swap it
+                  later from that item&rsquo;s own Edit dialog.
+                </p>
+              ) : null}
+            </Field>
+
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <Field data-invalid={!!form.formState.errors.color}>
                 <FieldLabel htmlFor="color">Color (optional)</FieldLabel>

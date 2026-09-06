@@ -395,7 +395,14 @@ export async function returnBooking(
       outletId: booking.outletId,
       bookingId: booking.id,
       variation,
-      grossRentalAmount: booking.totalAmount,
+      // The item owner's share is a cut of the *rent*, never of a charge
+      // the shop billed for its own work (alteration, delivery) — so the
+      // booking's `additionalCost` comes back out of the basis here even
+      // though `totalAmount` includes it.
+      grossRentalAmount: subtractMoneyNonNegative(
+        booking.totalAmount,
+        booking.additionalCost,
+      ),
     });
 
     await recordAudit(tx, {

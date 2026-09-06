@@ -11,9 +11,9 @@ type UploadResponse = { url: string };
 
 /**
  * A single image upload field — separate from the surrounding form's own
- * submit (see `createProductSchema`'s doc comment): picking a file uploads
- * it to `POST /api/uploads` immediately and the field's value becomes the
- * resulting URL string, so a failed *catalogue* save never leaves an
+ * submit (see `createVariationSchema`'s doc comment): picking a file
+ * uploads it to `POST /api/uploads` immediately and the field's value
+ * becomes the resulting URL string, so a failed *item* save never leaves an
  * orphaned upload behind, and a failed *upload* never blocks the rest of
  * the form.
  */
@@ -27,8 +27,8 @@ export function ImageUploadField({
   value: string;
   onChange: (url: string) => void;
   disabled?: boolean;
-  /** Which upload route to post the file to \u2014 defaults to the product/
-   * variation cover-image endpoint. The Profile/Business Settings forms
+  /** Which upload route to post the file to \u2014 defaults to the item
+   * photo endpoint. The Profile/Business Settings forms
    * pass `/api/uploads/avatar` instead (see that route's own doc comment
    * for why it needs no specific `Permission`). */
   endpoint?: string;
