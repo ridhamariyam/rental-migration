@@ -15,9 +15,9 @@ const ALLOWED_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
 const UPLOAD_FOLDER = "rental-migration/products";
 
 /**
- * A single product/variation image upload, kept as its own step separate
- * from creating or editing the catalogue record itself (see
- * `createProductSchema`'s doc comment) — the record only ever stores the
+ * A single item (product variation) image upload, kept as its own step
+ * separate from creating or editing the item itself (see
+ * `createVariationSchema`'s doc comment) — the record only ever stores the
  * resulting Cloudinary URL this returns.
  *
  * Uploaded straight to Cloudinary (see `src/lib/cloudinary.ts`), not local

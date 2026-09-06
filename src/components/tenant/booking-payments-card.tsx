@@ -29,7 +29,7 @@ const PAYMENT_TYPE_LABELS: Record<string, string> = {
   security_deposit: "Security deposit",
   damage_charge: "Damage charge",
   refund: "Refund",
-  deposit_release: "Deposit release",
+  deposit_release: "Deposit refund",
 };
 
 const PAYMENT_METHOD_LABELS: Record<string, string> = {
@@ -137,6 +137,41 @@ export function BookingPaymentsCard({
               {formatMoney(summary.outstanding)}
             </span>
           </div>
+
+          {/* Money that has gone back out only earns a tile once there is
+              some — an always-visible "Refunded ₹0.00" on the many bookings
+              that never see one is noise, but a refund that happened has to
+              be visible here and not only as a row in the ledger below. */}
+          {compareMoney(summary.refunded, ZERO_MONEY) > 0 ? (
+            <div className="flex flex-col gap-0.5">
+              <span className="text-muted-foreground text-xs">Refunded</span>
+              <span className="text-destructive font-medium">
+                -{formatMoney(summary.refunded)}
+              </span>
+            </div>
+          ) : null}
+
+          {compareMoney(summary.depositReleased, ZERO_MONEY) > 0 ? (
+            <div className="flex flex-col gap-0.5">
+              <span className="text-muted-foreground text-xs">
+                Deposit returned
+              </span>
+              <span className="text-destructive font-medium">
+                -{formatMoney(summary.depositReleased)}
+              </span>
+            </div>
+          ) : null}
+
+          {compareMoney(summary.depositHeld, ZERO_MONEY) > 0 ? (
+            <div className="flex flex-col gap-0.5">
+              <span className="text-muted-foreground text-xs">
+                Deposit held
+              </span>
+              <span className="font-medium">
+                {formatMoney(summary.depositHeld)}
+              </span>
+            </div>
+          ) : null}
         </div>
 
         {outstandingBreakdown(summary) ? (
@@ -203,7 +238,13 @@ export function BookingPaymentsCard({
                     <TableCell className="text-muted-foreground py-2.5 text-sm">
                       {payment.referenceNumber || "—"}
                     </TableCell>
-                    <TableCell className="py-2.5 text-right text-sm font-medium">
+                    <TableCell
+                      className={
+                        isOutflow
+                          ? "text-destructive py-2.5 text-right text-sm font-medium"
+                          : "py-2.5 text-right text-sm font-medium"
+                      }
+                    >
                       {isOutflow ? "-" : ""}
                       {formatMoney(payment.amount)}
                     </TableCell>

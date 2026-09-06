@@ -3,6 +3,7 @@ import {
   date,
   index,
   integer,
+  jsonb,
   numeric,
   pgTable,
   text,
@@ -27,6 +28,12 @@ import { productVariations } from "@/lib/db/schema/product-variations";
  * computed totals at booking time — never recomputed from the variation's
  * current price later, so editing a product's price tomorrow never
  * rewrites yesterday's booking.
+ *
+ * `rentAmount` is a **flat price per unit for the whole rental**, not a
+ * per-day rate: the shop quotes one price for the hire regardless of how
+ * many days the item is out (see `quoteRental`). `totalDays` is still
+ * stored — it drives availability, reminders and the receipt's date
+ * range — it just no longer multiplies the price.
  */
 export const bookings = pgTable(
   "bookings",
@@ -79,9 +86,32 @@ export const bookings = pgTable(
     securityDeposit: numeric("security_deposit", { precision: 12, scale: 2 })
       .notNull()
       .default("0"),
-    //: Rent payable after discount, deposit excluded. Damage charges (Phase
-    //: 13) are tracked separately in `damageCharge`, never folded back into
-    //: this frozen figure.
+    //: A one-off charge agreed at the counter on top of the rent —
+    //: alteration, delivery, late-return fee, anything the shop bills for
+    //: that isn't the item's own price. Folded into `totalAmount` (it is
+    //: payable, so the payment ledger has to see it) but kept as its own
+    //: column so a receipt can show *what* was charged, and so a
+    //: customer-owned item's owner is never paid a share of it (see
+    //: `settleBookingRevenue` in `bookings/lifecycle.ts`).
+    additionalCost: numeric("additional_cost", { precision: 12, scale: 2 })
+      .notNull()
+      .default("0"),
+    //: Why that charge was added — required whenever `additionalCost` is
+    //: above zero (`bookingItemSchema`), so an unexplained amount can
+    //: never appear on a customer's bill.
+    additionalCostReason: text("additional_cost_reason"),
+    //: Paperwork attached at booking time — an ID proof, a signed rental
+    //: agreement, a photo of the item at handover. Uploaded first (see
+    //: `POST /api/uploads/document`), so only the resulting URL/label
+    //: pairs are stored here. Order-level: every line created in one
+    //: submission carries the same list, exactly like `notes`.
+    documents: jsonb("documents")
+      .$type<{ url: string; name: string }[]>()
+      .notNull()
+      .default([]),
+    //: Rent payable after discount **plus** `additionalCost`, deposit
+    //: excluded. Damage charges (Phase 13) are tracked separately in
+    //: `damageCharge`, never folded back into this frozen figure.
     totalAmount: numeric("total_amount", { precision: 12, scale: 2 }).notNull(),
     paymentStatus: paymentStatusEnum("payment_status")
       .notNull()

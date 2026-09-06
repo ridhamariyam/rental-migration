@@ -13,16 +13,26 @@ export const positiveMoneySchema = moneySchema.refine(
 );
 
 /**
- * Only the payment types this phase actually supports —
- * `damage_charge`/`deposit_release` exist in the database enum (see
- * `enums.ts`'s doc comment) but are Phase 13's (there is no damage/return
- * workflow yet to produce one), so they're deliberately not accepted here.
+ * What the "Record payment" dialog may submit. Three of these map
+ * one-to-one onto a `payment_type` enum value; two do not:
+ *
+ * - `full_payment` is a *composite* — the counter's "they paid everything"
+ *   button. The server splits the amount across what is actually owed
+ *   (rent first, then the deposit) and writes the matching `balance` /
+ *   `security_deposit` ledger rows. It is deliberately **not** a new enum
+ *   value: income reports sum `advance`/`balance`/`damage_charge` in SQL
+ *   (see `INFLOW_PAYMENT_TYPES`), and a single mixed rent-plus-deposit row
+ *   could only be counted as all income or none — both wrong.
+ * - `damage_charge` stays out entirely: it is raised by the return
+ *   workflow itself (`bookings/lifecycle.ts`), never typed in by hand.
  */
 export const RECORDABLE_PAYMENT_TYPES = [
   "advance",
   "balance",
+  "full_payment",
   "security_deposit",
   "refund",
+  "deposit_release",
 ] as const;
 
 export const PAYMENT_METHOD_VALUES = [

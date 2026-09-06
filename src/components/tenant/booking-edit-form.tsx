@@ -24,12 +24,14 @@ import {
 import { tenantPaths } from "@/lib/tenant-paths";
 import { ApiClientError, apiRequest } from "@/lib/api-client";
 import { formatMoney } from "@/lib/format";
+import { divideMoneyByInteger } from "@/lib/money";
 import type { BookingListItem } from "@/server/bookings/service";
 
 type QuoteResponse = {
   totalDays: number;
   grossRent: string;
   discountAmount: string;
+  additionalCost: string;
   totalAmount: string;
   securityDeposit: string;
   totalReceivable: string;
@@ -77,12 +79,19 @@ export function BookingEditForm({
             variationId: booking.variationId,
             fromDate,
             toDate,
-            // The discount and quantity are both frozen at creation —
-            // always re-quote with the booking's own existing values,
-            // never anything from this form (dates are all that's
-            // editable here).
+            // The discount, quantity, extra charge and agreed deposit are
+            // all frozen at creation — always re-quote with the booking's
+            // own existing values, never anything from this form (dates
+            // are all that's editable here). `securityDeposit` goes back
+            // as a per-unit figure because that is what the quote
+            // multiplies by quantity.
             discountAmount: booking.discountAmount,
             quantity: String(booking.quantity),
+            additionalCost: booking.additionalCost,
+            securityDeposit: divideMoneyByInteger(
+              booking.securityDeposit,
+              Math.max(1, booking.quantity),
+            ),
             excludeBookingId: booking.id,
           }),
         });
@@ -105,6 +114,8 @@ export function BookingEditForm({
     fromDate,
     toDate,
     booking.discountAmount,
+    booking.additionalCost,
+    booking.securityDeposit,
     booking.quantity,
     booking.id,
     booking.variationId,

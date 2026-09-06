@@ -40,3 +40,32 @@ export async function uploadImageToCloudinary(
     uploadStream.end(buffer);
   });
 }
+
+/**
+ * Uploads one booking document — an image *or* a PDF — and returns its
+ * public URL. Separate from `uploadImageToCloudinary` because of the
+ * `resource_type`: `"image"` rejects a PDF outright, and `"auto"` lets
+ * Cloudinary route a PDF to its `raw`/`image` pipeline as appropriate.
+ * The caller (`POST /api/uploads/document`) has already checked the file's
+ * size and sniffed its real type — nothing here trusts a client-supplied
+ * filename or MIME label.
+ */
+export async function uploadDocumentToCloudinary(
+  buffer: Buffer,
+  folder: string,
+): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const uploadStream = cloudinary.uploader.upload_stream(
+      { folder, resource_type: "auto" },
+      (error, result) => {
+        if (error || !result) {
+          reject(error ?? new Error("Cloudinary upload returned no result"));
+          return;
+        }
+        resolve(result.secure_url);
+      },
+    );
+
+    uploadStream.end(buffer);
+  });
+}

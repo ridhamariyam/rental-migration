@@ -24,7 +24,6 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Spinner } from "@/components/ui/spinner";
-import { ImageUploadField } from "@/components/tenant/image-upload-field";
 import {
   createProductSchema,
   type CreateProductInput,
@@ -50,7 +49,6 @@ export function ProductForm({
       name: product?.name ?? "",
       categoryId: product?.categoryId ?? categories[0]?.id ?? "",
       description: product?.description ?? "",
-      image: product?.image ?? "",
     },
     mode: "onTouched",
     reValidateMode: "onChange",
@@ -113,21 +111,6 @@ export function ProductForm({
       ) : null}
 
       <FieldGroup>
-        <Field>
-          <FieldLabel htmlFor="image">Cover image (optional)</FieldLabel>
-          <Controller
-            control={form.control}
-            name="image"
-            render={({ field }) => (
-              <ImageUploadField
-                value={field.value ?? ""}
-                onChange={field.onChange}
-                disabled={isSubmitting}
-              />
-            )}
-          />
-        </Field>
-
         <Field data-invalid={!!form.formState.errors.name}>
           <FieldLabel htmlFor="name">Product name</FieldLabel>
           <div className="relative">

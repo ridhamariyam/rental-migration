@@ -105,9 +105,9 @@ export default async function ProductDetailPage({
         <div className="flex flex-wrap items-start justify-between gap-6">
           <div className="flex items-center gap-5">
             <span className="bg-muted flex size-16 shrink-0 items-center justify-center overflow-hidden rounded-2xl shadow-md">
-              {product.image ? (
+              {product.coverImage ? (
                 <Image
-                  src={product.image}
+                  src={product.coverImage}
                   alt=""
                   width={64}
                   height={64}

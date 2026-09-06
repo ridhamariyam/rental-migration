@@ -6,8 +6,10 @@ import {
   CalendarIcon,
   CheckCircle2Icon,
   ContactIcon,
+  FileTextIcon,
   PackageCheckIcon,
   PackageOpenIcon,
+  PaperclipIcon,
   PencilIcon,
   ReceiptTextIcon,
   ShirtIcon,
@@ -290,8 +292,7 @@ export default async function BookingDetailPage({
             <div className="flex flex-col gap-2 text-sm">
               <div className="flex items-center justify-between">
                 <span className="text-muted-foreground">
-                  {formatMoney(booking.rentAmount)} × {booking.totalDays} day
-                  {booking.totalDays === 1 ? "" : "s"}
+                  {formatMoney(booking.rentAmount)} per item
                   {booking.quantity > 1 ? ` × ${booking.quantity}` : ""}
                 </span>
                 <span className="font-medium">
@@ -303,6 +304,22 @@ export default async function BookingDetailPage({
                   <span className="text-muted-foreground">Discount</span>
                   <span className="font-medium">
                     -{formatMoney(booking.discountAmount)}
+                  </span>
+                </div>
+              ) : null}
+              {Number(booking.additionalCost) > 0 ? (
+                <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground">
+                    Additional cost
+                    {booking.additionalCostReason ? (
+                      <span className="text-muted-foreground/70">
+                        {" "}
+                        — {booking.additionalCostReason}
+                      </span>
+                    ) : null}
+                  </span>
+                  <span className="font-medium">
+                    {formatMoney(booking.additionalCost)}
                   </span>
                 </div>
               ) : null}
@@ -366,6 +383,40 @@ export default async function BookingDetailPage({
             ) : null}
           </CardContent>
         </Card>
+
+        {booking.documents.length > 0 ? (
+          <Card className="lg:col-span-3">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-base">
+                <PaperclipIcon className="size-4" aria-hidden="true" />
+                Documents
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <ul className="flex flex-col gap-2">
+                {booking.documents.map((document, index) => (
+                  <li
+                    key={`${document.url}-${index}`}
+                    className="border-border/60 bg-muted/30 flex items-center gap-2 rounded-lg border px-3 py-2 text-sm"
+                  >
+                    <FileTextIcon
+                      className="text-muted-foreground size-4 shrink-0"
+                      aria-hidden="true"
+                    />
+                    <a
+                      href={document.url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="min-w-0 flex-1 truncate hover:underline"
+                    >
+                      {document.name}
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            </CardContent>
+          </Card>
+        ) : null}
 
         {canViewPayments && summary ? (
           <BookingPaymentsCard

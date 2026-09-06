@@ -25,12 +25,12 @@ export const productNameSchema = z
 
 /**
  * "+ Add product" form, shared between the client form's resolver and the
- * `POST /api/products` route handler. `image` is a URL string, not a file —
- * the file itself is uploaded separately via `POST /api/uploads` first (see
- * `src/app/api/uploads/route.ts`), and this schema only ever sees the
- * resulting path. Keeping upload and catalogue-record-creation as two
- * separate steps means a failed image upload never leaves behind a
- * half-created product.
+ * `POST /api/products` route handler. Deliberately has **no** image field:
+ * a photo belongs to a physical item, not to the catalogue entry (see
+ * `createVariationSchema`), so it is uploaded from "Add item" instead.
+ * `products.image` still exists for rows created before that move and is
+ * read as a fallback cover (see `listProducts`), but nothing writes it any
+ * more.
  */
 export const createProductSchema = z.object({
   name: productNameSchema,
@@ -40,7 +40,6 @@ export const createProductSchema = z.object({
     .trim()
     .max(2000, "Description must be at most 2000 characters")
     .optional(),
-  image: z.string().trim().optional(),
 });
 
 export type CreateProductInput = z.infer<typeof createProductSchema>;

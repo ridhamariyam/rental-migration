@@ -2,7 +2,8 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { BarcodeIcon, MoreHorizontalIcon, PencilIcon } from "lucide-react";
+import Image from "next/image";
+import { BarcodeIcon, MoreHorizontalIcon, PencilIcon, ShirtIcon } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -96,14 +97,30 @@ export function VariationRow({
     <>
       <TableRow className="hover:bg-accent/40 transition-colors">
         <TableCell className="px-6 py-3.5">
-          <div className="flex flex-col gap-0.5">
-            <span className="font-semibold text-sm text-foreground">
-              {[variation.color, variation.size].filter(Boolean).join(" · ") ||
-                "—"}
+          <div className="flex items-center gap-3">
+            <span className="bg-muted flex size-10 shrink-0 items-center justify-center overflow-hidden rounded-lg border">
+              {variation.image ? (
+                <Image
+                  src={variation.image}
+                  alt=""
+                  width={40}
+                  height={40}
+                  className="size-full object-cover"
+                  unoptimized
+                />
+              ) : (
+                <ShirtIcon className="text-muted-foreground size-4" />
+              )}
             </span>
-            <span className="text-muted-foreground/80 font-mono text-[11px]">
-              {variation.sku}
-            </span>
+            <div className="flex flex-col gap-0.5">
+              <span className="font-semibold text-sm text-foreground">
+                {[variation.color, variation.size].filter(Boolean).join(" · ") ||
+                  "—"}
+              </span>
+              <span className="text-muted-foreground/80 font-mono text-[11px]">
+                {variation.sku}
+              </span>
+            </div>
           </div>
         </TableCell>
         <TableCell className="text-muted-foreground px-6 py-3.5 text-sm">

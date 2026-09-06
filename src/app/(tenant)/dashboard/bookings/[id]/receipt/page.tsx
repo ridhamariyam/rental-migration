@@ -28,7 +28,7 @@ const PAYMENT_TYPE_LABELS: Record<string, string> = {
   security_deposit: "Security deposit",
   damage_charge: "Damage charge",
   refund: "Refund",
-  deposit_release: "Deposit release",
+  deposit_release: "Deposit refund",
 };
 
 const PAYMENT_METHOD_LABELS: Record<string, string> = {
@@ -143,9 +143,7 @@ export default async function BookingReceiptPage({
           <div className="flex flex-col gap-2 text-sm">
             <div className="flex items-center justify-between">
               <span className="text-muted-foreground">
-                {formatMoney(receipt.charges.rentAmount)} ×{" "}
-                {receipt.charges.totalDays} day
-                {receipt.charges.totalDays === 1 ? "" : "s"}
+                {formatMoney(receipt.charges.rentAmount)} per item
                 {receipt.charges.quantity > 1 ? ` × ${receipt.charges.quantity}` : ""}
               </span>
               <span className="font-medium">
@@ -157,6 +155,18 @@ export default async function BookingReceiptPage({
                 <span className="text-muted-foreground">Discount</span>
                 <span className="font-medium">
                   -{formatMoney(receipt.charges.discountAmount)}
+                </span>
+              </div>
+            ) : null}
+            {Number(receipt.charges.additionalCost) > 0 ? (
+              <div className="flex items-center justify-between">
+                <span className="text-muted-foreground">
+                  {receipt.charges.additionalCostReason
+                    ? `Additional cost — ${receipt.charges.additionalCostReason}`
+                    : "Additional cost"}
+                </span>
+                <span className="font-medium">
+                  {formatMoney(receipt.charges.additionalCost)}
                 </span>
               </div>
             ) : null}
@@ -245,6 +255,30 @@ export default async function BookingReceiptPage({
                 </TableBody>
               </Table>
             )}
+
+            {Number(receipt.summary.refunded) > 0 ||
+            Number(receipt.summary.depositReleased) > 0 ? (
+              <div className="flex flex-col gap-1 text-sm">
+                {Number(receipt.summary.refunded) > 0 ? (
+                  <div className="flex items-center justify-between">
+                    <span className="text-muted-foreground">Refunded</span>
+                    <span className="font-medium">
+                      -{formatMoney(receipt.summary.refunded)}
+                    </span>
+                  </div>
+                ) : null}
+                {Number(receipt.summary.depositReleased) > 0 ? (
+                  <div className="flex items-center justify-between">
+                    <span className="text-muted-foreground">
+                      Deposit returned
+                    </span>
+                    <span className="font-medium">
+                      -{formatMoney(receipt.summary.depositReleased)}
+                    </span>
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
 
             <Separator />
 

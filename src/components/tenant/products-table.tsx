@@ -100,9 +100,9 @@ export async function ProductsTable({
                   className="group flex items-center gap-3"
                 >
                   <span className="bg-muted flex size-9 shrink-0 items-center justify-center overflow-hidden rounded-lg border">
-                    {product.image ? (
+                    {product.coverImage ? (
                       <Image
-                        src={product.image}
+                        src={product.coverImage}
                         alt=""
                         width={36}
                         height={36}

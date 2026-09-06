@@ -46,3 +46,25 @@ export function sniffImageType(
 
   return null;
 }
+
+/**
+ * Same magic-byte check as `sniffImageType`, widened to the file types a
+ * *booking document* may be: the three image formats plus PDF (an ID
+ * proof or a signed agreement is usually scanned as one). Returns `null`
+ * for anything else, and the caller rejects the upload — a client's
+ * `File.type` is an attacker-controllable label, never proof of content.
+ */
+export function sniffDocumentType(
+  buffer: Buffer,
+): "image/jpeg" | "image/png" | "image/webp" | "application/pdf" | null {
+  const imageType = sniffImageType(buffer);
+  if (imageType) {
+    return imageType;
+  }
+
+  if (buffer.length >= 5 && buffer.toString("ascii", 0, 5) === "%PDF-") {
+    return "application/pdf";
+  }
+
+  return null;
+}

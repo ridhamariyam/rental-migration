@@ -102,7 +102,7 @@ export function ItemPicker({
             ) : null}
           </p>
           <p className="text-muted-foreground truncate text-xs">
-            SKU {value.sku} · {formatMoney(value.rentPrice)}/day
+            SKU {value.sku} · {formatMoney(value.rentPrice)} per rental
           </p>
         </div>
         {!disabled ? (

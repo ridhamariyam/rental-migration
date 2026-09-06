@@ -207,20 +207,38 @@ export async function listPaymentsForBooking(
 
 const REFUND_TYPES: Payment["paymentType"][] = ["refund", "deposit_release"];
 
+/** True for the two submitted types that move money back *out* to the
+ * customer — the ones gated on `PAYMENT_REFUND` rather than
+ * `PAYMENT_RECORD`. Takes the *submitted* type (which includes the
+ * composite `full_payment`), not a stored `payment_type`. */
+function isRefundType(type: RecordPaymentInput["paymentType"]): boolean {
+  return REFUND_TYPES.includes(type as Payment["paymentType"]);
+}
+
 /**
- * Appends one money movement to a booking's ledger. Recording a
+ * How one submitted payment lands in the ledger. Everything except
+ * `full_payment` is a single row of the same type; `full_payment` becomes
+ * up to two rows (see `RECORDABLE_PAYMENT_TYPES`'s doc comment).
+ */
+type LedgerMovement = { amount: string; paymentType: Payment["paymentType"] };
+
+/**
+ * Appends one or more money movements to a booking's ledger. Recording a
  * qualifying (non-refund) payment against a still-`draft` booking also
  * confirms it (`draft -> confirmed`) — matches the client requirements
  * doc's own "Booking Created → Payment Recorded → Booking Confirmed" flow,
  * and is the reason `bookingStatusEnum`'s doc comment calls out "once a
  * qualifying payment lands" as this phase's job.
+ *
+ * Returns every row written: a `full_payment` settles rent *and* deposit
+ * in one action and so produces two of them.
  */
 export async function recordPayment(
   actor: TenantSessionUser,
   bookingId: string,
   input: RecordPaymentInput,
-): Promise<{ payment: PaymentRow; summary: PaymentSummary }> {
-  const requiredPermission = REFUND_TYPES.includes(input.paymentType)
+): Promise<{ payments: PaymentRow[]; summary: PaymentSummary }> {
+  const requiredPermission = isRefundType(input.paymentType)
     ? Permission.PAYMENT_REFUND
     : Permission.PAYMENT_RECORD;
 
@@ -234,7 +252,7 @@ export async function recordPayment(
     throw new AppError("Cannot record a payment against a cancelled booking", 409);
   }
 
-  const { payment: inserted, summary } = await db.transaction(async (tx) => {
+  const { payments: inserted, summary } = await db.transaction(async (tx) => {
     // Read the ledger *before* inserting the new row, so an outflow
     // (refund/deposit release) can be checked against what's actually been
     // collected so far — otherwise a booking can end up "refunded" money
@@ -245,7 +263,9 @@ export async function recordPayment(
       .from(payments)
       .where(eq(payments.bookingId, booking.id));
 
-    if (REFUND_TYPES.includes(input.paymentType)) {
+    const movements: LedgerMovement[] = [];
+
+    if (isRefundType(input.paymentType)) {
       const collectedTotal = addMoney(
         addMoney(
           sumByType(existingRows, "advance"),
@@ -273,6 +293,52 @@ export async function recordPayment(
             },
           ],
         );
+      }
+
+      movements.push({
+        amount: input.amount,
+        paymentType: input.paymentType as Payment["paymentType"],
+      });
+    } else if (input.paymentType === "full_payment") {
+      // "They paid everything" — settle the rent balance first, then put
+      // whatever is left toward the deposit, so the two buckets the rest
+      // of this service keeps separate stay separate in the ledger too.
+      const existingSummary = computePaymentSummary(booking, existingRows);
+      const rentDue = nonNegativeMoney(existingSummary.rentBalance);
+      const depositDue = nonNegativeMoney(existingSummary.depositBalance);
+      const outstanding = addMoney(rentDue, depositDue);
+
+      if (compareMoney(outstanding, ZERO_MONEY) <= 0) {
+        throw new AppError("This booking is already fully paid", 400, [
+          { field: "amount", message: "Nothing is outstanding on this booking" },
+        ]);
+      }
+
+      if (compareMoney(input.amount, outstanding) > 0) {
+        throw new AppError(
+          `Cannot exceed the ${formatMoney(outstanding)} outstanding on this booking`,
+          400,
+          [
+            {
+              field: "amount",
+              message: `Cannot exceed ${formatMoney(outstanding)} outstanding`,
+            },
+          ],
+        );
+      }
+
+      const rentPortion =
+        compareMoney(input.amount, rentDue) >= 0 ? rentDue : input.amount;
+      const depositPortion = subtractMoneyNonNegative(input.amount, rentPortion);
+
+      if (compareMoney(rentPortion, ZERO_MONEY) > 0) {
+        movements.push({ amount: rentPortion, paymentType: "balance" });
+      }
+      if (compareMoney(depositPortion, ZERO_MONEY) > 0) {
+        movements.push({
+          amount: depositPortion,
+          paymentType: "security_deposit",
+        });
       }
     } else {
       // Inflows (advance/balance/security_deposit) must not exceed what's
@@ -306,29 +372,38 @@ export async function recordPayment(
           ],
         );
       }
+
+      movements.push({
+        amount: input.amount,
+        paymentType: input.paymentType as Payment["paymentType"],
+      });
     }
 
-    const [payment] = await tx
-      .insert(payments)
-      .values({
-        shopId: actor.shopId,
-        outletId: booking.outletId,
-        bookingId: booking.id,
-        amount: input.amount,
-        paymentType: input.paymentType,
-        paymentMethod: input.paymentMethod,
-        referenceNumber: input.referenceNumber || null,
-        note: input.note || null,
-        recordedById: actor.id,
-      })
-      .returning();
+    const insertedRows: PaymentRow[] = [];
+    for (const movement of movements) {
+      const [payment] = await tx
+        .insert(payments)
+        .values({
+          shopId: actor.shopId,
+          outletId: booking.outletId,
+          bookingId: booking.id,
+          amount: movement.amount,
+          paymentType: movement.paymentType,
+          paymentMethod: input.paymentMethod,
+          referenceNumber: input.referenceNumber || null,
+          note: input.note || null,
+          recordedById: actor.id,
+        })
+        .returning();
+      insertedRows.push(payment);
+    }
 
-    const rows = [...existingRows, payment];
+    const rows = [...existingRows, ...insertedRows];
 
     const paymentSummary = computePaymentSummary(booking, rows);
 
     const nextStatus =
-      booking.status === "draft" && !REFUND_TYPES.includes(input.paymentType)
+      booking.status === "draft" && !isRefundType(input.paymentType)
         ? "confirmed"
         : booking.status;
 
@@ -344,37 +419,45 @@ export async function recordPayment(
       })
       .where(eq(bookings.id, booking.id));
 
-    await recordAudit(tx, {
-      shopId: actor.shopId,
-      outletId: booking.outletId,
-      userId: actor.id,
-      action: REFUND_TYPES.includes(input.paymentType)
-        ? AuditAction.PAYMENT_REFUNDED
-        : AuditAction.PAYMENT_RECORDED,
-      entityType: "payment",
-      entityId: payment.id,
-      summary: `${formatMoney(input.amount)} ${input.paymentType.replace("_", " ")} on ${booking.bookingNumber}`,
-      after: {
-        amount: payment.amount,
-        paymentType: payment.paymentType,
-        paymentMethod: payment.paymentMethod,
-      },
-    });
+    // One audit entry per row actually written, so a `full_payment`'s two
+    // halves are each traceable to the payment they created.
+    for (const payment of insertedRows) {
+      await recordAudit(tx, {
+        shopId: actor.shopId,
+        outletId: booking.outletId,
+        userId: actor.id,
+        action: isRefundType(input.paymentType)
+          ? AuditAction.PAYMENT_REFUNDED
+          : AuditAction.PAYMENT_RECORDED,
+        entityType: "payment",
+        entityId: payment.id,
+        summary: `${formatMoney(payment.amount)} ${payment.paymentType.replace("_", " ")} on ${booking.bookingNumber}${
+          input.paymentType === "full_payment" ? " (full payment)" : ""
+        }`,
+        after: {
+          amount: payment.amount,
+          paymentType: payment.paymentType,
+          paymentMethod: payment.paymentMethod,
+        },
+      });
+    }
 
-    if (!REFUND_TYPES.includes(input.paymentType)) {
+    // The customer sees one payment, not the split — notify once, for the
+    // amount they actually handed over.
+    if (!isRefundType(input.paymentType)) {
       await queueBookingNotification(tx, booking, "payment_received", {
         extraContext: { payment_amount: formatMoney(input.amount) },
       });
     }
 
-    if (booking.status === "draft" && !REFUND_TYPES.includes(input.paymentType)) {
+    if (booking.status === "draft" && !isRefundType(input.paymentType)) {
       await queueBookingNotification(tx, booking, "booking_confirmed");
     }
 
-    return { payment, summary: paymentSummary };
+    return { payments: insertedRows, summary: paymentSummary };
   });
 
-  return { payment: inserted, summary };
+  return { payments: inserted, summary };
 }
 
 export type BookingReceipt = {
@@ -400,6 +483,8 @@ export type BookingReceipt = {
     quantity: number;
     grossRent: string;
     discountAmount: string;
+    additionalCost: string;
+    additionalCostReason: string | null;
     totalAmount: string;
     damageCharge: string;
     securityDeposit: string;
@@ -511,6 +596,8 @@ export async function getReceipt(
       quantity: row.booking.quantity,
       grossRent: row.booking.grossRent,
       discountAmount: row.booking.discountAmount,
+      additionalCost: row.booking.additionalCost,
+      additionalCostReason: row.booking.additionalCostReason,
       totalAmount: row.booking.totalAmount,
       damageCharge: row.booking.damageCharge,
       securityDeposit: row.booking.securityDeposit,

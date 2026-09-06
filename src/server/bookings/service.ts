@@ -1,7 +1,7 @@
 import "server-only";
 
 import { randomUUID } from "node:crypto";
-import { and, count, desc, eq, ilike, inArray, ne, or } from "drizzle-orm";
+import { and, count, desc, eq, ilike, inArray, ne, or, sql } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { AppError } from "@/lib/errors/app-error";
 import {
@@ -14,7 +14,12 @@ import {
 } from "@/lib/db/schema";
 import { assertTransition, isEditable } from "@/lib/booking-state";
 import { generateBookingNumberCandidate } from "@/lib/booking-number";
-import { compareMoney, addMoney, ZERO_MONEY } from "@/lib/money";
+import {
+  compareMoney,
+  addMoney,
+  divideMoneyByInteger,
+  ZERO_MONEY,
+} from "@/lib/money";
 import { Permission, hasPermission } from "@/lib/auth/permissions";
 import type { TenantSessionUser } from "@/server/auth/guard";
 import { AuditAction, recordAudit } from "@/server/audit/service";
@@ -152,6 +157,9 @@ export async function listBookings(
       grossRent: bookings.grossRent,
       discountAmount: bookings.discountAmount,
       securityDeposit: bookings.securityDeposit,
+      additionalCost: bookings.additionalCost,
+      additionalCostReason: bookings.additionalCostReason,
+      documents: bookings.documents,
       totalAmount: bookings.totalAmount,
       paymentStatus: bookings.paymentStatus,
       status: bookings.status,
@@ -176,7 +184,9 @@ export async function listBookings(
       customerLastName: customers.lastName,
       customerPhone: customers.phone,
       productName: products.name,
-      productImage: products.image,
+      // The booked copy's own photo, falling back to the catalogue cover
+      // for items added before photos moved onto the item itself.
+      productImage: sql<string | null>`coalesce(${productVariations.image}, ${products.image})`,
       variationSku: productVariations.sku,
       variationBarcode: productVariations.barcode,
       variationColor: productVariations.color,
@@ -225,7 +235,9 @@ export async function listBookings(
         bookingGroupId: bookings.bookingGroupId,
         totalAmount: bookings.totalAmount,
         productName: products.name,
-        productImage: products.image,
+        // The booked copy's own photo, falling back to the catalogue cover
+        // for items added before photos moved onto the item itself.
+        productImage: sql<string | null>`coalesce(${productVariations.image}, ${products.image})`,
         variationColor: productVariations.color,
         variationSize: productVariations.size,
       })
@@ -390,6 +402,9 @@ export async function getBookingById(
       grossRent: bookings.grossRent,
       discountAmount: bookings.discountAmount,
       securityDeposit: bookings.securityDeposit,
+      additionalCost: bookings.additionalCost,
+      additionalCostReason: bookings.additionalCostReason,
+      documents: bookings.documents,
       totalAmount: bookings.totalAmount,
       paymentStatus: bookings.paymentStatus,
       status: bookings.status,
@@ -414,7 +429,9 @@ export async function getBookingById(
       customerLastName: customers.lastName,
       customerPhone: customers.phone,
       productName: products.name,
-      productImage: products.image,
+      // The booked copy's own photo, falling back to the catalogue cover
+      // for items added before photos moved onto the item itself.
+      productImage: sql<string | null>`coalesce(${productVariations.image}, ${products.image})`,
       variationSku: productVariations.sku,
       variationBarcode: productVariations.barcode,
       variationColor: productVariations.color,
@@ -631,6 +648,10 @@ export async function quoteBooking(
     input.toDate,
     input.discountAmount ?? ZERO_MONEY,
     requestedQuantity,
+    {
+      additionalCost: input.additionalCost,
+      securityDepositPerUnit: input.securityDeposit,
+    },
   );
 
   // Narrows the check for an edit-in-progress: verify the excluded booking
@@ -699,6 +720,7 @@ export async function createBookingGroup(
     fromDate: string;
     toDate: string;
     quantity: number;
+    additionalCostReason: string | null;
   }[] = [];
 
   for (const item of input.items) {
@@ -723,6 +745,10 @@ export async function createBookingGroup(
       item.toDate,
       discount,
       quantity,
+      {
+        additionalCost: item.additionalCost,
+        securityDepositPerUnit: item.securityDeposit,
+      },
     );
     prepared.push({
       variation,
@@ -730,6 +756,13 @@ export async function createBookingGroup(
       fromDate: item.fromDate,
       toDate: item.toDate,
       quantity,
+      // Only kept when something was actually charged — a leftover reason
+      // typed against an amount later cleared to zero would otherwise show
+      // up on the receipt as a charge that isn't there.
+      additionalCostReason:
+        compareMoney(quote.additionalCost, ZERO_MONEY) > 0
+          ? item.additionalCostReason?.trim() || null
+          : null,
     });
   }
 
@@ -785,8 +818,11 @@ export async function createBookingGroup(
       grossRent: item.quote.grossRent,
       discountAmount: item.quote.discountAmount,
       securityDeposit: item.quote.securityDeposit,
+      additionalCost: item.quote.additionalCost,
+      additionalCostReason: item.additionalCostReason,
       totalAmount: item.quote.totalAmount,
       notes: input.notes || null,
+      documents: input.documents ?? [],
       createdById: actor.id,
       handledById,
     });
@@ -864,12 +900,23 @@ export async function updateBooking(
     booking.quantity,
   );
 
+  // The extra charge and the agreed deposit are frozen at creation exactly
+  // like the discount is — re-quoting here is only about the new dates, so
+  // both are fed straight back in rather than re-derived from the item's
+  // current price list.
   const quote = quoteRental(
     variation,
     input.fromDate,
     input.toDate,
     discount,
     booking.quantity,
+    {
+      additionalCost: booking.additionalCost,
+      securityDepositPerUnit: divideMoneyByInteger(
+        booking.securityDeposit,
+        Math.max(1, booking.quantity),
+      ),
+    },
   );
 
   const [updated] = await db
