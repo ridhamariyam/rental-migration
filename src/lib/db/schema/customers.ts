@@ -35,7 +35,7 @@ export const customers = pgTable(
     lastName: text("last_name").notNull(),
     phone: text("phone").notNull(),
     email: text("email"),
-    preferredSize: text("preferred_size"),
+    location: text("location"),
     notes: text("notes"),
     primaryStaffId: uuid("primary_staff_id").references(() => users.id, {
       onDelete: "set null",

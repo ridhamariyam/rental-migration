@@ -79,9 +79,10 @@ export function addMoney(a: string, b: string): string {
  * backend's `percentage_of(gross, percent)` (Python `Decimal` with
  * `ROUND_HALF_UP`), ported to integer-cents/basis-point arithmetic so it
  * never touches a binary float. `percent` is a decimal string with up to
- * two places (e.g. `"60.00"`, matching the `Numeric(5,2)`
- * `ownerSharePercentage` column) — used to split a rental's gross amount
- * between a customer-owner and the shop (`src/server/settlements/service.ts`).
+ * two places (e.g. `"60.00"`). No longer used by
+ * `src/server/settlements/service.ts` (the owner's revenue share is now a
+ * fixed amount, not a percentage of the gross rent) — kept as a general
+ * percentage-of-money primitive for other features.
  */
 export function percentageOfMoney(amount: string, percent: string): string {
   const amountCents = toCents(amount);

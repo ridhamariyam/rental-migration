@@ -9,6 +9,7 @@ import { AlertCircleIcon } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { DatePicker } from "@/components/ui/date-picker";
+import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import {
   Field,
@@ -58,6 +59,9 @@ export function BookingEditForm({
     defaultValues: {
       fromDate: booking.fromDate,
       toDate: booking.toDate,
+      quantity: String(booking.quantity),
+      additionalCost: booking.additionalCost,
+      additionalCostReason: booking.additionalCostReason ?? "",
       notes: booking.notes ?? "",
     },
     mode: "onTouched",
@@ -66,9 +70,22 @@ export function BookingEditForm({
 
   const fromDate = form.watch("fromDate");
   const toDate = form.watch("toDate");
+  const quantity = form.watch("quantity");
+  const additionalCost = form.watch("additionalCost");
+  const extraCharged = Number(additionalCost || "0") > 0;
 
   useEffect(() => {
     if (!fromDate || !toDate) return;
+
+    const parsedQuantity = Number(quantity);
+    const quantityValid =
+      Number.isInteger(parsedQuantity) &&
+      parsedQuantity >= 1 &&
+      parsedQuantity <= booking.quantity;
+    if (!quantityValid) {
+      setQuote(null);
+      return;
+    }
 
     setQuoteLoading(true);
     const timeout = setTimeout(async () => {
@@ -79,15 +96,15 @@ export function BookingEditForm({
             variationId: booking.variationId,
             fromDate,
             toDate,
-            // The discount, quantity, extra charge and agreed deposit are
-            // all frozen at creation — always re-quote with the booking's
-            // own existing values, never anything from this form (dates
-            // are all that's editable here). `securityDeposit` goes back
-            // as a per-unit figure because that is what the quote
-            // multiplies by quantity.
+            // The discount is frozen from creation — always re-quote with
+            // the booking's own existing value (the server itself clamps
+            // it down if a smaller quantity here would leave it exceeding
+            // the new, smaller rent). Quantity and additional cost reflect
+            // whatever this form currently has, so the preview matches
+            // what submitting will actually save.
             discountAmount: booking.discountAmount,
-            quantity: String(booking.quantity),
-            additionalCost: booking.additionalCost,
+            quantity,
+            additionalCost: additionalCost || "0",
             securityDeposit: divideMoneyByInteger(
               booking.securityDeposit,
               Math.max(1, booking.quantity),
@@ -113,8 +130,9 @@ export function BookingEditForm({
   }, [
     fromDate,
     toDate,
+    quantity,
+    additionalCost,
     booking.discountAmount,
-    booking.additionalCost,
     booking.securityDeposit,
     booking.quantity,
     booking.id,
@@ -135,10 +153,22 @@ export function BookingEditForm({
       if (error instanceof ApiClientError && error.fieldErrors.length > 0) {
         let mappedToField = false;
         for (const fieldError of error.fieldErrors) {
-          if (fieldError.field === "fromDate" || fieldError.field === "toDate") {
-            form.setError(fieldError.field as "fromDate" | "toDate", {
-              message: fieldError.message,
-            });
+          if (
+            fieldError.field === "fromDate" ||
+            fieldError.field === "toDate" ||
+            fieldError.field === "quantity" ||
+            fieldError.field === "additionalCost" ||
+            fieldError.field === "additionalCostReason"
+          ) {
+            form.setError(
+              fieldError.field as
+                | "fromDate"
+                | "toDate"
+                | "quantity"
+                | "additionalCost"
+                | "additionalCostReason",
+              { message: fieldError.message },
+            );
             mappedToField = true;
           }
         }
@@ -232,6 +262,58 @@ export function BookingEditForm({
             this booking was created and can&rsquo;t be changed here.
           </p>
         ) : null}
+
+        <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
+          <Field data-invalid={!!form.formState.errors.quantity}>
+            <FieldLabel htmlFor="quantity">
+              Quantity
+              <span className="text-muted-foreground ml-1 font-normal">
+                ({booking.quantity} booked)
+              </span>
+            </FieldLabel>
+            <Input
+              id="quantity"
+              inputMode="numeric"
+              disabled={isSubmitting}
+              aria-invalid={!!form.formState.errors.quantity}
+              {...form.register("quantity")}
+            />
+            <FieldError errors={[form.formState.errors.quantity]} />
+            <p className="text-muted-foreground text-xs">
+              Can only be reduced here — cancel this item instead to remove
+              it entirely.
+            </p>
+          </Field>
+
+          <Field data-invalid={!!form.formState.errors.additionalCost}>
+            <FieldLabel htmlFor="additionalCost">
+              Additional cost (optional)
+            </FieldLabel>
+            <Input
+              id="additionalCost"
+              inputMode="decimal"
+              placeholder="0.00"
+              disabled={isSubmitting}
+              aria-invalid={!!form.formState.errors.additionalCost}
+              {...form.register("additionalCost")}
+            />
+            <FieldError errors={[form.formState.errors.additionalCost]} />
+          </Field>
+        </div>
+
+        <Field data-invalid={!!form.formState.errors.additionalCostReason}>
+          <FieldLabel htmlFor="additionalCostReason">
+            Reason{extraCharged ? "" : " (optional)"}
+          </FieldLabel>
+          <Input
+            id="additionalCostReason"
+            placeholder="Alteration, delivery, late fee…"
+            disabled={isSubmitting}
+            aria-invalid={!!form.formState.errors.additionalCostReason}
+            {...form.register("additionalCostReason")}
+          />
+          <FieldError errors={[form.formState.errors.additionalCostReason]} />
+        </Field>
 
         <Field data-invalid={!!form.formState.errors.notes}>
           <FieldLabel htmlFor="notes">Notes (optional)</FieldLabel>

@@ -13,6 +13,8 @@ export const NOTIFICATION_EVENTS = [
   "booking_returned",
   "booking_cancelled",
   "staff_welcome",
+  "owner_item_booked",
+  "owner_item_cancelled",
 ] as const;
 
 export type NotificationEvent = (typeof NOTIFICATION_EVENTS)[number];
@@ -31,6 +33,8 @@ export const NOTIFICATION_EVENT_LABELS: Record<NotificationEvent, string> = {
   booking_returned: "Booking returned",
   booking_cancelled: "Booking cancelled",
   staff_welcome: "Staff welcome",
+  owner_item_booked: "Owner: item booked",
+  owner_item_cancelled: "Owner: item cancelled",
 };
 
 export const DEFAULT_ENABLED_NOTIFICATION_EVENTS = new Set<NotificationEvent>([
@@ -56,6 +60,7 @@ export const NOTIFICATION_VARIABLES = [
   "deposit_refunded",
   "outlet_name",
   "staff_name",
+  "owner_name",
 ] as const;
 
 export type NotificationVariable = (typeof NOTIFICATION_VARIABLES)[number];

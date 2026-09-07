@@ -53,6 +53,8 @@ export async function listVariationsForProduct(
       color: productVariations.color,
       size: productVariations.size,
       rentPrice: productVariations.rentPrice,
+      sellingPrice: productVariations.sellingPrice,
+      buyingPrice: productVariations.buyingPrice,
       securityDeposit: productVariations.securityDeposit,
       quantity: productVariations.quantity,
       sku: productVariations.sku,
@@ -65,7 +67,7 @@ export async function listVariationsForProduct(
       ownerName: productVariations.ownerName,
       ownerPhone: productVariations.ownerPhone,
       ownerCustomerId: productVariations.ownerCustomerId,
-      ownerSharePercentage: productVariations.ownerSharePercentage,
+      ownerShareAmount: productVariations.ownerShareAmount,
       ownerNotes: productVariations.ownerNotes,
       createdAt: productVariations.createdAt,
       updatedAt: productVariations.updatedAt,
@@ -106,6 +108,8 @@ export async function getVariationById(
       color: productVariations.color,
       size: productVariations.size,
       rentPrice: productVariations.rentPrice,
+      sellingPrice: productVariations.sellingPrice,
+      buyingPrice: productVariations.buyingPrice,
       securityDeposit: productVariations.securityDeposit,
       quantity: productVariations.quantity,
       sku: productVariations.sku,
@@ -118,7 +122,7 @@ export async function getVariationById(
       ownerName: productVariations.ownerName,
       ownerPhone: productVariations.ownerPhone,
       ownerCustomerId: productVariations.ownerCustomerId,
-      ownerSharePercentage: productVariations.ownerSharePercentage,
+      ownerShareAmount: productVariations.ownerShareAmount,
       ownerNotes: productVariations.ownerNotes,
       createdAt: productVariations.createdAt,
       updatedAt: productVariations.updatedAt,
@@ -262,7 +266,8 @@ export async function createVariation(
             color: input.color || null,
             size: input.size || null,
             rentPrice: input.rentPrice,
-            securityDeposit: input.securityDeposit,
+            sellingPrice: input.sellingPrice || null,
+            buyingPrice: input.buyingPrice || null,
             quantity: Number(input.quantity),
             sku,
             barcode,
@@ -272,8 +277,8 @@ export async function createVariation(
             ownerPhone: input.ownershipType === "customer_owned" ? input.ownerPhone || null : null,
             ownerCustomerId:
               input.ownershipType === "customer_owned" ? input.ownerCustomerId || null : null,
-            ownerSharePercentage:
-              input.ownershipType === "customer_owned" ? input.ownerSharePercentage || "0" : "0",
+            ownerShareAmount:
+              input.ownershipType === "customer_owned" ? input.ownerShareAmount || "0" : "0",
             ownerNotes: input.ownershipType === "customer_owned" ? input.ownerNotes || null : null,
           })
           .returning();
@@ -312,7 +317,8 @@ export async function updateVariation(
       color: input.color || null,
       size: input.size || null,
       rentPrice: input.rentPrice,
-      securityDeposit: input.securityDeposit,
+      sellingPrice: input.sellingPrice || null,
+      buyingPrice: input.buyingPrice || null,
       quantity: Number(input.quantity),
       outletId: input.outletId,
       image: input.image || null,
@@ -321,8 +327,8 @@ export async function updateVariation(
       ownerPhone: input.ownershipType === "customer_owned" ? input.ownerPhone || null : null,
       ownerCustomerId:
         input.ownershipType === "customer_owned" ? input.ownerCustomerId || null : null,
-      ownerSharePercentage:
-        input.ownershipType === "customer_owned" ? input.ownerSharePercentage || "0" : "0",
+      ownerShareAmount:
+        input.ownershipType === "customer_owned" ? input.ownerShareAmount || "0" : "0",
       ownerNotes: input.ownershipType === "customer_owned" ? input.ownerNotes || null : null,
       updatedAt: new Date(),
     })
@@ -390,7 +396,7 @@ export type VariationSearchResult = {
   ownerName: string | null;
   ownerPhone: string | null;
   ownerCustomerId: string | null;
-  ownerSharePercentage: string;
+  ownerShareAmount: string;
 };
 
 const VARIATION_SEARCH_SELECT = {
@@ -413,7 +419,7 @@ const VARIATION_SEARCH_SELECT = {
   ownerName: productVariations.ownerName,
   ownerPhone: productVariations.ownerPhone,
   ownerCustomerId: productVariations.ownerCustomerId,
-  ownerSharePercentage: productVariations.ownerSharePercentage,
+  ownerShareAmount: productVariations.ownerShareAmount,
 } as const;
 
 /**

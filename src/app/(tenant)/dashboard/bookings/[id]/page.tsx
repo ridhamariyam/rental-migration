@@ -21,6 +21,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
+import { AddBookingItemButton } from "@/components/tenant/add-booking-item-dialog";
 import { BookingStatusBadge } from "@/components/tenant/booking-status-badge";
 import { BookingCancelAction } from "@/components/tenant/booking-cancel-action";
 import { BookingPaymentsCard } from "@/components/tenant/booking-payments-card";
@@ -125,11 +126,9 @@ export default async function BookingDetailPage({
     },
   ];
 
-  // Only a non-staff viewer (admin/manager/super_admin) sees who this
-  // booking is attributed to — a staff account only ever reaches this
-  // page for their own bookings anyway (`getBookingById`'s own scoping),
-  // so the row would just repeat their own name back at them.
-  if (user.role !== "staff" && handledByName) {
+  // Every role now sees who this booking is attributed to, since staff
+  // can view bookings handled by other staff (not just their own).
+  if (handledByName) {
     fields.push({
       label: "Handled by",
       value: handledByName,
@@ -429,15 +428,22 @@ export default async function BookingDetailPage({
           />
         ) : null}
 
-        {groupSiblings.length > 0 ? (
+        {groupSiblings.length > 0 || (canManage && isEditable(booking.status)) ? (
           <Card className="lg:col-span-3">
-            <CardHeader>
+            <CardHeader className="flex-row items-center justify-between space-y-0">
               <CardTitle className="text-base">
                 Part of this order ({groupSiblings.length + 1} item
                 {groupSiblings.length + 1 === 1 ? "" : "s"})
               </CardTitle>
+              {canManage && isEditable(booking.status) ? (
+                <AddBookingItemButton
+                  bookingId={booking.id}
+                  bookingNumber={booking.bookingNumber}
+                />
+              ) : null}
             </CardHeader>
-            <CardContent>
+            {groupSiblings.length > 0 ? (
+              <CardContent>
               <div className="divide-y">
                 {groupSiblings.map((sibling) => {
                   const siblingLabel = [
@@ -469,7 +475,8 @@ export default async function BookingDetailPage({
                   );
                 })}
               </div>
-            </CardContent>
+              </CardContent>
+            ) : null}
           </Card>
         ) : null}
       </div>

@@ -42,7 +42,7 @@ const CUSTOMER_SELECT = {
   lastName: customers.lastName,
   phone: customers.phone,
   email: customers.email,
-  preferredSize: customers.preferredSize,
+  location: customers.location,
   notes: customers.notes,
   primaryStaffId: customers.primaryStaffId,
   isActive: customers.isActive,
@@ -59,7 +59,7 @@ type CustomerSelectRow = {
   lastName: string;
   phone: string;
   email: string | null;
-  preferredSize: string | null;
+  location: string | null;
   notes: string | null;
   primaryStaffId: string | null;
   isActive: boolean;
@@ -230,7 +230,7 @@ export async function createCustomer(
         lastName: input.lastName,
         phone: input.phone,
         email: input.email || null,
-        preferredSize: input.preferredSize || null,
+        location: input.location || null,
         notes: input.notes || null,
       })
       .returning();
@@ -288,7 +288,7 @@ export async function updateCustomer(
         lastName: input.lastName,
         phone: input.phone,
         email: input.email || null,
-        preferredSize: input.preferredSize || null,
+        location: input.location || null,
         notes: input.notes || null,
         updatedAt: new Date(),
       })

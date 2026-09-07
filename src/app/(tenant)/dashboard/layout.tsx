@@ -4,8 +4,11 @@ import {
   SidebarProvider,
   SidebarTrigger,
 } from "@/components/ui/sidebar";
+import { NavCheckInOut } from "@/components/tenant/nav-check-in-out";
 import { TenantSidebar } from "@/components/tenant/tenant-sidebar";
 import { getCurrentUser } from "@/lib/auth/session";
+import { hasPermission, Permission } from "@/lib/auth/permissions";
+import { getTodaysAttendance } from "@/server/attendance/service";
 
 /**
  * Protected tenant shell. Phase 6/7 only needed a guard and a bare header
@@ -37,6 +40,11 @@ export default async function TenantDashboardLayout({
     redirect("/reset-password");
   }
 
+  // Only staff/managers self-check-in (see the attendance page's own
+  // owner/super-admin redirect) — the header widget mirrors that.
+  const canSelfCheckIn = hasPermission(user.role, Permission.ATTENDANCE_SELF);
+  const today = canSelfCheckIn ? await getTodaysAttendance(user.id) : null;
+
   return (
     <SidebarProvider>
       <TenantSidebar
@@ -51,6 +59,11 @@ export default async function TenantDashboardLayout({
       <SidebarInset className="overflow-hidden">
         <header className="flex h-14 shrink-0 items-center gap-2 border-b bg-white px-4 print:hidden">
           <SidebarTrigger />
+          {canSelfCheckIn ? (
+            <div className="ml-auto">
+              <NavCheckInOut initialToday={today} />
+            </div>
+          ) : null}
         </header>
         <div className="flex flex-1 flex-col overflow-y-auto">{children}</div>
       </SidebarInset>

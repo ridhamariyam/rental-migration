@@ -54,11 +54,16 @@ export function AddVariationDialog({
   onOpenChange,
   productId,
   outlets,
+  canViewCost,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   productId: string;
   outlets: { id: string; name: string; code: string }[];
+  /** Gates the "Buying price" field — admin-only
+   * (`Permission.PRODUCT_COST_VIEW`), unlike selling/rental price which
+   * any `PRODUCT_MANAGE` role can see and set. */
+  canViewCost: boolean;
 }) {
   const router = useRouter();
   const [formError, setFormError] = useState<string | null>(null);
@@ -70,7 +75,8 @@ export function AddVariationDialog({
       color: "",
       size: "",
       rentPrice: "",
-      securityDeposit: "0",
+      buyingPrice: "",
+      sellingPrice: "",
       quantity: "1",
       outletIds: outlets[0] ? [outlets[0].id] : [],
       sku: "",
@@ -80,7 +86,7 @@ export function AddVariationDialog({
       ownerName: "",
       ownerPhone: "",
       ownerCustomerId: "",
-      ownerSharePercentage: "",
+      ownerShareAmount: "",
       ownerNotes: "",
     },
     mode: "onTouched",
@@ -104,7 +110,8 @@ export function AddVariationDialog({
         color: "",
         size: "",
         rentPrice: "",
-        securityDeposit: "0",
+        buyingPrice: "",
+        sellingPrice: "",
         quantity: "1",
         outletIds: outlets[0] ? [outlets[0].id] : [],
         sku: "",
@@ -114,7 +121,7 @@ export function AddVariationDialog({
         ownerName: "",
         ownerPhone: "",
         ownerCustomerId: "",
-        ownerSharePercentage: "",
+        ownerShareAmount: "",
         ownerNotes: "",
       });
       setPickedOwner(null);
@@ -128,7 +135,7 @@ export function AddVariationDialog({
             fieldError.field === "barcode" ||
             fieldError.field === "outletIds" ||
             fieldError.field === "ownerName" ||
-            fieldError.field === "ownerSharePercentage"
+            fieldError.field === "ownerShareAmount"
           ) {
             form.setError(
               fieldError.field as
@@ -136,7 +143,7 @@ export function AddVariationDialog({
                 | "barcode"
                 | "outletIds"
                 | "ownerName"
-                | "ownerSharePercentage",
+                | "ownerShareAmount",
               { message: fieldError.message },
             );
             mappedToField = true;
@@ -238,22 +245,38 @@ export function AddVariationDialog({
                 <FieldError errors={[form.formState.errors.rentPrice]} />
               </Field>
 
-              <Field data-invalid={!!form.formState.errors.securityDeposit}>
-                <FieldLabel htmlFor="securityDeposit">
-                  Security deposit
+              <Field data-invalid={!!form.formState.errors.sellingPrice}>
+                <FieldLabel htmlFor="sellingPrice">
+                  Selling price (optional)
                 </FieldLabel>
                 <Input
-                  id="securityDeposit"
+                  id="sellingPrice"
                   inputMode="decimal"
                   placeholder="0.00"
                   disabled={isSubmitting}
-                  {...form.register("securityDeposit")}
+                  {...form.register("sellingPrice")}
                 />
-                <FieldError errors={[form.formState.errors.securityDeposit]} />
+                <FieldError errors={[form.formState.errors.sellingPrice]} />
               </Field>
             </div>
 
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              {canViewCost ? (
+                <Field data-invalid={!!form.formState.errors.buyingPrice}>
+                  <FieldLabel htmlFor="buyingPrice">
+                    Buying price (optional)
+                  </FieldLabel>
+                  <Input
+                    id="buyingPrice"
+                    inputMode="decimal"
+                    placeholder="0.00"
+                    disabled={isSubmitting}
+                    {...form.register("buyingPrice")}
+                  />
+                  <FieldError errors={[form.formState.errors.buyingPrice]} />
+                </Field>
+              ) : null}
+
               <Field data-invalid={!!form.formState.errors.quantity}>
                 <FieldLabel htmlFor="quantity">Quantity</FieldLabel>
                 <Input
@@ -410,19 +433,19 @@ export function AddVariationDialog({
                     </Field>
                   </div>
 
-                  <Field data-invalid={!!form.formState.errors.ownerSharePercentage}>
-                    <FieldLabel htmlFor="ownerSharePercentage">
-                      Owner&rsquo;s revenue share (%)
+                  <Field data-invalid={!!form.formState.errors.ownerShareAmount}>
+                    <FieldLabel htmlFor="ownerShareAmount">
+                      Owner&rsquo;s revenue share
                     </FieldLabel>
                     <Input
-                      id="ownerSharePercentage"
+                      id="ownerShareAmount"
                       inputMode="decimal"
-                      placeholder="e.g. 60"
+                      placeholder="e.g. 500.00"
                       disabled={isSubmitting}
-                      {...form.register("ownerSharePercentage")}
+                      {...form.register("ownerShareAmount")}
                     />
                     <FieldError
-                      errors={[form.formState.errors.ownerSharePercentage]}
+                      errors={[form.formState.errors.ownerShareAmount]}
                     />
                   </Field>
 

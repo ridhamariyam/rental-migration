@@ -504,7 +504,7 @@ export type BookingReceipt = {
 export async function getReceipt(
   shopId: string,
   bookingId: string,
-  actor: Pick<TenantSessionUser, "id" | "role">,
+  _actor: Pick<TenantSessionUser, "id" | "role">,
 ): Promise<BookingReceipt | null> {
   const [row] = await db
     .select({
@@ -528,18 +528,7 @@ export async function getReceipt(
       productVariations,
       eq(bookings.variationId, productVariations.id),
     )
-    .where(
-      and(
-        eq(bookings.id, bookingId),
-        eq(bookings.shopId, shopId),
-        // Same "staff only sees their own bookings" rule as
-        // `bookings/service.ts`'s `staffScopeCondition` — kept as a local
-        // inline check rather than importing that helper, since this is
-        // the one place outside `bookings/service.ts` that reads a full
-        // booking row directly.
-        actor.role === "staff" ? eq(bookings.handledById, actor.id) : undefined,
-      ),
-    )
+    .where(and(eq(bookings.id, bookingId), eq(bookings.shopId, shopId)))
     .limit(1);
 
   if (!row) {

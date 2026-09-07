@@ -2,16 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { ArrowLeftIcon, BarcodeIcon, ShirtIcon, TagIcon } from "lucide-react";
 import { ProductForm } from "@/components/tenant/product-form";
-import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import {
-  Empty,
-  EmptyContent,
-  EmptyDescription,
-  EmptyHeader,
-  EmptyMedia,
-  EmptyTitle,
-} from "@/components/ui/empty";
 import { getCurrentUser } from "@/lib/auth/session";
 import { hasPermission, Permission } from "@/lib/auth/permissions";
 import { tenantPaths } from "@/lib/tenant-paths";
@@ -74,41 +65,15 @@ export default async function NewProductPage() {
       </div>
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-        {categories.length === 0 ? (
-          <Card className="lg:col-span-2">
-            <CardContent className="p-0">
-              <Empty className="py-20">
-                <EmptyHeader>
-                  <EmptyMedia variant="icon">
-                    <TagIcon />
-                  </EmptyMedia>
-                  <EmptyTitle>Add a category first</EmptyTitle>
-                  <EmptyDescription>
-                    Every product belongs to a category — create one before
-                    adding your first product.
-                  </EmptyDescription>
-                </EmptyHeader>
-                <EmptyContent>
-                  <Button
-                    nativeButton={false}
-                    render={<Link href={tenantPaths.categories} />}
-                  >
-                    Add category
-                  </Button>
-                </EmptyContent>
-              </Empty>
-            </CardContent>
-          </Card>
-        ) : (
-          <Card className="lg:col-span-2">
-            <CardHeader>
-              <CardTitle className="text-base">Product details</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <ProductForm categories={categories} />
-            </CardContent>
-          </Card>
-        )}
+        <Card className="lg:col-span-2">
+          <CardHeader>
+            <CardTitle className="text-base">Product details</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <ProductForm categories={categories} />
+          </CardContent>
+        </Card>
+
 
         <Card>
           <CardHeader>

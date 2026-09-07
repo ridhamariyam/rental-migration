@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { ArrowLeftIcon, InfoIcon, ShieldAlertIcon } from "lucide-react";
+import { AddBookingItemButton } from "@/components/tenant/add-booking-item-dialog";
 import { BookingEditForm } from "@/components/tenant/booking-edit-form";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { getCurrentUser } from "@/lib/auth/session";
@@ -18,9 +19,9 @@ export const metadata = {
 const aboutEditing = [
   {
     icon: InfoIcon,
-    title: "Dates only",
+    title: "Customer, item and discount are fixed",
     description:
-      "The customer, item and discount are all fixed once a booking is created — cancel and create a new one to change those.",
+      "Dates, quantity (only downward) and additional cost can all be changed here — cancel and create a new booking to change the customer, item, or discount.",
   },
   {
     icon: ShieldAlertIcon,
@@ -65,9 +66,16 @@ export default async function EditBookingPage({ params }: { params: Params }) {
         <div className="flex flex-col gap-1">
           <h1 className="text-xl font-semibold tracking-tight">Edit booking</h1>
           <p className="text-muted-foreground text-sm">
-            Update this booking&rsquo;s pickup and return dates.
+            Update this booking&rsquo;s dates, quantity and additional cost.
           </p>
         </div>
+      </div>
+
+      <div className="flex justify-end">
+        <AddBookingItemButton
+          bookingId={booking.id}
+          bookingNumber={booking.bookingNumber}
+        />
       </div>
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
