@@ -24,7 +24,7 @@ import {
   productVariations,
 } from "../src/lib/db/schema";
 import { generateBookingNumberCandidate } from "../src/lib/booking-number";
-import { addMoney, multiplyMoneyByDays, percentageOfMoney, subtractMoneyNonNegative } from "../src/lib/money";
+import { addMoney, compareMoney, multiplyMoneyByDays, subtractMoneyNonNegative } from "../src/lib/money";
 
 const databaseUrl = process.env.DATABASE_URL;
 if (!databaseUrl) throw new Error("DATABASE_URL is not set — check .env.local");
@@ -146,7 +146,10 @@ async function main() {
       },
     ]);
 
-    const ownerAmount = percentageOfMoney(grossRent, variation.ownerSharePercentage);
+    const ownerAmount =
+      compareMoney(variation.ownerShareAmount, grossRent) > 0
+        ? grossRent
+        : variation.ownerShareAmount;
     const shopAmount = subtractMoneyNonNegative(grossRent, ownerAmount);
     const paid = i % 2 === 0;
 
@@ -158,7 +161,7 @@ async function main() {
       ownerName: variation.ownerName,
       ownerPhone: variation.ownerPhone,
       grossRentalAmount: grossRent,
-      sharePercentage: variation.ownerSharePercentage,
+      shareAmount: variation.ownerShareAmount,
       ownerAmount,
       shopAmount,
       status: paid ? "paid" : "pending",

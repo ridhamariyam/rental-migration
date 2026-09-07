@@ -29,12 +29,14 @@ export function VariationsCard({
   variations,
   outlets,
   canManage,
+  canViewCost,
 }: {
   productId: string;
   productName: string;
   variations: VariationListItem[];
   outlets: { id: string; name: string; code: string }[];
   canManage: boolean;
+  canViewCost: boolean;
 }) {
   const [addOpen, setAddOpen] = useState(false);
 
@@ -111,6 +113,7 @@ export function VariationsCard({
                   variation={variation}
                   productName={productName}
                   outlets={outlets}
+                  canViewCost={canViewCost}
                 />
               ))}
             </TableBody>
@@ -123,6 +126,7 @@ export function VariationsCard({
         onOpenChange={setAddOpen}
         productId={productId}
         outlets={outlets}
+        canViewCost={canViewCost}
       />
     </Card>
   );

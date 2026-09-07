@@ -13,7 +13,7 @@ import {
 import { Permission, hasPermission } from "@/lib/auth/permissions";
 import type { TenantSessionUser } from "@/server/auth/guard";
 import { AuditAction, recordAudit } from "@/server/audit/service";
-import { addMoney, compareMoney, percentageOfMoney, subtractMoney, ZERO_MONEY } from "@/lib/money";
+import { addMoney, compareMoney, subtractMoney, ZERO_MONEY } from "@/lib/money";
 import type { PaymentTx } from "@/server/payments/service";
 import type { MarkSettlementPaidInput, SettlementListQuery } from "@/lib/validation/settlements";
 
@@ -33,7 +33,7 @@ const SETTLEMENT_SELECT = {
   ownerPhone: ownerSettlements.ownerPhone,
   ownerCustomerId: ownerSettlements.ownerCustomerId,
   grossRentalAmount: ownerSettlements.grossRentalAmount,
-  sharePercentage: ownerSettlements.sharePercentage,
+  shareAmount: ownerSettlements.shareAmount,
   ownerAmount: ownerSettlements.ownerAmount,
   shopAmount: ownerSettlements.shopAmount,
   status: ownerSettlements.status,
@@ -67,6 +67,10 @@ function baseSettlementQuery() {
  * booking-state machine, but a retried transaction could replay this) never
  * creates a duplicate payout.
  *
+ * The owner's share is a fixed amount, not a percentage of the rent —
+ * clamped so it never exceeds the gross rental amount (an owner can never
+ * be owed more than the rental itself brought in).
+ *
  * Never permission-checked on its own, same reasoning as
  * `insertPaymentRow`: the outer `returnBooking` action is already gated by
  * `BOOKING_RETURN`.
@@ -83,7 +87,7 @@ export async function recordSettlementForBooking(
       ownerName: string | null;
       ownerPhone: string | null;
       ownerCustomerId: string | null;
-      ownerSharePercentage: string;
+      ownerShareAmount: string;
     };
     grossRentalAmount: string;
   },
@@ -102,14 +106,14 @@ export async function recordSettlementForBooking(
     return null;
   }
 
-  if (compareMoney(params.variation.ownerSharePercentage, ZERO_MONEY) <= 0) {
+  if (compareMoney(params.variation.ownerShareAmount, ZERO_MONEY) <= 0) {
     return null;
   }
 
-  const ownerAmount = percentageOfMoney(
-    params.grossRentalAmount,
-    params.variation.ownerSharePercentage,
-  );
+  const ownerAmount =
+    compareMoney(params.variation.ownerShareAmount, params.grossRentalAmount) > 0
+      ? params.grossRentalAmount
+      : params.variation.ownerShareAmount;
 
   if (compareMoney(ownerAmount, ZERO_MONEY) <= 0) {
     return null;
@@ -128,7 +132,7 @@ export async function recordSettlementForBooking(
       ownerPhone: params.variation.ownerPhone,
       ownerCustomerId: params.variation.ownerCustomerId,
       grossRentalAmount: params.grossRentalAmount,
-      sharePercentage: params.variation.ownerSharePercentage,
+      shareAmount: params.variation.ownerShareAmount,
       ownerAmount,
       shopAmount,
       status: "pending",

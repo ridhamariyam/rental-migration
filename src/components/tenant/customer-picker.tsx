@@ -1,11 +1,12 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { SearchIcon, UserIcon, XIcon } from "lucide-react";
+import { PlusIcon, SearchIcon, UserIcon, XIcon } from "lucide-react";
 
 import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
 import { Button } from "@/components/ui/button";
+import { CustomerFormDialog } from "@/components/tenant/customer-form-dialog";
 import { apiRequest } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
 
@@ -20,12 +21,19 @@ export type PickedCustomer = {
 
 type CustomerSearchItem = PickedCustomer;
 
+/** A typed search query is a phone number, not a name, once it's mostly
+ * digits/symbols \u2014 used to decide which field to prefill on "+ Add new
+ * customer". */
+function looksLikePhone(query: string): boolean {
+  return /^[+\d][\d\s()-]*$/.test(query.trim());
+}
+
 /**
- * Search-select for the booking form's "Customer" field — searches the
+ * Search-select for the booking form's "Customer" field \u2014 searches the
  * existing `/api/customers?q=` endpoint (no separate search API needed),
  * a small unpaginated-feeling result list rather than a full picker page.
- * Deliberately no inline "create customer" shortcut: a walk-in the staff
- * can't find should be added properly from the Customers page first.
+ * Includes an inline "+ Add new customer" option for the rare walk-in that
+ * isn't found, so staff don't have to abandon the booking in progress.
  */
 export function CustomerPicker({
   value,
@@ -42,6 +50,7 @@ export function CustomerPicker({
   const [results, setResults] = useState<CustomerSearchItem[]>([]);
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [addDialogOpen, setAddDialogOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -175,8 +184,38 @@ export function CustomerPicker({
               </button>
             ))
           )}
+
+          {!loading ? (
+            <button
+              type="button"
+              role="option"
+              aria-selected={false}
+              className="hover:bg-accent hover:text-accent-foreground text-primary flex w-full items-center gap-2 border-t px-3 py-2 text-left text-sm font-medium"
+              onClick={() => {
+                setOpen(false);
+                setAddDialogOpen(true);
+              }}
+            >
+              <PlusIcon className="size-4" />
+              Add new customer
+            </button>
+          ) : null}
         </div>
       ) : null}
+
+      <CustomerFormDialog
+        open={addDialogOpen}
+        onOpenChange={setAddDialogOpen}
+        initialValues={
+          looksLikePhone(query)
+            ? { phone: query.trim() }
+            : { firstName: query.trim() }
+        }
+        onSuccess={(customer) => {
+          onSelect(customer);
+          setQuery("");
+        }}
+      />
     </div>
   );
 }

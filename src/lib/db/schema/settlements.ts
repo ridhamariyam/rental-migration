@@ -25,7 +25,7 @@ import { users } from "@/lib/db/schema/users";
  * the fly inside a report, same "settlements are persisted transactions"
  * rule `payments` already follows.
  *
- * `ownerName`/`ownerPhone`/`sharePercentage` are **snapshotted** from the
+ * `ownerName`/`ownerPhone`/`shareAmount` are **snapshotted** from the
  * variation at the moment of return, not read live from it later — an
  * owner's share or contact details changing next month must never rewrite
  * what was actually owed for a rental that already happened.
@@ -61,8 +61,8 @@ export const ownerSettlements = pgTable(
       precision: 12,
       scale: 2,
     }).notNull(),
-    sharePercentage: numeric("share_percentage", {
-      precision: 5,
+    shareAmount: numeric("share_amount", {
+      precision: 12,
       scale: 2,
     }).notNull(),
     ownerAmount: numeric("owner_amount", { precision: 12, scale: 2 }).notNull(),

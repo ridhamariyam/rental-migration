@@ -63,11 +63,6 @@ export async function BookingsTable({
     viewer,
   );
   const hasFilters = Boolean(query.q) || query.status !== "all";
-  // Only a non-staff viewer (admin/manager/super_admin) sees who handled
-  // each booking — a plain staff account already only ever sees their own
-  // bookings (`listBookings`' own scoping), so the column would be a
-  // no-op repeat of their own name on every row.
-  const showHandledBy = viewer.role !== "staff";
 
   if (items.length === 0) {
     return (
@@ -109,11 +104,9 @@ export async function BookingsTable({
             <TableHead className="text-muted-foreground h-11 px-4 text-xs font-medium tracking-wide uppercase">
               Amount
             </TableHead>
-            {showHandledBy ? (
-              <TableHead className="text-muted-foreground h-11 px-4 text-xs font-medium tracking-wide uppercase">
-                Handled by
-              </TableHead>
-            ) : null}
+            <TableHead className="text-muted-foreground h-11 px-4 text-xs font-medium tracking-wide uppercase">
+              Handled by
+            </TableHead>
             <TableHead className="text-muted-foreground h-11 px-4 text-xs font-medium tracking-wide uppercase">
               Status
             </TableHead>
@@ -218,39 +211,38 @@ export async function BookingsTable({
                   {formatMoney(booking.totalAmount)}
                 </TableCell>
 
-                {showHandledBy ? (
-                  <TableCell className="px-4 py-3 text-sm">
-                    {booking.handledByFirstName ? (
-                      (() => {
-                        const handledByName =
-                          `${booking.handledByFirstName} ${booking.handledByLastName ?? ""}`.trim();
-                        return (
-                          <div className="flex items-center gap-2">
-                            <Avatar className="size-6 shrink-0">
-                              <AvatarImage
-                                src={staffAvatarSrc(handledByName)}
-                                alt={handledByName}
-                              />
-                              <AvatarFallback
-                                className="!text-white text-[9px] font-semibold"
-                                style={{
-                                  backgroundImage: avatarGradient(handledByName),
-                                }}
-                              >
-                                {initialsFor(handledByName)}
-                              </AvatarFallback>
-                            </Avatar>
-                            <span className="text-foreground font-medium">
-                              {handledByName}
-                            </span>
-                          </div>
-                        );
-                      })()
-                    ) : (
-                      <span className="text-muted-foreground">—</span>
-                    )}
-                  </TableCell>
-                ) : null}
+                <TableCell className="px-4 py-3 text-sm">
+                  {booking.handledByFirstName ? (
+                    (() => {
+                      const handledByName =
+                        `${booking.handledByFirstName} ${booking.handledByLastName ?? ""}`.trim();
+                      return (
+                        <div className="flex items-center gap-2">
+                          <Avatar className="size-6 shrink-0">
+                            <AvatarImage
+                              src={staffAvatarSrc(handledByName)}
+                              alt={handledByName}
+                            />
+                            <AvatarFallback
+                              className="!text-white text-[9px] font-semibold"
+                              style={{
+                                backgroundImage: avatarGradient(handledByName),
+                              }}
+                            >
+                              {initialsFor(handledByName)}
+                            </AvatarFallback>
+                          </Avatar>
+                          <span className="text-foreground font-medium">
+                            {handledByName}
+                          </span>
+                        </div>
+                      );
+                    })()
+                  ) : (
+                    <span className="text-muted-foreground">—</span>
+                  )}
+                </TableCell>
+
 
                 <TableCell className="px-4 py-3">
                   <BookingStatusBadge status={booking.status} />

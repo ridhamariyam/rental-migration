@@ -143,11 +143,11 @@ export const optionalMoneySchema = z
   );
 
 /**
- * A revenue-share percentage (0–100, up to two decimal places, matching
- * the `Numeric(5,2)` `ownerSharePercentage` column) — used by
- * `variations.ts`'s ownership fields. Kept as a string end-to-end for the
- * same reason `moneySchema` is: `src/lib/money.ts`'s `percentageOfMoney`
- * works on the raw decimal string, never a JS `number`.
+ * A revenue-share percentage (0–100, up to two decimal places) — kept
+ * here as a shared primitive even though `variations.ts`'s ownership
+ * fields now use `optionalMoneySchema` (`ownerShareAmount`) instead; no
+ * current call site uses this, but it's a reasonable percentage input to
+ * reach for again later.
  */
 export const percentageSchema = z
   .string()

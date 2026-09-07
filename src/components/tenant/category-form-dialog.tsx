@@ -46,10 +46,15 @@ export function CategoryFormDialog({
   open,
   onOpenChange,
   category,
+  onSuccess,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   category?: CategoryRow;
+  /** Called with the created/updated row right after a successful save —
+   * lets a caller like the product form auto-select a category it just
+   * created inline, on top of the router refresh every caller gets. */
+  onSuccess?: (category: CategoryRow) => void;
 }) {
   const router = useRouter();
   const isEditing = Boolean(category);
@@ -82,7 +87,7 @@ export function CategoryFormDialog({
     setFormError(null);
 
     try {
-      await apiRequest(
+      const saved = await apiRequest<CategoryRow>(
         isEditing ? `/api/categories/${category!.id}` : "/api/categories",
         {
           method: isEditing ? "PATCH" : "POST",
@@ -90,6 +95,7 @@ export function CategoryFormDialog({
         },
       );
       onOpenChange(false);
+      onSuccess?.(saved);
       router.refresh();
     } catch (error) {
       if (error instanceof ApiClientError && error.fieldErrors.length > 0) {

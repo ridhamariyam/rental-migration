@@ -21,6 +21,7 @@ import {
   notificationRules,
   outlets,
   payments,
+  productVariations,
   products,
   shops,
   whatsappNumbers,
@@ -678,6 +679,145 @@ export async function queueBookingLifecycleNotifications(
   await queueBookingNotification(database, booking, "return_due_today", {
     scheduledFor: atLocalHour(booking.toDate),
   });
+}
+
+type OwnerNotificationEvent = "owner_item_booked" | "owner_item_cancelled";
+
+/**
+ * Builds the notification context for a customer-owned item's *owner*
+ * (`product_variations.ownershipType === "customer_owned"`) — a different
+ * recipient from `buildBookingContext`'s renting customer. Returns `null`
+ * for a shop-owned item or an owner with no phone on file, so callers can
+ * silently skip queueing rather than special-casing every call site.
+ */
+async function buildOwnerBookingContext(
+  database: DbOrTx,
+  bookingId: string,
+): Promise<{
+  shopId: string;
+  recipientPhone: string;
+  recipientName: string;
+  values: Record<string, string>;
+} | null> {
+  const [row] = await database
+    .select({
+      booking: bookings,
+      shopName: shops.name,
+      productName: products.name,
+      outletName: outlets.name,
+      ownershipType: productVariations.ownershipType,
+      ownerName: productVariations.ownerName,
+      ownerPhone: productVariations.ownerPhone,
+    })
+    .from(bookings)
+    .innerJoin(shops, eq(bookings.shopId, shops.id))
+    .innerJoin(products, eq(bookings.productId, products.id))
+    .innerJoin(productVariations, eq(bookings.variationId, productVariations.id))
+    .leftJoin(outlets, eq(bookings.outletId, outlets.id))
+    .where(eq(bookings.id, bookingId))
+    .limit(1);
+
+  if (!row) throw AppError.notFound("Booking not found");
+  if (row.ownershipType !== "customer_owned" || !row.ownerPhone) return null;
+
+  const recipientName = row.ownerName || "Owner";
+
+  return {
+    shopId: row.booking.shopId,
+    recipientPhone: normalizeWhatsAppPhone(
+      row.ownerPhone,
+      env.WHATSAPP_DEFAULT_COUNTRY_CODE,
+    ),
+    recipientName,
+    values: {
+      owner_name: recipientName,
+      booking_number: row.booking.bookingNumber,
+      product_name: row.productName,
+      from_date: formatDate(row.booking.fromDate),
+      to_date: formatDate(row.booking.toDate),
+      shop_name: row.shopName,
+      outlet_name: row.outletName ?? row.shopName,
+    },
+  };
+}
+
+/**
+ * Owner-side counterpart to `queueBookingNotification` — same rule/
+ * template/dedupe mechanics, but the recipient is the item's owner (via
+ * `buildOwnerBookingContext`), not the renting customer. No-ops for a
+ * shop-owned item or an owner with no phone on file.
+ */
+export async function queueOwnerBookingNotification(
+  database: DbOrTx,
+  booking: Pick<Booking, "id" | "shopId">,
+  event: OwnerNotificationEvent,
+): Promise<NotificationLog | null> {
+  await ensureDefaultNotificationRules(booking.shopId, database);
+
+  const [rule] = await database
+    .select()
+    .from(notificationRules)
+    .where(and(eq(notificationRules.shopId, booking.shopId), eq(notificationRules.event, event)))
+    .limit(1);
+
+  if (!rule?.isEnabled || !rule.templateId || !rule.whatsappNumberId) return null;
+
+  const context = await buildOwnerBookingContext(database, booking.id);
+  if (!context) return null;
+
+  const [number] = await database
+    .select()
+    .from(whatsappNumbers)
+    .where(and(eq(whatsappNumbers.id, rule.whatsappNumberId), eq(whatsappNumbers.shopId, booking.shopId)))
+    .limit(1);
+  const [template] = await database
+    .select()
+    .from(whatsappTemplates)
+    .where(and(eq(whatsappTemplates.id, rule.templateId), eq(whatsappTemplates.shopId, booking.shopId)))
+    .limit(1);
+
+  if (!number || !template || template.status.toLowerCase() !== "approved") return null;
+
+  const [existing] = await database
+    .select()
+    .from(notificationLogs)
+    .where(
+      and(
+        eq(notificationLogs.shopId, booking.shopId),
+        eq(notificationLogs.bookingId, booking.id),
+        eq(notificationLogs.event, event),
+      ),
+    )
+    .limit(1);
+  if (existing) return existing;
+
+  const components = buildTemplateComponents(rule.variableMapping, context.values);
+  const logId = randomUUID();
+
+  const [log] = await database
+    .insert(notificationLogs)
+    .values({
+      id: logId,
+      shopId: booking.shopId,
+      bookingId: booking.id,
+      recipientPhone: context.recipientPhone,
+      recipientName: context.recipientName,
+      event,
+      whatsappNumberId: number.id,
+      templateId: template.id,
+      integratedNumber: number.integratedNumber,
+      templateName: template.name,
+      templateNamespace: template.namespace,
+      templateLanguage: template.language,
+      components,
+      payload: { context: context.values },
+      status: "queued",
+      scheduledFor: offsetDate(null, rule.scheduleOffsetMinutes),
+      crqid: logId.replace(/-/g, "").slice(0, 52),
+    })
+    .returning();
+
+  return log;
 }
 
 export async function retryNotification(

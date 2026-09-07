@@ -45,8 +45,8 @@ import { generateBookingNumberCandidate } from "../src/lib/booking-number";
 import { generateBarcode, generateSku } from "../src/lib/barcode";
 import {
   addMoney,
+  compareMoney,
   multiplyMoneyByDays,
-  percentageOfMoney,
   subtractMoneyNonNegative,
 } from "../src/lib/money";
 
@@ -227,7 +227,7 @@ async function main() {
       securityDeposit: number;
       quantity: number;
       outletId: string;
-      customerOwned?: { ownerName: string; ownerPhone: string; sharePercentage: number };
+      customerOwned?: { ownerName: string; ownerPhone: string; shareAmount: number };
     }[];
   };
 
@@ -257,7 +257,7 @@ async function main() {
           securityDeposit: 3500,
           quantity: 3,
           outletId: outletCycle[1],
-          customerOwned: { ownerName: "Devika Menon", ownerPhone: "+91 98450 11111", sharePercentage: 55 },
+          customerOwned: { ownerName: "Devika Menon", ownerPhone: "+91 98450 11111", shareAmount: 2500 },
         },
       ],
     },
@@ -304,7 +304,7 @@ async function main() {
           securityDeposit: 1800,
           quantity: 3,
           outletId: outletCycle[0],
-          customerOwned: { ownerName: "Rajeev Kurup", ownerPhone: "+91 98450 22222", sharePercentage: 50 },
+          customerOwned: { ownerName: "Rajeev Kurup", ownerPhone: "+91 98450 22222", shareAmount: 1300 },
         },
       ],
     },
@@ -330,7 +330,7 @@ async function main() {
           securityDeposit: 2000,
           quantity: 2,
           outletId: outletCycle[1],
-          customerOwned: { ownerName: "Lakshmi Warrier", ownerPhone: "+91 98450 33333", sharePercentage: 60 },
+          customerOwned: { ownerName: "Lakshmi Warrier", ownerPhone: "+91 98450 33333", shareAmount: 1200 },
         },
         { color: "Blue", size: "Free Size", rentPrice: 2200, securityDeposit: 2000, quantity: 4, outletId: outletCycle[2] },
       ],
@@ -437,7 +437,7 @@ async function main() {
       ownershipType: v.customerOwned ? ("customer_owned" as const) : ("shop_owned" as const),
       ownerName: v.customerOwned?.ownerName ?? null,
       ownerPhone: v.customerOwned?.ownerPhone ?? null,
-      ownerSharePercentage: v.customerOwned ? money(v.customerOwned.sharePercentage) : "0",
+      ownerShareAmount: v.customerOwned ? money(v.customerOwned.shareAmount) : "0",
     }));
 
     const inserted = await db.insert(productVariations).values(variationValues).returning();
@@ -766,7 +766,10 @@ async function main() {
     // Settlement for a customer-owned variation's completed rental.
     if (customerOwnedVariationIds.includes(variation.id) && settlementCount < 5) {
       settlementCount += 1;
-      const ownerAmount = percentageOfMoney(grossRent, variation.ownerSharePercentage);
+      const ownerAmount =
+        compareMoney(variation.ownerShareAmount, grossRent) > 0
+          ? grossRent
+          : variation.ownerShareAmount;
       const shopAmount = subtractMoneyNonNegative(grossRent, ownerAmount);
       const paid = settlementCount % 2 === 0;
       await db.insert(ownerSettlements).values({
@@ -777,7 +780,7 @@ async function main() {
         ownerName: variation.ownerName,
         ownerPhone: variation.ownerPhone,
         grossRentalAmount: grossRent,
-        sharePercentage: variation.ownerSharePercentage,
+        shareAmount: variation.ownerShareAmount,
         ownerAmount,
         shopAmount,
         status: paid ? "paid" : "pending",

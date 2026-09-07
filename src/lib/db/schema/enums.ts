@@ -183,7 +183,7 @@ export const leaveStatusEnum = pgEnum("leave_status", [
  * `shop_owned`; `customer_owned` is a customer's own piece (e.g. a
  * family heirloom saree) the shop lists and rents out on their behalf,
  * splitting the rent with them — see `product-variations.ts`'s
- * `ownerSharePercentage` and `settlements.ts`.
+ * `ownerShareAmount` and `settlements.ts`.
  */
 export const ownershipTypeEnum = pgEnum("ownership_type", [
   "shop_owned",
@@ -218,6 +218,11 @@ export const notificationEventEnum = pgEnum("notification_event", [
   "booking_returned",
   "booking_cancelled",
   "staff_welcome",
+  // Sent to a customer-owned item's owner (not the renting customer) —
+  // see `ownershipType` on `product_variations` and
+  // `queueOwnerBookingNotification` in `server/notifications/service.ts`.
+  "owner_item_booked",
+  "owner_item_cancelled",
 ]);
 
 export const notificationLogStatusEnum = pgEnum("notification_log_status", [

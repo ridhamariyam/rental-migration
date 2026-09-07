@@ -5,6 +5,7 @@ import {
   optionalUuidSchema,
   uuidSchema,
 } from "@/lib/validation/common";
+import { PAYMENT_METHOD_VALUES } from "@/lib/validation/payments";
 import { toDateString } from "@/lib/format";
 
 export const bookingIdParamSchema = z.object({ id: uuidSchema });
@@ -172,11 +173,13 @@ export type QuoteRequestInput = z.infer<typeof quoteRequestSchema>;
 /**
  * One "cart line" — a customer can rent several *different* items in the
  * same transaction (e.g. an outfit plus accessories for the same event),
- * each with its own item and its own dates/discount, since one might be
+ * each with its own item and its own dates, since one might be
  * returned before another. `quantity` requests that many *identical*
- * units of this same line (same item, same dates, same discount) — still
+ * units of this same line (same item, same dates) — still
  * just this one line/one `bookings` row, priced at `rate × quantity` (see
- * `bookingQuantitySchema`).
+ * `bookingQuantitySchema`). Discount/security deposit/additional cost/
+ * advance are no longer per-line — they're one shared adjustment for the
+ * whole order, see `createBookingSchema`.
  */
 export const bookingItemSchema = z
   .object({
@@ -184,28 +187,12 @@ export const bookingItemSchema = z
     barcode: z.string().trim().max(50).optional(),
     fromDate: dateStringSchema,
     toDate: dateStringSchema,
-    discountAmount: optionalMoneySchema,
-    /** A one-off extra charge on this line (alteration, delivery, …) —
-     * unlike `discountAmount` this needs no special permission: any role
-     * that can create a booking can bill for work the shop actually did,
-     * as long as it says what it was for. */
-    additionalCost: optionalMoneySchema,
-    additionalCostReason: z
-      .string()
-      .trim()
-      .max(200, "Must be at most 200 characters")
-      .optional(),
-    /** Deposit to hold per unit. Blank keeps the item's own default — the
-     * counter only fills this in when it has agreed something else (a
-     * regular customer, a higher-value piece). */
-    securityDeposit: optionalMoneySchema,
     quantity: bookingQuantitySchema,
   })
   .superRefine((data, ctx) => {
     itemIdentifierRefinement(data, ctx);
     dateRangeRefinement(data, ctx);
     pickupNotInPastRefinement(data, ctx);
-    additionalCostRefinement(data, ctx);
   });
 
 export type BookingItemInput = z.infer<typeof bookingItemSchema>;
@@ -246,6 +233,28 @@ export const createBookingSchema = z
       .array(bookingItemSchema)
       .min(1, "Add at least one item")
       .max(20, "A single order can have at most 20 items"),
+    // Order-level adjustments — one shared discount/deposit/extra-charge/
+    // advance for the whole cart, not per line (a wedding order is one
+    // conversation about price with the customer, not one per item).
+    // Attached to the *first* created line at persistence time; see
+    // `createBookingGroup`'s doc comment for why.
+    discountAmount: optionalMoneySchema,
+    /** Total deposit to hold for the whole order. Blank keeps every line's
+     * own item default (summed); a value replaces that sum entirely,
+     * for the counter that would rather agree one combined refundable
+     * deposit than configure it per item. */
+    securityDeposit: optionalMoneySchema,
+    additionalCost: optionalMoneySchema,
+    additionalCostReason: z
+      .string()
+      .trim()
+      .max(200, "Must be at most 200 characters")
+      .optional(),
+    /** Recorded as an `advance` payment against the order's first line the
+     * moment the booking is created — lets the counter capture "they paid
+     * X now" without a separate trip to the Record Payment dialog. */
+    advanceAmount: optionalMoneySchema,
+    advancePaymentMethod: z.enum(PAYMENT_METHOD_VALUES).optional(),
     notes: z
       .string()
       .trim()
@@ -279,28 +288,49 @@ export const createBookingSchema = z
         message: `A single order can request at most ${MAX_TOTAL_BOOKING_UNITS} units in total`,
       });
     }
+    additionalCostRefinement(data, ctx);
   });
 
 export type CreateBookingInput = z.infer<typeof createBookingSchema>;
 
-/** Editing an existing **draft** booking — dates/notes only. The item,
- * customer, outlet and discount are all fixed once created (start over
- * with a new booking to change those, matching `is_editable`'s
- * "paperwork-only" reasoning ported from the legacy state machine). The
- * discount specifically is frozen the same way `handledById` is — it's
- * part of what was agreed with the customer at booking time, not
- * something to quietly change later. */
+/**
+ * Editing an existing **draft/confirmed/pickup_pending** booking (see
+ * `EDITABLE_STATUSES`) — dates, notes, and now also quantity (decrease
+ * only — cancel the line instead to remove it entirely) and the
+ * additional-cost charge (e.g. an agreed late-return fee added after the
+ * fact). The item, customer, outlet and discount are all still fixed once
+ * created (start over with a new booking to change those). The discount
+ * specifically stays frozen the same way `handledById` is — it's part of
+ * what was agreed with the customer at booking time, not something to
+ * quietly change later; if a quantity decrease would leave it bigger than
+ * the new (smaller) rent, the server clamps it down rather than reject
+ * the edit.
+ */
 export const updateBookingSchema = z
   .object({
     fromDate: dateStringSchema,
     toDate: dateStringSchema,
+    /** Omit to leave the quantity unchanged. Can only ever go *down* from
+     * what the booking already has — increasing it here would need a
+     * fresh availability check against new units, which is what creating
+     * a new line is for. */
+    quantity: bookingQuantitySchema.optional(),
+    additionalCost: optionalMoneySchema,
+    additionalCostReason: z
+      .string()
+      .trim()
+      .max(200, "Must be at most 200 characters")
+      .optional(),
     notes: z
       .string()
       .trim()
       .max(2000, "Notes must be at most 2000 characters")
       .optional(),
   })
-  .superRefine((data, ctx) => dateRangeRefinement(data, ctx));
+  .superRefine((data, ctx) => {
+    dateRangeRefinement(data, ctx);
+    additionalCostRefinement(data, ctx);
+  });
 
 export type UpdateBookingInput = z.infer<typeof updateBookingSchema>;
 

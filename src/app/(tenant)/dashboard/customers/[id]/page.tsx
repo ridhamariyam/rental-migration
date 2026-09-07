@@ -4,9 +4,9 @@ import {
   ArrowLeftIcon,
   CheckCircle2Icon,
   MailIcon,
+  MapPinIcon,
   PencilIcon,
   PhoneIcon,
-  RulerIcon,
   StickyNoteIcon,
   UserIcon,
 } from "lucide-react";
@@ -75,9 +75,9 @@ export default async function CustomerDetailPage({
     { label: "Phone", value: customer.phone, icon: PhoneIcon },
     { label: "Email", value: customer.email ?? "—", icon: MailIcon },
     {
-      label: "Preferred size",
-      value: customer.preferredSize ?? "—",
-      icon: RulerIcon,
+      label: "Location",
+      value: customer.location ?? "—",
+      icon: MapPinIcon,
     },
     {
       label: "Assigned staff",
