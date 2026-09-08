@@ -17,6 +17,7 @@ import postgres from "postgres";
 import { drizzle } from "drizzle-orm/postgres-js";
 import { eq } from "drizzle-orm";
 import {
+  bookingItems,
   bookings,
   customers,
   ownerSettlements,
@@ -91,15 +92,28 @@ async function main() {
     const securityDeposit = variation.securityDeposit;
 
     const bookingId = randomUUID();
+    const itemId = randomUUID();
     const bookingNumber = freshBookingNumber();
 
     await db.insert(bookings).values({
       id: bookingId,
       bookingNumber,
-      bookingGroupId: randomUUID(),
+      shopId: SHOP_ID,
+      customerId: customer.id,
+      discountAmount: "0.00",
+      securityDeposit,
+      totalAmount,
+      status: "confirmed",
+      paymentStatus: "paid",
+      createdById: STAFF_KANNUR_ID,
+      handledById: STAFF_KANNUR_ID,
+    });
+
+    await db.insert(bookingItems).values({
+      id: itemId,
+      bookingId,
       shopId: SHOP_ID,
       outletId: variation.outletId,
-      customerId: customer.id,
       productId: variation.productId,
       variationId: variation.id,
       fromDate,
@@ -107,11 +121,7 @@ async function main() {
       totalDays,
       rentAmount,
       grossRent,
-      discountAmount: "0.00",
-      securityDeposit,
-      totalAmount,
       status: "returned",
-      paymentStatus: "paid",
       pickedUpAt: offsetTimestamp(fromOffset, 10),
       pickedUpById: STAFF_KANNUR_ID,
       returnedAt: offsetTimestamp(fromOffset + totalDays, 18),
@@ -119,8 +129,6 @@ async function main() {
       damageCharge: "0.00",
       depositRefunded: securityDeposit,
       collectedById: STAFF_KANNUR_ID,
-      createdById: STAFF_KANNUR_ID,
-      handledById: STAFF_KANNUR_ID,
     });
 
     await db.insert(payments).values([
@@ -156,7 +164,7 @@ async function main() {
     await db.insert(ownerSettlements).values({
       shopId: SHOP_ID,
       outletId: variation.outletId,
-      bookingId,
+      bookingId: itemId,
       variationId: variation.id,
       ownerName: variation.ownerName,
       ownerPhone: variation.ownerPhone,

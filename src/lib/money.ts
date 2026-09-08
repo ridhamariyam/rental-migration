@@ -75,6 +75,38 @@ export function addMoney(a: string, b: string): string {
 }
 
 /**
+ * `amount * (numerator / denominator)`, rounded half-up to 2dp — the same
+ * BigInt-cents round-half-up shape as `percentageOfMoney`, generalised to
+ * an arbitrary integer ratio (e.g. minutes-payable over minutes-standard)
+ * instead of only a percentage. Used by salary hours/overtime pay
+ * (`src/server/salary/service.ts`) so a whole period's pay is rounded once
+ * at the end rather than once per day, avoiding compounding rounding
+ * error.
+ */
+export function proRateMoney(
+  amount: string,
+  numerator: number,
+  denominator: number,
+): string {
+  if (!Number.isInteger(numerator) || numerator < 0) {
+    throw new Error("numerator must be a non-negative integer");
+  }
+  if (!Number.isInteger(denominator) || denominator <= 0) {
+    throw new Error("denominator must be a positive integer");
+  }
+
+  const amountCents = toCents(amount);
+  const negative = amountCents < ZERO;
+  const absAmount = negative ? -amountCents : amountCents;
+
+  const num = BigInt(numerator);
+  const den = BigInt(denominator);
+  const roundedAbs = (absAmount * num * BigInt(2) + den) / (den * BigInt(2));
+
+  return fromCents(negative ? -roundedAbs : roundedAbs);
+}
+
+/**
  * `amount * (percent / 100)`, rounded half-up to 2dp — the legacy
  * backend's `percentage_of(gross, percent)` (Python `Decimal` with
  * `ROUND_HALF_UP`), ported to integer-cents/basis-point arithmetic so it

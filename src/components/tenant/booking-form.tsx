@@ -272,13 +272,18 @@ export function BookingForm({
     }
 
     try {
-      const created = await apiRequest<{ id: string }[]>("/api/bookings", {
+      const created = await apiRequest<{
+        booking: { id: string };
+        items: { id: string }[];
+      }>("/api/bookings", {
         method: "POST",
         body: JSON.stringify(values),
       });
       const query =
-        created.length > 1 ? `?created=1&count=${created.length}` : "?created=1";
-      router.push(`${tenantPaths.bookings}/${created[0].id}${query}`);
+        created.items.length > 1
+          ? `?created=1&count=${created.items.length}`
+          : "?created=1";
+      router.push(`${tenantPaths.bookings}/${created.booking.id}${query}`);
       router.refresh();
     } catch (error) {
       if (error instanceof ApiClientError && error.fieldErrors.length > 0) {

@@ -7,7 +7,7 @@ import {
   EmptyMedia,
   EmptyTitle,
 } from "@/components/ui/empty";
-import { formatDate, formatMoney } from "@/lib/format";
+import { formatDate, formatMoney, formatWeeklyOffDay } from "@/lib/format";
 import type { TenantSessionUser } from "@/server/auth/guard";
 import { listStaffSalaries } from "@/server/salary/service";
 import { WalletIcon } from "lucide-react";
@@ -65,7 +65,11 @@ export async function SalaryConfigCard({
                   </span>
                   <span className="text-muted-foreground text-xs">
                     From {formatDate(config.effectiveDate)} ·{" "}
-                    {config.workingDaysPerMonth} working days/month
+                    {config.standardHoursPerDay}h/day ·{" "}
+                    {formatWeeklyOffDay(config.weeklyOffDay)} off
+                    {config.overtimeRatePerHour
+                      ? ` · ${formatMoney(config.overtimeRatePerHour)}/hr overtime`
+                      : null}
                   </span>
                   {config.note ? (
                     <span className="text-muted-foreground text-xs">

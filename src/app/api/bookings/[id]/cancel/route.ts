@@ -2,7 +2,7 @@ import { requireTenantUser } from "@/server/auth/guard";
 import { Permission } from "@/lib/auth/permissions";
 import { apiError, apiSuccess } from "@/lib/errors/api-response";
 import { cancelBookingSchema } from "@/lib/validation/bookings";
-import { cancelBooking } from "@/server/bookings/service";
+import { cancelBookingOrder } from "@/server/bookings/service";
 import { dispatchAfterResponse } from "@/server/notifications/dispatch-after-response";
 
 export async function POST(
@@ -16,7 +16,7 @@ export async function POST(
     const body = cancelBookingSchema.parse(
       await request.json().catch(() => ({})),
     );
-    const booking = await cancelBooking(user, id, body.reason);
+    const booking = await cancelBookingOrder(user, id, body.reason);
 
     dispatchAfterResponse([id]);
 

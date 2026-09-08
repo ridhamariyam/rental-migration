@@ -1,5 +1,9 @@
 import { z } from "zod";
-import { optionalUuidSchema, uuidSchema } from "@/lib/validation/common";
+import {
+  optionalMoneySchema,
+  optionalUuidSchema,
+  uuidSchema,
+} from "@/lib/validation/common";
 import { positiveMoneySchema } from "@/lib/validation/payments";
 
 export const salaryIdParamSchema = z.object({ id: uuidSchema });
@@ -11,26 +15,33 @@ const noteSchema = z
   .optional();
 
 /**
- * Salary configuration for a staff member (doc §18), mirroring the legacy
- * backend's own bounds (`working_days_per_month` between 1 and 31 — a
- * calendar month never has more than 31 days, and 0 would divide by zero
- * deriving a per-day rate).
+ * Salary configuration for a staff member (doc §18). `weeklyOffDay` is
+ * `0`–`6` (Sunday–Saturday) for the one day/week that's never a working
+ * day, or `null` for no weekly off — this is what makes the working-days
+ * count for a given month come out to 26 or 27 automatically instead of a
+ * manually-typed static number (see `calculateSalary`).
  */
 export const createSalarySchema = z.object({
   staffId: uuidSchema,
   amount: positiveMoneySchema,
-  // Deliberately `z.number()`, not `z.coerce.number()` — the form field
-  // is a `type="number"` input registered with `valueAsNumber: true`
-  // (`add-salary-dialog.tsx`), so it's already a real `number` by the time
-  // it reaches this schema. `.coerce` here would give the schema a
+  // Deliberately `z.number()`, not `z.coerce.number()` — the form fields
+  // are `type="number"` inputs registered with `valueAsNumber: true`
+  // (`add-salary-dialog.tsx`), so they're already real `number`s by the
+  // time they reach this schema. `.coerce` here would give the schema a
   // different input/output type (`unknown` vs `number`), which breaks
   // `zodResolver`'s generic when the same inferred type also drives
   // `useForm<CreateSalaryInput>`.
-  workingDaysPerMonth: z
+  weeklyOffDay: z
     .number("Must be a number")
     .int("Must be a whole number")
+    .min(0, "Must be between 0 and 6")
+    .max(6, "Must be between 0 and 6")
+    .nullable(),
+  standardHoursPerDay: z
+    .number("Must be a number")
     .min(1, "Must be at least 1")
-    .max(31, "Must be at most 31"),
+    .max(24, "Must be at most 24"),
+  overtimeRatePerHour: optionalMoneySchema,
   effectiveDate: z.iso.date("Enter a valid date"),
   note: noteSchema,
 });

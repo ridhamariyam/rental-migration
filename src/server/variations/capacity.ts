@@ -2,7 +2,7 @@ import "server-only";
 
 import { and, eq, inArray } from "drizzle-orm";
 import { db } from "@/lib/db/client";
-import { bookings, maintenanceTasks, type MaintenanceTask } from "@/lib/db/schema";
+import { bookingItems, maintenanceTasks, type MaintenanceTask } from "@/lib/db/schema";
 
 /** Same "inferred from `db.transaction`'s own callback" shape used
  * elsewhere (`MaintenanceTx`/`PaymentTx`) — lets every helper here run
@@ -39,10 +39,10 @@ export async function getMaintenanceBlockedQuantity(
     .select({
       taskType: maintenanceTasks.taskType,
       taskStatus: maintenanceTasks.status,
-      bookingQuantity: bookings.quantity,
+      bookingQuantity: bookingItems.quantity,
     })
     .from(maintenanceTasks)
-    .leftJoin(bookings, eq(maintenanceTasks.bookingId, bookings.id))
+    .leftJoin(bookingItems, eq(maintenanceTasks.bookingId, bookingItems.id))
     .where(
       and(
         eq(maintenanceTasks.variationId, variationId),
@@ -75,9 +75,9 @@ export async function getRentedOutQuantity(
   executor: Executor = db,
 ): Promise<number> {
   const rows = await executor
-    .select({ quantity: bookings.quantity })
-    .from(bookings)
-    .where(and(eq(bookings.variationId, variationId), eq(bookings.status, "rented")));
+    .select({ quantity: bookingItems.quantity })
+    .from(bookingItems)
+    .where(and(eq(bookingItems.variationId, variationId), eq(bookingItems.status, "rented")));
 
   return rows.reduce((sum, row) => sum + row.quantity, 0);
 }

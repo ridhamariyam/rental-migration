@@ -113,7 +113,6 @@ const STAFF_PERMISSIONS: ReadonlySet<Permission> = new Set([
   Permission.ATTENDANCE_SELF,
   Permission.LEAVE_VIEW,
   Permission.SALARY_VIEW,
-  Permission.NOTIFICATION_VIEW,
 ]);
 
 /** Outlet-scoped: manages their own outlet's roster *and* catalogue — the

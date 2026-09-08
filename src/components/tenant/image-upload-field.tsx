@@ -2,8 +2,14 @@
 
 import { useRef, useState } from "react";
 import Image from "next/image";
-import { ImageIcon, UploadIcon, XIcon } from "lucide-react";
+import { CameraIcon, ImageIcon, UploadIcon, XIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Spinner } from "@/components/ui/spinner";
 import { ApiClientError } from "@/lib/api-client";
 
@@ -38,6 +44,7 @@ export function ImageUploadField({
   rounded?: boolean;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -113,25 +120,42 @@ export function ImageUploadField({
 
         <div className="flex flex-col gap-2">
           <div className="flex items-center gap-2">
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              disabled={disabled || isUploading}
-              onClick={() => inputRef.current?.click()}
-            >
-              {isUploading ? (
-                <>
-                  <Spinner />
-                  Uploading…
-                </>
-              ) : (
-                <>
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                render={
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={disabled || isUploading}
+                  />
+                }
+              >
+                {isUploading ? (
+                  <>
+                    <Spinner />
+                    Uploading…
+                  </>
+                ) : (
+                  <>
+                    <UploadIcon />
+                    {value ? "Change image" : "Upload image"}
+                  </>
+                )}
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start">
+                <DropdownMenuItem
+                  onClick={() => cameraInputRef.current?.click()}
+                >
+                  <CameraIcon />
+                  Take photo
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => inputRef.current?.click()}>
                   <UploadIcon />
-                  {value ? "Change image" : "Upload image"}
-                </>
-              )}
-            </Button>
+                  Choose file
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
 
             {value ? (
               <Button
@@ -155,6 +179,14 @@ export function ImageUploadField({
           ref={inputRef}
           type="file"
           accept="image/jpeg,image/png,image/webp"
+          className="hidden"
+          onChange={handleFileChange}
+        />
+        <input
+          ref={cameraInputRef}
+          type="file"
+          accept="image/jpeg,image/png,image/webp"
+          capture="environment"
           className="hidden"
           onChange={handleFileChange}
         />

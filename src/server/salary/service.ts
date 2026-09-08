@@ -15,8 +15,7 @@ import {
 import { Permission, hasPermission } from "@/lib/auth/permissions";
 import type { TenantSessionUser } from "@/server/auth/guard";
 import { AuditAction, recordAudit } from "@/server/audit/service";
-import { getWorkedHoursSummary } from "@/server/attendance/service";
-import { divideMoneyByInteger, multiplyMoneyByDays, nonNegativeMoney, ZERO_MONEY } from "@/lib/money";
+import { addMoney, nonNegativeMoney, proRateMoney, ZERO_MONEY } from "@/lib/money";
 import type {
   CreateSalaryInput,
   UpdateSalaryInput,
@@ -97,7 +96,9 @@ export async function createSalary(
       shopId: actor.shopId,
       staffId: input.staffId,
       amount: input.amount,
-      workingDaysPerMonth: input.workingDaysPerMonth,
+      weeklyOffDay: input.weeklyOffDay,
+      standardHoursPerDay: String(input.standardHoursPerDay),
+      overtimeRatePerHour: input.overtimeRatePerHour || null,
       effectiveDate: input.effectiveDate,
       note: input.note || null,
     })
@@ -110,7 +111,13 @@ export async function createSalary(
     entityType: "salary",
     entityId: salary.id,
     summary: `Salary of ${salary.amount} configured, effective ${salary.effectiveDate}`,
-    after: { amount: salary.amount, workingDaysPerMonth: salary.workingDaysPerMonth, effectiveDate: salary.effectiveDate },
+    after: {
+      amount: salary.amount,
+      weeklyOffDay: salary.weeklyOffDay,
+      standardHoursPerDay: salary.standardHoursPerDay,
+      overtimeRatePerHour: salary.overtimeRatePerHour,
+      effectiveDate: salary.effectiveDate,
+    },
   });
 
   return salary;
@@ -131,7 +138,9 @@ export async function updateSalary(
     .update(salaries)
     .set({
       amount: input.amount,
-      workingDaysPerMonth: input.workingDaysPerMonth,
+      weeklyOffDay: input.weeklyOffDay,
+      standardHoursPerDay: String(input.standardHoursPerDay),
+      overtimeRatePerHour: input.overtimeRatePerHour || null,
       effectiveDate: input.effectiveDate,
       note: input.note || null,
       updatedAt: new Date(),
@@ -146,8 +155,18 @@ export async function updateSalary(
     entityType: "salary",
     entityId: salary.id,
     summary: `Salary configuration updated to ${salary.amount}`,
-    before: { amount: existing.amount, workingDaysPerMonth: existing.workingDaysPerMonth },
-    after: { amount: salary.amount, workingDaysPerMonth: salary.workingDaysPerMonth },
+    before: {
+      amount: existing.amount,
+      weeklyOffDay: existing.weeklyOffDay,
+      standardHoursPerDay: existing.standardHoursPerDay,
+      overtimeRatePerHour: existing.overtimeRatePerHour,
+    },
+    after: {
+      amount: salary.amount,
+      weeklyOffDay: salary.weeklyOffDay,
+      standardHoursPerDay: salary.standardHoursPerDay,
+      overtimeRatePerHour: salary.overtimeRatePerHour,
+    },
   });
 
   return salary;
@@ -171,7 +190,7 @@ export async function deleteSalary(
     entityType: "salary",
     entityId: salaryId,
     summary: `Salary configuration of ${existing.amount} deleted`,
-    before: { amount: existing.amount, workingDaysPerMonth: existing.workingDaysPerMonth },
+    before: { amount: existing.amount, standardHoursPerDay: existing.standardHoursPerDay },
   });
 }
 
@@ -222,13 +241,32 @@ function monthBounds(year: number, month: number): { start: string; end: string 
   return { start, end };
 }
 
-/** Overlapping days of every *approved* leave request within the period —
- * ported exactly from the legacy `SalaryService._approved_leave_days`. */
-async function approvedLeaveDays(
+/** `date` plus one calendar day, both as `yyyy-mm-dd` — used to walk a
+ * period one day at a time in `calculateSalary`. Parsed/formatted as UTC
+ * throughout so a date string never drifts a day from the local
+ * timezone's DST quirks. */
+function nextDateIso(date: string): string {
+  const d = new Date(`${date}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + 1);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`;
+}
+
+/** 0 (Sunday) – 6 (Saturday) for a `yyyy-mm-dd` date, matching the same
+ * numbering `weeklyOffDay` is configured with. */
+function dayOfWeekIso(date: string): number {
+  return new Date(`${date}T00:00:00Z`).getUTCDay();
+}
+
+/** Every calendar date (clipped to `[periodStart, periodEnd]`) covered by
+ * an *approved* leave request — used to pay a leave day in full at the
+ * standard-hours rate during `calculateSalary`'s daily walk, replacing the
+ * legacy backend's day-count-only `_approved_leave_days`. */
+async function approvedLeaveDates(
   staffId: string,
   periodStart: string,
   periodEnd: string,
-): Promise<number> {
+): Promise<Set<string>> {
   const rows = await db
     .select({ fromDate: staffLeaves.fromDate, toDate: staffLeaves.toDate })
     .from(staffLeaves)
@@ -241,20 +279,16 @@ async function approvedLeaveDays(
       ),
     );
 
-  let days = 0;
+  const dates = new Set<string>();
   for (const row of rows) {
     const start = row.fromDate > periodStart ? row.fromDate : periodStart;
     const end = row.toDate < periodEnd ? row.toDate : periodEnd;
-    const dayCount =
-      Math.round(
-        (new Date(`${end}T00:00:00Z`).getTime() -
-          new Date(`${start}T00:00:00Z`).getTime()) /
-          86_400_000,
-      ) + 1;
-    days += dayCount;
+    for (let cursor = start; cursor <= end; cursor = nextDateIso(cursor)) {
+      dates.add(cursor);
+    }
   }
 
-  return days;
+  return dates;
 }
 
 export type SalaryCalculation = {
@@ -265,21 +299,52 @@ export type SalaryCalculation = {
   periodStart: string;
   periodEnd: string;
   baseSalary: string;
+  weeklyOffDay: number | null;
+  standardHoursPerDay: string;
+  overtimeRatePerHour: string | null;
+  /** Working days actually computed for this specific period (calendar
+   * days in range minus weekly-off days) — see the "auto 26 vs 27"
+   * design note on `calculateSalary`. */
   workingDays: number;
   presentDays: number;
   approvedLeaveDays: number;
-  payableDays: number;
+  /** Checked in but never checked out — counted as 0 payable minutes
+   * until an owner correction fixes it. */
+  incompleteDays: number;
   absentDays: number;
-  perDayAmount: string;
+  hourlyRate: string;
+  basePay: string;
+  overtimePay: string;
+  overtimeMinutes: number;
+  shortfallMinutes: number;
   netAmount: string;
   totalWorkedMinutes: number;
   averageMinutesPerDay: number;
 };
 
-/** Attendance-derived salary for one staff member for one calendar month
- * (doc §18) — ported exactly from the legacy `SalaryService.calculate`.
+/**
+ * Attendance-derived salary for one staff member for one calendar month
+ * (doc §18), computed **per minute**, not per day: `basePay` is
+ * `baseSalary × payableMinutes ÷ standardMinutesForThePeriod`
+ * (`proRateMoney`, one BigInt division for the whole period so rounding
+ * never compounds day-by-day), so a short day only loses the pay for the
+ * hours actually missed instead of the whole day, and a long day earns
+ * `overtimeRatePerHour` for whatever's beyond `standardHoursPerDay`.
+ *
+ * `workingDays` (the divisor's day-count) is derived fresh for *this*
+ * period from `weeklyOffDay` — walking every calendar date and skipping
+ * whichever weekday is configured as the weekly off — rather than a
+ * static number, which is what makes it come out to 26 in a 30-day month
+ * and 27 in a 31-day one automatically.
+ *
+ * A staff member who joined mid-month is handled by simply starting the
+ * walk at `max(periodStart, salaryConfig.effectiveDate)` — days before
+ * they were configured at all are excluded from both the numerator and
+ * denominator, never counted as absent.
+ *
  * Never persisted by itself; `generatePayslip` is what turns this into a
- * stable record. */
+ * stable record.
+ */
 export async function calculateSalary(
   actor: TenantSessionUser,
   staffId: string,
@@ -300,45 +365,114 @@ export async function calculateSalary(
   }
 
   const baseSalary = configuration.amount;
-  const workingDays = configuration.workingDaysPerMonth || 26;
-  const perDay = workingDays ? divideMoneyByInteger(baseSalary, workingDays) : ZERO_MONEY;
+  const weeklyOffDay = configuration.weeklyOffDay;
+  const standardMinutesPerDay = Math.round(
+    Number(configuration.standardHoursPerDay) * 60,
+  );
 
-  const [presentRow] = await db
-    .select({ value: count() })
-    .from(attendances)
-    .where(
-      and(
-        eq(attendances.staffId, staffId),
-        gte(attendances.date, periodStart),
-        lte(attendances.date, periodEnd),
-        inArray(attendances.status, ["present", "corrected"]),
+  // A config that only takes effect partway through this period (a
+  // mid-month joiner, or a raise dated after the 1st) starts the walk
+  // there instead — see the doc comment above.
+  const effectiveStart =
+    configuration.effectiveDate > periodStart
+      ? configuration.effectiveDate
+      : periodStart;
+
+  const [attendanceRows, leaveDates] = await Promise.all([
+    db
+      .select({
+        date: attendances.date,
+        status: attendances.status,
+        checkInTime: attendances.checkInTime,
+        checkOutTime: attendances.checkOutTime,
+      })
+      .from(attendances)
+      .where(
+        and(
+          eq(attendances.shopId, actor.shopId),
+          eq(attendances.staffId, staffId),
+          gte(attendances.date, effectiveStart),
+          lte(attendances.date, periodEnd),
+        ),
+      ),
+    approvedLeaveDates(staffId, effectiveStart, periodEnd),
+  ]);
+  const attendanceByDate = new Map(attendanceRows.map((row) => [row.date, row]));
+
+  let workingDays = 0;
+  let totalStandardMinutes = 0;
+  let totalPayableMinutes = 0;
+  let totalOvertimeMinutes = 0;
+  let totalWorkedMinutes = 0;
+  let presentDays = 0;
+  let absentDays = 0;
+  let leaveDays = 0;
+  let incompleteDays = 0;
+  let shortfallMinutes = 0;
+
+  for (
+    let cursor = effectiveStart;
+    cursor <= periodEnd;
+    cursor = nextDateIso(cursor)
+  ) {
+    if (weeklyOffDay !== null && dayOfWeekIso(cursor) === weeklyOffDay) {
+      continue;
+    }
+
+    workingDays += 1;
+    totalStandardMinutes += standardMinutesPerDay;
+
+    if (leaveDates.has(cursor)) {
+      leaveDays += 1;
+      totalPayableMinutes += standardMinutesPerDay;
+      continue;
+    }
+
+    const attendance = attendanceByDate.get(cursor);
+    if (!attendance || attendance.status === "absent") {
+      absentDays += 1;
+      continue;
+    }
+
+    if (!attendance.checkOutTime) {
+      incompleteDays += 1;
+      continue;
+    }
+
+    const workedMinutes = Math.max(
+      0,
+      Math.round(
+        (attendance.checkOutTime.getTime() - attendance.checkInTime.getTime()) /
+          60_000,
       ),
     );
-  const presentDays = presentRow?.value ?? 0;
+    presentDays += 1;
+    totalWorkedMinutes += workedMinutes;
 
-  const leaveDays = await approvedLeaveDays(staffId, periodStart, periodEnd);
+    const payableMinutes = Math.min(workedMinutes, standardMinutesPerDay);
+    totalPayableMinutes += payableMinutes;
+    if (workedMinutes > standardMinutesPerDay) {
+      totalOvertimeMinutes += workedMinutes - standardMinutesPerDay;
+    } else {
+      shortfallMinutes += standardMinutesPerDay - workedMinutes;
+    }
+  }
 
-  const payableDays = Math.min(workingDays, presentDays + leaveDays);
-  const absentDays = Math.max(0, workingDays - payableDays);
+  const hourlyRate =
+    totalStandardMinutes > 0
+      ? proRateMoney(baseSalary, 60, totalStandardMinutes)
+      : ZERO_MONEY;
+  const basePay =
+    totalStandardMinutes > 0
+      ? proRateMoney(baseSalary, totalPayableMinutes, totalStandardMinutes)
+      : ZERO_MONEY;
+  const overtimePay = configuration.overtimeRatePerHour
+    ? proRateMoney(configuration.overtimeRatePerHour, totalOvertimeMinutes, 60)
+    : ZERO_MONEY;
+  const netAmount = nonNegativeMoney(addMoney(basePay, overtimePay));
 
-  // Actual clocked hours are informational only (net pay stays day-count
-  // based) — averaged over `presentDays` so it stays consistent with
-  // whatever's re-derivable later from a *persisted* payslip row (only
-  // `totalWorkedMinutes`/`presentDays` are frozen at generation time, not
-  // a separate "days with a checkout" count).
-  const workedHours = await getWorkedHoursSummary(
-    actor.shopId,
-    staffId,
-    periodStart,
-    periodEnd,
-  );
   const averageMinutesPerDay =
-    presentDays > 0 ? workedHours.totalMinutes / presentDays : 0;
-
-  // Decimal-safe multiply (cents-based `BigInt` arithmetic, never a
-  // binary float) — the same `multiplyMoneyByDays` helper every other
-  // money calculation in this app goes through.
-  const netAmount = nonNegativeMoney(multiplyMoneyByDays(perDay, payableDays));
+    presentDays > 0 ? totalWorkedMinutes / presentDays : 0;
 
   return {
     staffId,
@@ -348,14 +482,21 @@ export async function calculateSalary(
     periodStart,
     periodEnd,
     baseSalary,
+    weeklyOffDay,
+    standardHoursPerDay: configuration.standardHoursPerDay,
+    overtimeRatePerHour: configuration.overtimeRatePerHour,
     workingDays,
     presentDays,
     approvedLeaveDays: leaveDays,
-    payableDays,
+    incompleteDays,
     absentDays,
-    perDayAmount: perDay,
+    hourlyRate,
+    basePay,
+    overtimePay,
+    overtimeMinutes: totalOvertimeMinutes,
+    shortfallMinutes,
     netAmount,
-    totalWorkedMinutes: workedHours.totalMinutes,
+    totalWorkedMinutes,
     averageMinutesPerDay,
   };
 }
@@ -417,7 +558,15 @@ export async function generatePayslip(
     presentDays: calculation.presentDays,
     absentDays: calculation.absentDays,
     approvedLeaveDays: calculation.approvedLeaveDays,
-    perDayAmount: calculation.perDayAmount,
+    incompleteDays: calculation.incompleteDays,
+    weeklyOffDay: calculation.weeklyOffDay,
+    standardHoursPerDay: calculation.standardHoursPerDay,
+    overtimeRatePerHour: calculation.overtimeRatePerHour,
+    hourlyRate: calculation.hourlyRate,
+    basePay: calculation.basePay,
+    overtimePay: calculation.overtimePay,
+    overtimeMinutes: calculation.overtimeMinutes,
+    shortfallMinutes: calculation.shortfallMinutes,
     netAmount: calculation.netAmount,
     totalWorkedMinutes: calculation.totalWorkedMinutes,
     generatedById: actor.id,
@@ -449,7 +598,15 @@ export async function generatePayslip(
       presentDays: salaryPayslips.presentDays,
       absentDays: salaryPayslips.absentDays,
       approvedLeaveDays: salaryPayslips.approvedLeaveDays,
-      perDayAmount: salaryPayslips.perDayAmount,
+      incompleteDays: salaryPayslips.incompleteDays,
+      weeklyOffDay: salaryPayslips.weeklyOffDay,
+      standardHoursPerDay: salaryPayslips.standardHoursPerDay,
+      overtimeRatePerHour: salaryPayslips.overtimeRatePerHour,
+      hourlyRate: salaryPayslips.hourlyRate,
+      basePay: salaryPayslips.basePay,
+      overtimePay: salaryPayslips.overtimePay,
+      overtimeMinutes: salaryPayslips.overtimeMinutes,
+      shortfallMinutes: salaryPayslips.shortfallMinutes,
       netAmount: salaryPayslips.netAmount,
       totalWorkedMinutes: salaryPayslips.totalWorkedMinutes,
       note: salaryPayslips.note,
@@ -504,7 +661,15 @@ export async function listPayslips(
         presentDays: salaryPayslips.presentDays,
         absentDays: salaryPayslips.absentDays,
         approvedLeaveDays: salaryPayslips.approvedLeaveDays,
-        perDayAmount: salaryPayslips.perDayAmount,
+        incompleteDays: salaryPayslips.incompleteDays,
+        weeklyOffDay: salaryPayslips.weeklyOffDay,
+        standardHoursPerDay: salaryPayslips.standardHoursPerDay,
+        overtimeRatePerHour: salaryPayslips.overtimeRatePerHour,
+        hourlyRate: salaryPayslips.hourlyRate,
+        basePay: salaryPayslips.basePay,
+        overtimePay: salaryPayslips.overtimePay,
+        overtimeMinutes: salaryPayslips.overtimeMinutes,
+        shortfallMinutes: salaryPayslips.shortfallMinutes,
         netAmount: salaryPayslips.netAmount,
         totalWorkedMinutes: salaryPayslips.totalWorkedMinutes,
         note: salaryPayslips.note,

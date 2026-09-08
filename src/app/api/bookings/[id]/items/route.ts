@@ -2,12 +2,12 @@ import { requireTenantUser } from "@/server/auth/guard";
 import { Permission } from "@/lib/auth/permissions";
 import { apiError, apiSuccess } from "@/lib/errors/api-response";
 import { bookingItemSchema } from "@/lib/validation/bookings";
-import { addItemToBookingGroup } from "@/server/bookings/service";
+import { addBookingItem } from "@/server/bookings/service";
 import { dispatchAfterResponse } from "@/server/notifications/dispatch-after-response";
 
-/** Adds one more line to an already-created order — same permission as
- * editing a booking (`updateBooking`'s own `PATCH` route), since this is
- * still "changing an existing order" work, not a fresh booking. */
+/** Adds one more item to an already-created order — same permission as
+ * editing an order, since this is still "changing an existing order"
+ * work, not a fresh booking. */
 export async function POST(
   request: Request,
   { params }: { params: Promise<{ id: string }> },
@@ -17,7 +17,7 @@ export async function POST(
 
     const { id } = await params;
     const body = bookingItemSchema.parse(await request.json());
-    const created = await addItemToBookingGroup(user, id, body);
+    const created = await addBookingItem(user, id, body);
 
     dispatchAfterResponse([created.id]);
 

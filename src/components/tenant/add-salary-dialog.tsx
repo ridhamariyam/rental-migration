@@ -26,6 +26,13 @@ import {
   FieldLabel,
 } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Spinner } from "@/components/ui/spinner";
 import { Textarea } from "@/components/ui/textarea";
 import { ApiClientError, apiRequest } from "@/lib/api-client";
@@ -34,6 +41,17 @@ import {
   createSalarySchema,
   type CreateSalaryInput,
 } from "@/lib/validation/salary";
+
+const WEEKDAY_OPTIONS = [
+  { value: "none", label: "None (works every day)" },
+  { value: "0", label: "Sunday" },
+  { value: "1", label: "Monday" },
+  { value: "2", label: "Tuesday" },
+  { value: "3", label: "Wednesday" },
+  { value: "4", label: "Thursday" },
+  { value: "5", label: "Friday" },
+  { value: "6", label: "Saturday" },
+];
 
 export function AddSalaryDialog({ staffId }: { staffId: string }) {
   const router = useRouter();
@@ -45,7 +63,9 @@ export function AddSalaryDialog({ staffId }: { staffId: string }) {
     defaultValues: {
       staffId,
       amount: "",
-      workingDaysPerMonth: 26,
+      weeklyOffDay: 0,
+      standardHoursPerDay: 8,
+      overtimeRatePerHour: "",
       effectiveDate: toDateString(new Date()),
       note: "",
     },
@@ -63,7 +83,9 @@ export function AddSalaryDialog({ staffId }: { staffId: string }) {
       form.reset({
         staffId,
         amount: "",
-        workingDaysPerMonth: 26,
+        weeklyOffDay: 0,
+        standardHoursPerDay: 8,
+        overtimeRatePerHour: "",
         effectiveDate: toDateString(new Date()),
         note: "",
       });
@@ -144,24 +166,81 @@ export function AddSalaryDialog({ staffId }: { staffId: string }) {
                   <FieldError errors={[form.formState.errors.amount]} />
                 </Field>
                 <Field
-                  data-invalid={!!form.formState.errors.workingDaysPerMonth}
+                  data-invalid={!!form.formState.errors.standardHoursPerDay}
                 >
-                  <FieldLabel htmlFor="salary-working-days">
-                    Working days/month
+                  <FieldLabel htmlFor="salary-standard-hours">
+                    Standard hours/day
                   </FieldLabel>
                   <Input
-                    id="salary-working-days"
+                    id="salary-standard-hours"
                     type="number"
+                    step={0.5}
                     min={1}
-                    max={31}
+                    max={24}
                     disabled={isSubmitting}
-                    aria-invalid={!!form.formState.errors.workingDaysPerMonth}
-                    {...form.register("workingDaysPerMonth", {
+                    aria-invalid={!!form.formState.errors.standardHoursPerDay}
+                    {...form.register("standardHoursPerDay", {
                       valueAsNumber: true,
                     })}
                   />
                   <FieldError
-                    errors={[form.formState.errors.workingDaysPerMonth]}
+                    errors={[form.formState.errors.standardHoursPerDay]}
+                  />
+                </Field>
+              </div>
+
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <Field data-invalid={!!form.formState.errors.weeklyOffDay}>
+                  <FieldLabel htmlFor="salary-weekly-off">
+                    Weekly off day
+                  </FieldLabel>
+                  <Controller
+                    control={form.control}
+                    name="weeklyOffDay"
+                    render={({ field }) => (
+                      <Select
+                        value={field.value === null ? "none" : String(field.value)}
+                        onValueChange={(next) =>
+                          field.onChange(next === "none" ? null : Number(next))
+                        }
+                        disabled={isSubmitting}
+                      >
+                        <SelectTrigger id="salary-weekly-off">
+                          <SelectValue>
+                            {(value: string) =>
+                              WEEKDAY_OPTIONS.find((o) => o.value === value)
+                                ?.label
+                            }
+                          </SelectValue>
+                        </SelectTrigger>
+                        <SelectContent>
+                          {WEEKDAY_OPTIONS.map((option) => (
+                            <SelectItem key={option.value} value={option.value}>
+                              {option.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    )}
+                  />
+                  <FieldError errors={[form.formState.errors.weeklyOffDay]} />
+                </Field>
+                <Field
+                  data-invalid={!!form.formState.errors.overtimeRatePerHour}
+                >
+                  <FieldLabel htmlFor="salary-overtime-rate">
+                    Overtime rate/hour (optional)
+                  </FieldLabel>
+                  <Input
+                    id="salary-overtime-rate"
+                    inputMode="decimal"
+                    placeholder="0.00"
+                    disabled={isSubmitting}
+                    aria-invalid={!!form.formState.errors.overtimeRatePerHour}
+                    {...form.register("overtimeRatePerHour")}
+                  />
+                  <FieldError
+                    errors={[form.formState.errors.overtimeRatePerHour]}
                   />
                 </Field>
               </div>

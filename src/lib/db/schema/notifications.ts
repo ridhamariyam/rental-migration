@@ -132,6 +132,12 @@ export const notificationLogs = pgTable(
     shopId: uuid("shop_id")
       .notNull()
       .references(() => shops.id, { onDelete: "cascade" }),
+    //: References the order (not a specific item) — events like
+    //: payment/confirmation are order-wide, and per-order dedup keeps one
+    //: log per event even for a multi-item order. Item-specific pickup/
+    //: return reminders are scheduled once per order too (using whichever
+    //: item queues them first); a genuinely different reminder per item
+    //: with different dates is a known gap, not attempted here.
     bookingId: uuid("booking_id").references(() => bookings.id, {
       onDelete: "cascade",
     }),
