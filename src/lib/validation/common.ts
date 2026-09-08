@@ -107,6 +107,13 @@ export const optionalUuidSchema = z
  * timezone a pickup/return date shouldn't have. */
 export const dateStringSchema = z.iso.date("Enter a valid date");
 
+/** Shared by `moneySchema`/`optionalMoneySchema` and by any refinement
+ * chained after them (e.g. `positiveMoneySchema` in `validation/payments.ts`)
+ * that needs to check "is this actually a valid money string" before calling
+ * into `@/lib/money`'s `BigInt`-based arithmetic, which throws on anything
+ * that doesn't match this shape instead of failing gracefully. */
+export const MONEY_PATTERN = /^\d{1,10}(\.\d{1,2})?$/;
+
 /**
  * Money, kept as a string end-to-end (see CLAUDE.md's rule that money is a
  * `Decimal`/`Numeric(12,2)` in Postgres and crosses the API as a string —
@@ -119,7 +126,7 @@ export const moneySchema = z
   .string()
   .trim()
   .min(1, "Required")
-  .regex(/^\d{1,10}(\.\d{1,2})?$/, "Enter a valid amount");
+  .regex(MONEY_PATTERN, "Enter a valid amount");
 
 /**
  * Same amount format as `moneySchema`, but the field itself may be left
@@ -138,7 +145,7 @@ export const optionalMoneySchema = z
   .trim()
   .optional()
   .refine(
-    (value) => !value || /^\d{1,10}(\.\d{1,2})?$/.test(value),
+    (value) => !value || MONEY_PATTERN.test(value),
     { message: "Enter a valid amount" },
   );
 
