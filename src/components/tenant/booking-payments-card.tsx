@@ -23,7 +23,7 @@ import {
   type RecordPaymentItemOption,
 } from "@/components/tenant/record-payment-dialog";
 import { formatDate, formatMoney } from "@/lib/format";
-import { compareMoney, nonNegativeMoney, ZERO_MONEY } from "@/lib/money";
+import { compareMoney, nonNegativeMoney, subtractMoney, ZERO_MONEY } from "@/lib/money";
 import type { PaymentRow, PaymentSummary } from "@/server/payments/service";
 
 const PAYMENT_TYPE_LABELS: Record<string, string> = {
@@ -67,6 +67,30 @@ export function outstandingBreakdown(summary: PaymentSummary): string | null {
     parts.push(`${formatMoney(depositDue)} deposit not yet collected`);
   }
   return parts.length > 0 ? parts.join(" + ") : null;
+}
+
+/**
+ * The flip side of `outstandingBreakdown`: what's already been collected
+ * that now exceeds what's payable (e.g. cancelling an already-paid item),
+ * so staff know a refund is owed instead of the ledger just quietly
+ * reading "Paid".
+ */
+export function creditBreakdown(summary: PaymentSummary): string | null {
+  if (compareMoney(summary.creditBalance, ZERO_MONEY) <= 0) {
+    return null;
+  }
+
+  const rentCredit = nonNegativeMoney(subtractMoney(ZERO_MONEY, summary.rentBalance));
+  const depositCredit = nonNegativeMoney(subtractMoney(ZERO_MONEY, summary.depositBalance));
+
+  const parts: string[] = [];
+  if (compareMoney(rentCredit, ZERO_MONEY) > 0) {
+    parts.push(`${formatMoney(rentCredit)} rent`);
+  }
+  if (compareMoney(depositCredit, ZERO_MONEY) > 0) {
+    parts.push(`${formatMoney(depositCredit)} deposit`);
+  }
+  return parts.length > 0 ? `Collected ${parts.join(" + ")} more than is now payable` : null;
 }
 
 export function BookingPaymentsCard({
@@ -186,11 +210,28 @@ export function BookingPaymentsCard({
               </span>
             </div>
           ) : null}
+
+          {compareMoney(summary.creditBalance, ZERO_MONEY) > 0 ? (
+            <div className="flex flex-col gap-0.5">
+              <span className="text-amber-600 text-xs dark:text-amber-400">
+                Credit — refund owed
+              </span>
+              <span className="text-amber-600 font-semibold dark:text-amber-400">
+                {formatMoney(summary.creditBalance)}
+              </span>
+            </div>
+          ) : null}
         </div>
 
         {outstandingBreakdown(summary) ? (
           <p className="text-muted-foreground -mt-2 text-xs">
             {outstandingBreakdown(summary)}
+          </p>
+        ) : null}
+
+        {creditBreakdown(summary) ? (
+          <p className="-mt-2 text-xs text-amber-600 dark:text-amber-400">
+            {creditBreakdown(summary)} — record a refund to settle it.
           </p>
         ) : null}
 

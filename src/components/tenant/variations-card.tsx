@@ -92,6 +92,9 @@ export function VariationsCard({
                   Pricing
                 </TableHead>
                 <TableHead className="text-muted-foreground/80 h-10 px-6 text-xs font-semibold tracking-wider uppercase">
+                  Stock
+                </TableHead>
+                <TableHead className="text-muted-foreground/80 h-10 px-6 text-xs font-semibold tracking-wider uppercase">
                   Outlet
                 </TableHead>
                 <TableHead className="text-muted-foreground/80 h-10 px-6 text-xs font-semibold tracking-wider uppercase">

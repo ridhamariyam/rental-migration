@@ -1230,6 +1230,14 @@ export async function cancelBookingItem(
   const order = await loadBookingForTenant(actor.shopId, bookingId);
   const item = await loadItemForTenant(actor.shopId, bookingId, itemId);
 
+  // `canTransition` treats same-state as a no-op-allowed transition (needed
+  // elsewhere), so it alone won't stop a *second* cancel from silently
+  // overwriting the first one's `cancelledAt`/`cancellationReason` and
+  // re-firing its audit entry/notification — guard the terminal state
+  // explicitly instead.
+  if (item.status === "cancelled") {
+    throw new AppError("This item is already cancelled", 409);
+  }
   assertTransition(item.status, "cancelled");
 
   return db.transaction(async (tx) => {
@@ -1274,6 +1282,12 @@ export async function cancelBookingOrder(
 ): Promise<BookingRow> {
   const booking = await loadBookingForTenant(actor.shopId, id);
 
+  // Same reasoning as `cancelBookingItem`: same-state is a no-op-allowed
+  // transition, so this has to be checked explicitly or a second cancel
+  // silently overwrites the first one's cancellation record.
+  if (booking.status === "cancelled") {
+    throw new AppError("This order is already cancelled", 409);
+  }
   assertTransition(booking.status, "cancelled");
 
   return db.transaction(async (tx) => {

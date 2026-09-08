@@ -149,8 +149,8 @@ export default async function BookingDetailPage({
                   {booking.bookingNumber}
                 </h1>
                 <BookingStatusBadge status={booking.status} />
-                {canViewPayments ? (
-                  <PaymentStatusBadge status={booking.paymentStatus} />
+                {canViewPayments && summary ? (
+                  <PaymentStatusBadge status={summary.status} />
                 ) : null}
                 {hasMultipleItems ? (
                   <Badge variant="outline" className="font-normal">
