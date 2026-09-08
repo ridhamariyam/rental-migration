@@ -3,6 +3,7 @@ import "server-only";
 import { randomUUID } from "node:crypto";
 import {
   and,
+  asc,
   count,
   desc,
   eq,
@@ -15,6 +16,7 @@ import {
 } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import {
+  bookingItems,
   bookings,
   customers,
   notificationLogs,
@@ -27,6 +29,7 @@ import {
   whatsappNumbers,
   whatsappTemplates,
   type Booking,
+  type BookingItem,
   type NotificationLog,
   type NotificationRule,
   type WhatsappNumber,
@@ -35,6 +38,7 @@ import {
 import { env } from "@/lib/env";
 import { AppError } from "@/lib/errors/app-error";
 import { formatDate, formatMoney, parseDateString } from "@/lib/format";
+import { addMoney, ZERO_MONEY } from "@/lib/money";
 import {
   DEFAULT_ENABLED_NOTIFICATION_EVENTS,
   NOTIFICATION_EVENTS,
@@ -541,24 +545,49 @@ async function buildBookingContext(
       customerFirstName: customers.firstName,
       customerLastName: customers.lastName,
       customerPhone: customers.phone,
-      productName: products.name,
-      outletName: outlets.name,
     })
     .from(bookings)
     .innerJoin(shops, eq(bookings.shopId, shops.id))
     .innerJoin(customers, eq(bookings.customerId, customers.id))
-    .innerJoin(products, eq(bookings.productId, products.id))
-    .leftJoin(outlets, eq(bookings.outletId, outlets.id))
     .where(eq(bookings.id, bookingId))
     .limit(1);
 
   if (!row) throw AppError.notFound("Booking not found");
 
+  // The order's earliest item stands in for "the item" in message
+  // variables (product_name/dates) — a multi-item order only gets one
+  // set of these, a known simplification (see the doc comment on
+  // `queueBookingLifecycleNotifications`).
+  const [item] = await database
+    .select({
+      productName: products.name,
+      outletName: outlets.name,
+      fromDate: bookingItems.fromDate,
+      toDate: bookingItems.toDate,
+      damageCharge: bookingItems.damageCharge,
+      depositRefunded: bookingItems.depositRefunded,
+    })
+    .from(bookingItems)
+    .innerJoin(products, eq(bookingItems.productId, products.id))
+    .leftJoin(outlets, eq(bookingItems.outletId, outlets.id))
+    .where(eq(bookingItems.bookingId, bookingId))
+    .orderBy(asc(bookingItems.createdAt), asc(bookingItems.id))
+    .limit(1);
+
+  const damageRows = await database
+    .select({ damageCharge: bookingItems.damageCharge })
+    .from(bookingItems)
+    .where(eq(bookingItems.bookingId, bookingId));
+  const totalDamageCharge = damageRows.reduce(
+    (sum, r) => addMoney(sum, r.damageCharge),
+    ZERO_MONEY,
+  );
+
   const paymentRows = await database
     .select()
     .from(payments)
     .where(eq(payments.bookingId, bookingId));
-  const summary = computePaymentSummary(row.booking, paymentRows);
+  const summary = computePaymentSummary(row.booking, totalDamageCharge, paymentRows);
   const appUrl = env.NEXT_PUBLIC_APP_URL.replace(/\/$/, "");
   const recipientName = `${row.customerFirstName} ${row.customerLastName}`;
 
@@ -572,15 +601,15 @@ async function buildBookingContext(
     values: {
       customer_name: recipientName,
       booking_number: row.booking.bookingNumber,
-      product_name: row.productName,
-      from_date: formatDate(row.booking.fromDate),
-      to_date: formatDate(row.booking.toDate),
+      product_name: item?.productName ?? "",
+      from_date: item ? formatDate(item.fromDate) : "",
+      to_date: item ? formatDate(item.toDate) : "",
       outstanding: formatMoney(summary.outstanding),
       shop_name: row.shopName,
       receipt_url: `${appUrl}/dashboard/bookings/${row.booking.id}/receipt`,
-      damage_charge: formatMoney(row.booking.damageCharge),
-      deposit_refunded: formatMoney(row.booking.depositRefunded),
-      outlet_name: row.outletName ?? row.shopName,
+      damage_charge: formatMoney(totalDamageCharge),
+      deposit_refunded: formatMoney(item?.depositRefunded ?? ZERO_MONEY),
+      outlet_name: item?.outletName ?? row.shopName,
       ...extra,
     },
   };
@@ -662,22 +691,32 @@ export async function queueBookingNotification(
   return log;
 }
 
+/**
+ * Schedules the lifecycle reminders for one order, based on one item's own
+ * pickup/return dates — called once per item created (in
+ * `src/server/bookings/service.ts`), but every event dedupes per *order*
+ * (not per item, see `notification_logs.bookingId`'s doc comment), so only
+ * the first item processed actually gets its dates used. A multi-item
+ * order whose items have different dates only gets reminders for that
+ * first item — a known simplification, not a full per-item scheduler.
+ */
 export async function queueBookingLifecycleNotifications(
   database: DbOrTx,
-  booking: Pick<Booking, "id" | "shopId" | "fromDate" | "toDate">,
+  booking: Pick<Booking, "id" | "shopId">,
+  item: Pick<BookingItem, "fromDate" | "toDate">,
 ): Promise<void> {
   await queueBookingNotification(database, booking, "booking_created");
   await queueBookingNotification(database, booking, "pickup_reminder", {
-    scheduledFor: addDays(atLocalHour(booking.fromDate), -1),
+    scheduledFor: addDays(atLocalHour(item.fromDate), -1),
   });
   await queueBookingNotification(database, booking, "pickup_today", {
-    scheduledFor: atLocalHour(booking.fromDate),
+    scheduledFor: atLocalHour(item.fromDate),
   });
   await queueBookingNotification(database, booking, "return_reminder", {
-    scheduledFor: addDays(atLocalHour(booking.toDate), -1),
+    scheduledFor: addDays(atLocalHour(item.toDate), -1),
   });
   await queueBookingNotification(database, booking, "return_due_today", {
-    scheduledFor: atLocalHour(booking.toDate),
+    scheduledFor: atLocalHour(item.toDate),
   });
 }
 
@@ -689,10 +728,14 @@ type OwnerNotificationEvent = "owner_item_booked" | "owner_item_cancelled";
  * recipient from `buildBookingContext`'s renting customer. Returns `null`
  * for a shop-owned item or an owner with no phone on file, so callers can
  * silently skip queueing rather than special-casing every call site.
+ * Scoped to one specific item (ownership is a per-variation concern) —
+ * dedup is still per-order+event, so a second customer-owned item added to
+ * the same order won't get its own separate owner notification.
  */
 async function buildOwnerBookingContext(
   database: DbOrTx,
   bookingId: string,
+  itemId: string,
 ): Promise<{
   shopId: string;
   recipientPhone: string;
@@ -703,21 +746,27 @@ async function buildOwnerBookingContext(
     .select({
       booking: bookings,
       shopName: shops.name,
-      productName: products.name,
       outletName: outlets.name,
+      fromDate: bookingItems.fromDate,
+      toDate: bookingItems.toDate,
+      productName: products.name,
       ownershipType: productVariations.ownershipType,
       ownerName: productVariations.ownerName,
       ownerPhone: productVariations.ownerPhone,
     })
-    .from(bookings)
+    .from(bookingItems)
+    .innerJoin(bookings, eq(bookingItems.bookingId, bookings.id))
     .innerJoin(shops, eq(bookings.shopId, shops.id))
-    .innerJoin(products, eq(bookings.productId, products.id))
-    .innerJoin(productVariations, eq(bookings.variationId, productVariations.id))
-    .leftJoin(outlets, eq(bookings.outletId, outlets.id))
-    .where(eq(bookings.id, bookingId))
+    .innerJoin(products, eq(bookingItems.productId, products.id))
+    .innerJoin(
+      productVariations,
+      eq(bookingItems.variationId, productVariations.id),
+    )
+    .leftJoin(outlets, eq(bookingItems.outletId, outlets.id))
+    .where(and(eq(bookingItems.id, itemId), eq(bookingItems.bookingId, bookingId)))
     .limit(1);
 
-  if (!row) throw AppError.notFound("Booking not found");
+  if (!row) throw AppError.notFound("Booking item not found");
   if (row.ownershipType !== "customer_owned" || !row.ownerPhone) return null;
 
   const recipientName = row.ownerName || "Owner";
@@ -733,8 +782,8 @@ async function buildOwnerBookingContext(
       owner_name: recipientName,
       booking_number: row.booking.bookingNumber,
       product_name: row.productName,
-      from_date: formatDate(row.booking.fromDate),
-      to_date: formatDate(row.booking.toDate),
+      from_date: formatDate(row.fromDate),
+      to_date: formatDate(row.toDate),
       shop_name: row.shopName,
       outlet_name: row.outletName ?? row.shopName,
     },
@@ -743,13 +792,14 @@ async function buildOwnerBookingContext(
 
 /**
  * Owner-side counterpart to `queueBookingNotification` — same rule/
- * template/dedupe mechanics, but the recipient is the item's owner (via
- * `buildOwnerBookingContext`), not the renting customer. No-ops for a
- * shop-owned item or an owner with no phone on file.
+ * template/dedupe mechanics, but the recipient is one specific item's
+ * owner (via `buildOwnerBookingContext`), not the renting customer.
+ * No-ops for a shop-owned item or an owner with no phone on file.
  */
 export async function queueOwnerBookingNotification(
   database: DbOrTx,
   booking: Pick<Booking, "id" | "shopId">,
+  itemId: string,
   event: OwnerNotificationEvent,
 ): Promise<NotificationLog | null> {
   await ensureDefaultNotificationRules(booking.shopId, database);
@@ -762,7 +812,7 @@ export async function queueOwnerBookingNotification(
 
   if (!rule?.isEnabled || !rule.templateId || !rule.whatsappNumberId) return null;
 
-  const context = await buildOwnerBookingContext(database, booking.id);
+  const context = await buildOwnerBookingContext(database, booking.id, itemId);
   if (!context) return null;
 
   const [number] = await database

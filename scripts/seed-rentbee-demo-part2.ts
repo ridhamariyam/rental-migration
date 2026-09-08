@@ -182,7 +182,8 @@ async function main() {
         shopId: SHOP_ID,
         staffId: staffMember.id,
         amount: money(baseSalary),
-        workingDaysPerMonth: 26,
+        weeklyOffDay: 0,
+        standardHoursPerDay: "8.00",
         effectiveDate: offsetDateIso(-90),
         note: "Standard monthly salary",
       });
@@ -194,12 +195,14 @@ async function main() {
       const periodYear = period.getUTCFullYear();
       const periodMonth = period.getUTCMonth() + 1;
       const workingDays = 26;
+      const standardHoursPerDay = "8.00";
       const presentDays = randomInt(18, 24);
       const approvedLeaveDays = randomInt(0, 2);
       const absentDays = Math.max(0, workingDays - presentDays - approvedLeaveDays);
-      const perDayAmount = money(baseSalary / workingDays);
       const payableDays = Math.min(workingDays, presentDays + approvedLeaveDays);
-      const netAmount = money(Number(perDayAmount) * payableDays);
+      const hourlyRate = money(baseSalary / (workingDays * 8));
+      const basePay = money(Number(hourlyRate) * payableDays * 8);
+      const netAmount = basePay;
 
       await db
         .insert(salaryPayslips)
@@ -209,11 +212,14 @@ async function main() {
           periodYear,
           periodMonth,
           baseSalary: money(baseSalary),
+          weeklyOffDay: 0,
+          standardHoursPerDay,
           workingDays,
           presentDays,
           absentDays,
           approvedLeaveDays,
-          perDayAmount,
+          hourlyRate,
+          basePay,
           netAmount,
           generatedById: MANAGER_KANNUR_ID,
           generatedAt: offsetTimestamp(-monthsAgo * 30 + 3, 10),

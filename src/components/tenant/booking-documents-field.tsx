@@ -1,9 +1,15 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { FileTextIcon, PaperclipIcon, XIcon } from "lucide-react";
+import { CameraIcon, FileTextIcon, PaperclipIcon, XIcon } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Spinner } from "@/components/ui/spinner";
 import { ApiClientError } from "@/lib/api-client";
 import { MAX_BOOKING_DOCUMENTS } from "@/lib/validation/bookings";
@@ -30,6 +36,7 @@ export function BookingDocumentsField({
   disabled?: boolean;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -136,25 +143,42 @@ export function BookingDocumentsField({
       ) : null}
 
       <div className="flex items-center gap-3">
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          disabled={disabled || isUploading || atLimit}
-          onClick={() => inputRef.current?.click()}
-        >
-          {isUploading ? (
-            <>
-              <Spinner />
-              Uploading…
-            </>
-          ) : (
-            <>
+        <DropdownMenu>
+          <DropdownMenuTrigger
+            render={
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={disabled || isUploading || atLimit}
+              />
+            }
+          >
+            {isUploading ? (
+              <>
+                <Spinner />
+                Uploading…
+              </>
+            ) : (
+              <>
+                <PaperclipIcon />
+                {value.length > 0 ? "Add another" : "Attach document"}
+              </>
+            )}
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start">
+            <DropdownMenuItem
+              onClick={() => cameraInputRef.current?.click()}
+            >
+              <CameraIcon />
+              Take photo
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => inputRef.current?.click()}>
               <PaperclipIcon />
-              {value.length > 0 ? "Add another" : "Attach document"}
-            </>
-          )}
-        </Button>
+              Choose file
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
         <p className="text-muted-foreground text-xs">
           {atLimit
             ? `${MAX_BOOKING_DOCUMENTS} of ${MAX_BOOKING_DOCUMENTS} attached.`
@@ -167,6 +191,14 @@ export function BookingDocumentsField({
         type="file"
         multiple
         accept="application/pdf,image/jpeg,image/png,image/webp"
+        className="hidden"
+        onChange={handleFileChange}
+      />
+      <input
+        ref={cameraInputRef}
+        type="file"
+        accept="image/jpeg,image/png,image/webp"
+        capture="environment"
         className="hidden"
         onChange={handleFileChange}
       />

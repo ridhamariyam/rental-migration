@@ -159,10 +159,10 @@ export async function BookingsTable({
                       </div>
                     ) : (
                       <Avatar className="size-8 shrink-0 shadow-xs">
-                        {booking.productImage ? (
+                        {groupItems[0]?.productImage ? (
                           <AvatarImage
-                            src={booking.productImage}
-                            alt={booking.productName}
+                            src={groupItems[0].productImage}
+                            alt={groupItems[0].productName}
                             className="object-cover"
                           />
                         ) : null}
@@ -170,11 +170,11 @@ export async function BookingsTable({
                           className="text-white text-[10px] font-semibold uppercase"
                           style={{
                             backgroundImage: productAvatarGradient(
-                              booking.productName,
+                              groupItems[0]?.productName ?? "",
                             ),
                           }}
                         >
-                          {booking.productName.slice(0, 2)}
+                          {(groupItems[0]?.productName ?? "").slice(0, 2)}
                         </AvatarFallback>
                       </Avatar>
                     )}
@@ -193,18 +193,22 @@ export async function BookingsTable({
                 </TableCell>
 
                 <TableCell className="text-muted-foreground px-4 py-3 text-sm">
-                  {booking.productName}
-                  {booking.variationColor || booking.variationSize
-                    ? ` (${[booking.variationColor, booking.variationSize].filter(Boolean).join(", ")})`
+                  {groupItems[0]?.productName ?? "—"}
+                  {groupItems[0]?.variationColor || groupItems[0]?.variationSize
+                    ? ` (${[groupItems[0]?.variationColor, groupItems[0]?.variationSize].filter(Boolean).join(", ")})`
                     : ""}
-                  {booking.quantity > 1 ? ` × ${booking.quantity}` : ""}
+                  {groupItems[0] && groupItems[0].quantity > 1
+                    ? ` × ${groupItems[0].quantity}`
+                    : ""}
                   {groupItems.length > 1
                     ? ` (+${groupItems.length - 1} more)`
                     : ""}
                 </TableCell>
 
                 <TableCell className="text-muted-foreground px-4 py-3 text-sm whitespace-nowrap">
-                  {formatDate(booking.fromDate)} – {formatDate(booking.toDate)}
+                  {groupItems[0]
+                    ? `${formatDate(groupItems[0].fromDate)} – ${formatDate(groupItems[0].toDate)}`
+                    : "—"}
                 </TableCell>
 
                 <TableCell className="px-4 py-3 text-sm font-medium">

@@ -18,7 +18,10 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { PaymentStatusBadge } from "@/components/tenant/payment-status-badge";
-import { RecordPaymentDialog } from "@/components/tenant/record-payment-dialog";
+import {
+  RecordPaymentDialog,
+  type RecordPaymentItemOption,
+} from "@/components/tenant/record-payment-dialog";
 import { formatDate, formatMoney } from "@/lib/format";
 import { compareMoney, nonNegativeMoney, ZERO_MONEY } from "@/lib/money";
 import type { PaymentRow, PaymentSummary } from "@/server/payments/service";
@@ -73,6 +76,9 @@ export function BookingPaymentsCard({
   summary,
   canRecord,
   canRefund,
+  title = "Payments",
+  itemLabelsByBookingId,
+  items,
 }: {
   bookingId: string;
   bookingStatus: string;
@@ -80,6 +86,13 @@ export function BookingPaymentsCard({
   summary: PaymentSummary;
   canRecord: boolean;
   canRefund: boolean;
+  title?: string;
+  /** Set on a whole-order rollup, where `payments` spans more than one
+   * booking and each ledger row needs to say which item it belongs to. */
+  itemLabelsByBookingId?: Record<string, string>;
+  /** Same rollup case — lets "Record payment" offer a picker for which
+   * line item the entry lands on instead of always using `bookingId`. */
+  items?: RecordPaymentItemOption[];
 }) {
   const canRecordAnything = (canRecord || canRefund) && bookingStatus !== "cancelled";
 
@@ -88,7 +101,7 @@ export function BookingPaymentsCard({
       <CardHeader className="flex flex-row items-center justify-between gap-3">
         <CardTitle className="flex items-center gap-2 text-base">
           <BanknoteIcon className="size-4" aria-hidden="true" />
-          Payments
+          {title}
           <PaymentStatusBadge status={summary.status} />
         </CardTitle>
         {canRecordAnything ? (
@@ -96,6 +109,7 @@ export function BookingPaymentsCard({
             bookingId={bookingId}
             summary={summary}
             canRefund={canRefund}
+            items={items}
           />
         ) : null}
       </CardHeader>
@@ -203,6 +217,11 @@ export function BookingPaymentsCard({
                 <TableHead className="text-muted-foreground h-9 px-0 text-xs font-medium tracking-wide uppercase">
                   Date
                 </TableHead>
+                {itemLabelsByBookingId ? (
+                  <TableHead className="text-muted-foreground h-9 text-xs font-medium tracking-wide uppercase">
+                    Item
+                  </TableHead>
+                ) : null}
                 <TableHead className="text-muted-foreground h-9 text-xs font-medium tracking-wide uppercase">
                   Type
                 </TableHead>
@@ -225,6 +244,11 @@ export function BookingPaymentsCard({
                     <TableCell className="text-muted-foreground px-0 py-2.5 text-sm whitespace-nowrap">
                       {formatDate(payment.createdAt)}
                     </TableCell>
+                    {itemLabelsByBookingId ? (
+                      <TableCell className="text-muted-foreground py-2.5 text-sm whitespace-nowrap">
+                        {itemLabelsByBookingId[payment.bookingId] ?? "—"}
+                      </TableCell>
+                    ) : null}
                     <TableCell className="py-2.5 text-sm">
                       {PAYMENT_TYPE_LABELS[payment.paymentType] ??
                         payment.paymentType}

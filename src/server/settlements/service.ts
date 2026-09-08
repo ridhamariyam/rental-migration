@@ -4,6 +4,7 @@ import { and, count, desc, eq, ilike, or, sql } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { AppError } from "@/lib/errors/app-error";
 import {
+  bookingItems,
   bookings,
   ownerSettlements,
   productVariations,
@@ -52,7 +53,8 @@ function baseSettlementQuery() {
   return db
     .select(SETTLEMENT_SELECT)
     .from(ownerSettlements)
-    .innerJoin(bookings, eq(ownerSettlements.bookingId, bookings.id))
+    .innerJoin(bookingItems, eq(ownerSettlements.bookingId, bookingItems.id))
+    .innerJoin(bookings, eq(bookingItems.bookingId, bookings.id))
     .innerJoin(productVariations, eq(ownerSettlements.variationId, productVariations.id))
     .innerJoin(products, eq(productVariations.productId, products.id));
 }
@@ -186,7 +188,8 @@ export async function listSettlements(
     db
       .select({ value: count() })
       .from(ownerSettlements)
-      .innerJoin(bookings, eq(ownerSettlements.bookingId, bookings.id))
+      .innerJoin(bookingItems, eq(ownerSettlements.bookingId, bookingItems.id))
+      .innerJoin(bookings, eq(bookingItems.bookingId, bookings.id))
       .innerJoin(productVariations, eq(ownerSettlements.variationId, productVariations.id))
       .innerJoin(products, eq(productVariations.productId, products.id))
       .where(where),

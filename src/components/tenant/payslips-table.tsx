@@ -102,6 +102,9 @@ export async function PayslipsTable({
               Avg / day
             </TableHead>
             <TableHead className="text-muted-foreground h-11 px-4 text-xs font-medium tracking-wide uppercase">
+              Overtime
+            </TableHead>
+            <TableHead className="text-muted-foreground h-11 px-4 text-xs font-medium tracking-wide uppercase">
               Net amount
             </TableHead>
           </TableRow>
@@ -127,6 +130,11 @@ export async function PayslipsTable({
               <TableCell className="text-muted-foreground px-4 py-3 text-sm">
                 {payslip.presentDays > 0
                   ? formatMinutes(payslip.averageMinutesPerDay)
+                  : "—"}
+              </TableCell>
+              <TableCell className="text-muted-foreground px-4 py-3 text-sm">
+                {payslip.overtimeMinutes > 0
+                  ? `${formatMinutes(payslip.overtimeMinutes)} · ${formatMoney(payslip.overtimePay)}`
                   : "—"}
               </TableCell>
               <TableCell className="px-4 py-3 text-sm font-medium">

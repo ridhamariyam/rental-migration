@@ -173,7 +173,9 @@ export function CalculatePayslipCard({
                 </span>
               </div>
               <div className="flex items-center justify-between">
-                <span className="text-muted-foreground">Working days</span>
+                <span className="text-muted-foreground">
+                  Working days ({calculation.standardHoursPerDay}h/day)
+                </span>
                 <span className="font-medium">{calculation.workingDays}</span>
               </div>
               <div className="flex items-center justify-between">
@@ -192,24 +194,59 @@ export function CalculatePayslipCard({
                 <span className="text-muted-foreground">Absent days</span>
                 <span className="font-medium">{calculation.absentDays}</span>
               </div>
+              {calculation.incompleteDays > 0 ? (
+                <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground">
+                    Incomplete (no checkout)
+                  </span>
+                  <span className="font-medium">
+                    {calculation.incompleteDays}
+                  </span>
+                </div>
+              ) : null}
               <div className="flex items-center justify-between">
                 <span className="text-muted-foreground">Total hours worked</span>
                 <span className="font-medium">
                   {formatMinutes(calculation.totalWorkedMinutes)}
                 </span>
               </div>
+              {calculation.shortfallMinutes > 0 ? (
+                <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground">
+                    Shortfall (cut from pay)
+                  </span>
+                  <span className="font-medium">
+                    {formatMinutes(calculation.shortfallMinutes)}
+                  </span>
+                </div>
+              ) : null}
+              {calculation.overtimeMinutes > 0 ? (
+                <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground">
+                    Overtime hours
+                  </span>
+                  <span className="font-medium">
+                    {formatMinutes(calculation.overtimeMinutes)}
+                  </span>
+                </div>
+              ) : null}
               <div className="flex items-center justify-between">
-                <span className="text-muted-foreground">Average per day</span>
+                <span className="text-muted-foreground">Hourly rate</span>
                 <span className="font-medium">
-                  {calculation.presentDays > 0
-                    ? formatMinutes(calculation.averageMinutesPerDay)
-                    : "—"}
+                  {formatMoney(calculation.hourlyRate)}/hr
+                </span>
+              </div>
+              <Separator />
+              <div className="flex items-center justify-between">
+                <span className="text-muted-foreground">Base pay</span>
+                <span className="font-medium">
+                  {formatMoney(calculation.basePay)}
                 </span>
               </div>
               <div className="flex items-center justify-between">
-                <span className="text-muted-foreground">Per-day amount</span>
+                <span className="text-muted-foreground">Overtime pay</span>
                 <span className="font-medium">
-                  {formatMoney(calculation.perDayAmount)}
+                  {formatMoney(calculation.overtimePay)}
                 </span>
               </div>
               <Separator />

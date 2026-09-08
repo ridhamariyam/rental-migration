@@ -10,15 +10,18 @@ import { toDateString } from "@/lib/format";
 
 export const bookingIdParamSchema = z.object({ id: uuidSchema });
 
+/** Route param for an action scoped to one line item within an order
+ * (`/api/bookings/[id]/items/[itemId]/...`). */
+export const bookingItemIdParamSchema = z.object({ itemId: uuidSchema });
+
+/** An order's own `status` only ever moves through `draft`/`confirmed`/
+ * `cancelled` (see `bookings.ts`'s doc comment) — the physical pickup/
+ * return lifecycle lives on `booking_items.status` instead, which still
+ * has to carry the full range. */
 const BOOKING_STATUS_FILTER_VALUES = [
   "all",
   "draft",
   "confirmed",
-  "pickup_pending",
-  "rented",
-  "return_pending",
-  "returned",
-  "overdue",
   "cancelled",
 ] as const;
 
@@ -236,8 +239,8 @@ export const createBookingSchema = z
     // Order-level adjustments — one shared discount/deposit/extra-charge/
     // advance for the whole cart, not per line (a wedding order is one
     // conversation about price with the customer, not one per item).
-    // Attached to the *first* created line at persistence time; see
-    // `createBookingGroup`'s doc comment for why.
+    // Stored directly on the order row now (see `bookings.ts`'s doc
+    // comment) — no more "attached to the first created line" convention.
     discountAmount: optionalMoneySchema,
     /** Total deposit to hold for the whole order. Blank keeps every line's
      * own item default (summed); a value replaces that sum entirely,
@@ -250,9 +253,9 @@ export const createBookingSchema = z
       .trim()
       .max(200, "Must be at most 200 characters")
       .optional(),
-    /** Recorded as an `advance` payment against the order's first line the
-     * moment the booking is created — lets the counter capture "they paid
-     * X now" without a separate trip to the Record Payment dialog. */
+    /** Recorded as an `advance` payment against the order the moment it's
+     * created — lets the counter capture "they paid X now" without a
+     * separate trip to the Record Payment dialog. */
     advanceAmount: optionalMoneySchema,
     advancePaymentMethod: z.enum(PAYMENT_METHOD_VALUES).optional(),
     notes: z
@@ -294,27 +297,38 @@ export const createBookingSchema = z
 export type CreateBookingInput = z.infer<typeof createBookingSchema>;
 
 /**
- * Editing an existing **draft/confirmed/pickup_pending** booking (see
- * `EDITABLE_STATUSES`) — dates, notes, and now also quantity (decrease
- * only — cancel the line instead to remove it entirely) and the
- * additional-cost charge (e.g. an agreed late-return fee added after the
- * fact). The item, customer, outlet and discount are all still fixed once
- * created (start over with a new booking to change those). The discount
- * specifically stays frozen the same way `handledById` is — it's part of
- * what was agreed with the customer at booking time, not something to
- * quietly change later; if a quantity decrease would leave it bigger than
- * the new (smaller) rent, the server clamps it down rather than reject
- * the edit.
+ * Editing one still-editable **item** within an order (dates, and now
+ * also quantity — decrease only, cancel the item instead to remove it
+ * entirely). The item/variation itself is fixed once created (cancel and
+ * add a new item instead to change that).
  */
-export const updateBookingSchema = z
+export const updateBookingItemSchema = z
   .object({
     fromDate: dateStringSchema,
     toDate: dateStringSchema,
     /** Omit to leave the quantity unchanged. Can only ever go *down* from
-     * what the booking already has — increasing it here would need a
-     * fresh availability check against new units, which is what creating
-     * a new line is for. */
+     * what the item already has — increasing it here would need a fresh
+     * availability check against new units, which is what adding a new
+     * item is for. */
     quantity: bookingQuantitySchema.optional(),
+  })
+  .superRefine((data, ctx) => {
+    dateRangeRefinement(data, ctx);
+  });
+
+export type UpdateBookingItemInput = z.infer<typeof updateBookingItemSchema>;
+
+/**
+ * Editing the **order** itself — the additional-cost charge (e.g. an
+ * agreed late-return fee added after the fact) and notes. The customer,
+ * discount and security deposit are all still fixed once created (start
+ * over with a new booking to change those) — the discount specifically
+ * stays frozen the same way `handledById` is, part of what was agreed
+ * with the customer at booking time, not something to quietly change
+ * later.
+ */
+export const updateBookingOrderSchema = z
+  .object({
     additionalCost: optionalMoneySchema,
     additionalCostReason: z
       .string()
@@ -328,11 +342,10 @@ export const updateBookingSchema = z
       .optional(),
   })
   .superRefine((data, ctx) => {
-    dateRangeRefinement(data, ctx);
     additionalCostRefinement(data, ctx);
   });
 
-export type UpdateBookingInput = z.infer<typeof updateBookingSchema>;
+export type UpdateBookingOrderInput = z.infer<typeof updateBookingOrderSchema>;
 
 export const cancelBookingSchema = z.object({
   reason: z

@@ -5,24 +5,24 @@ import { returnBooking } from "@/server/bookings/lifecycle";
 import { dispatchAfterResponse } from "@/server/notifications/dispatch-after-response";
 
 /**
- * Records a return + damage/deposit settlement for a booking (doc
- * §14–15). Gated by `BOOKING_RETURN` alone — the settlement's own
- * `deposit_release`/`damage_charge` ledger movements are system-generated
- * side effects of this already-authorized action, not a separate payment
- * a caller picks a type for.
+ * Records a return + damage/deposit settlement for one item within an
+ * order (doc §14–15). Gated by `BOOKING_RETURN` alone — the settlement's
+ * own `deposit_release`/`damage_charge` ledger movements are
+ * system-generated side effects of this already-authorized action, not a
+ * separate payment a caller picks a type for.
  */
 export async function POST(
   request: Request,
-  { params }: { params: Promise<{ id: string }> },
+  { params }: { params: Promise<{ id: string; itemId: string }> },
 ) {
   try {
     const user = await requireTenantUser();
 
-    const { id } = await params;
+    const { id, itemId } = await params;
     const body = returnBookingSchema.parse(await request.json());
-    const result = await returnBooking(user, id, body);
+    const result = await returnBooking(user, id, itemId, body);
 
-    dispatchAfterResponse([id]);
+    dispatchAfterResponse([itemId]);
 
     return apiSuccess(result, "Item returned");
   } catch (error) {

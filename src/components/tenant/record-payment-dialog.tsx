@@ -132,18 +132,46 @@ function outstandingHint(
   }
 }
 
+export type RecordPaymentItemOption = {
+  bookingId: string;
+  label: string;
+  summary: PaymentSummary;
+};
+
 export function RecordPaymentDialog({
   bookingId,
   summary,
   canRefund,
+  items,
 }: {
   bookingId: string;
   summary: PaymentSummary;
   canRefund: boolean;
+  /** When an order has more than one line item, adds a picker so staff
+   * choose which item's own ledger this payment lands on — omitted (or a
+   * single entry) keeps the plain single-booking behavior. */
+  items?: RecordPaymentItemOption[];
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+  const hasItemPicker = (items?.length ?? 0) > 1;
+
+  const defaultItemId = useMemo(() => {
+    if (!items || items.length === 0) return bookingId;
+    const withOutstanding = items.find(
+      (option) => compareMoney(option.summary.outstanding, ZERO_MONEY) > 0,
+    );
+    return (withOutstanding ?? items[0]).bookingId;
+  }, [items, bookingId]);
+
+  const [selectedItemId, setSelectedItemId] = useState(defaultItemId);
+
+  const effectiveBookingId = hasItemPicker ? selectedItemId : bookingId;
+  const effectiveSummary = hasItemPicker
+    ? (items?.find((option) => option.bookingId === selectedItemId)?.summary ??
+      summary)
+    : summary;
 
   const paymentTypeOptions = useMemo(
     () => PAYMENT_TYPE_ORDER.filter((type) => canRefund || !REFUND_TYPES.has(type)),
@@ -173,7 +201,7 @@ export function RecordPaymentDialog({
     setFormError(null);
 
     try {
-      await apiRequest(`/api/bookings/${bookingId}/payments`, {
+      await apiRequest(`/api/bookings/${effectiveBookingId}/payments`, {
         method: "POST",
         body: JSON.stringify(values),
       });
@@ -218,7 +246,7 @@ export function RecordPaymentDialog({
 
   const isSubmitting = form.formState.isSubmitting;
   const referenceRequired = REFERENCE_REQUIRED_METHODS.has(paymentMethod);
-  const hint = outstandingHint(paymentType, summary);
+  const hint = outstandingHint(paymentType, effectiveSummary);
 
   return (
     <Dialog
@@ -228,6 +256,7 @@ export function RecordPaymentDialog({
         if (!next) {
           setFormError(null);
           form.reset();
+          setSelectedItemId(defaultItemId);
         }
       }}
     >
@@ -263,6 +292,44 @@ export function RecordPaymentDialog({
           ) : null}
 
           <FieldGroup>
+            {hasItemPicker ? (
+              <Field>
+                <FieldLabel>Item</FieldLabel>
+                <Select
+                  value={selectedItemId}
+                  onValueChange={(next: string | null) => {
+                    if (next === null) return;
+                    const nextId: string = next;
+                    setSelectedItemId(nextId);
+                    const nextSummary = items?.find(
+                      (option) => option.bookingId === nextId,
+                    )?.summary;
+                    if (
+                      nextSummary &&
+                      paymentType === "full_payment" &&
+                      compareMoney(nextSummary.outstanding, ZERO_MONEY) > 0
+                    ) {
+                      form.setValue("amount", nextSummary.outstanding, {
+                        shouldValidate: true,
+                      });
+                    }
+                  }}
+                  disabled={isSubmitting}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Choose an item" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {items?.map((option) => (
+                      <SelectItem key={option.bookingId} value={option.bookingId}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </Field>
+            ) : null}
+
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <Field data-invalid={!!form.formState.errors.paymentType}>
                 <FieldLabel>Type</FieldLabel>
@@ -280,9 +347,9 @@ export function RecordPaymentDialog({
                         // editable: a customer can hand over part of it.
                         if (
                           next === "full_payment" &&
-                          compareMoney(summary.outstanding, ZERO_MONEY) > 0
+                          compareMoney(effectiveSummary.outstanding, ZERO_MONEY) > 0
                         ) {
-                          form.setValue("amount", summary.outstanding, {
+                          form.setValue("amount", effectiveSummary.outstanding, {
                             shouldValidate: true,
                           });
                         }

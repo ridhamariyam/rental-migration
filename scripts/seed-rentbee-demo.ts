@@ -27,6 +27,7 @@ import postgres from "postgres";
 import { drizzle } from "drizzle-orm/postgres-js";
 import {
   attendances,
+  bookingItems,
   bookings,
   categories,
   customers,
@@ -547,23 +548,14 @@ async function main() {
     const securityDeposit = variation.securityDeposit;
 
     const bookingId = randomUUID();
-    const bookingGroupId = randomUUID();
+    const itemId = randomUUID();
     const bookingNumber = freshBookingNumber();
 
-    const base = {
+    const orderBase = {
       id: bookingId,
       bookingNumber,
-      bookingGroupId,
       shopId: SHOP_ID,
-      outletId: variation.outletId,
       customerId: customer.id,
-      productId: variation.productId,
-      variationId: variation.id,
-      fromDate,
-      toDate,
-      totalDays: plan.totalDays,
-      rentAmount,
-      grossRent,
       discountAmount,
       securityDeposit,
       totalAmount,
@@ -572,27 +564,50 @@ async function main() {
       notes: null as string | null,
     };
 
+    const itemBase = {
+      id: itemId,
+      bookingId,
+      shopId: SHOP_ID,
+      outletId: variation.outletId,
+      productId: variation.productId,
+      variationId: variation.id,
+      fromDate,
+      toDate,
+      totalDays: plan.totalDays,
+      rentAmount,
+      grossRent,
+    };
+
     if (plan.status === "draft") {
       await db.insert(bookings).values({
-        ...base,
+        ...orderBase,
         status: "draft",
         paymentStatus: "unpaid",
       });
+      await db.insert(bookingItems).values({ ...itemBase, status: "draft" });
       continue;
     }
 
     if (plan.status === "cancelled") {
       const refunded = Math.random() < 0.3;
+      const cancelledAt = offsetTimestamp(plan.fromDaysOffset - 1);
+      const cancellationReason = pick([
+        "Customer rescheduled the event",
+        "Duplicate booking created by mistake",
+        "Customer found a different outfit",
+      ]);
       await db.insert(bookings).values({
-        ...base,
+        ...orderBase,
         status: "cancelled",
         paymentStatus: refunded ? "refunded" : "unpaid",
-        cancelledAt: offsetTimestamp(plan.fromDaysOffset - 1),
-        cancellationReason: pick([
-          "Customer rescheduled the event",
-          "Duplicate booking created by mistake",
-          "Customer found a different outfit",
-        ]),
+        cancelledAt,
+        cancellationReason,
+      });
+      await db.insert(bookingItems).values({
+        ...itemBase,
+        status: "cancelled",
+        cancelledAt,
+        cancellationReason,
       });
       if (refunded) {
         await db.insert(payments).values([
@@ -625,10 +640,11 @@ async function main() {
     if (plan.status === "confirmed") {
       const advance = money(Number(totalAmount) * 0.5);
       await db.insert(bookings).values({
-        ...base,
+        ...orderBase,
         status: "confirmed",
         paymentStatus: "partial",
       });
+      await db.insert(bookingItems).values({ ...itemBase, status: "confirmed" });
       await db.insert(payments).values({
         shopId: SHOP_ID,
         outletId: variation.outletId,
@@ -646,9 +662,13 @@ async function main() {
       const fullyPaid = Math.random() < 0.6;
       const advance = fullyPaid ? totalAmount : money(Number(totalAmount) * 0.5);
       await db.insert(bookings).values({
-        ...base,
-        status: plan.status,
+        ...orderBase,
+        status: "confirmed",
         paymentStatus: fullyPaid ? "paid" : "partial",
+      });
+      await db.insert(bookingItems).values({
+        ...itemBase,
+        status: plan.status,
         pickedUpAt: offsetTimestamp(plan.fromDaysOffset, 10),
         pickedUpById: staffMember.id,
       });
@@ -687,9 +707,13 @@ async function main() {
     const returnCondition = hasDamage ? "minor_damage" : "good";
 
     await db.insert(bookings).values({
-      ...base,
-      status: "returned",
+      ...orderBase,
+      status: "confirmed",
       paymentStatus: "paid",
+    });
+    await db.insert(bookingItems).values({
+      ...itemBase,
+      status: "returned",
       pickedUpAt: offsetTimestamp(plan.fromDaysOffset, 10),
       pickedUpById: staffMember.id,
       returnedAt: offsetTimestamp(plan.fromDaysOffset + plan.totalDays, 18),
@@ -752,7 +776,7 @@ async function main() {
         shopId: SHOP_ID,
         outletId: variation.outletId,
         variationId: variation.id,
-        bookingId,
+        bookingId: itemId,
         taskType: "cleaning",
         status: completed ? "completed" : "in_progress",
         notes: "Opened automatically at return — minor stain reported",
@@ -775,7 +799,7 @@ async function main() {
       await db.insert(ownerSettlements).values({
         shopId: SHOP_ID,
         outletId: variation.outletId,
-        bookingId,
+        bookingId: itemId,
         variationId: variation.id,
         ownerName: variation.ownerName,
         ownerPhone: variation.ownerPhone,
@@ -897,7 +921,8 @@ async function main() {
       shopId: SHOP_ID,
       staffId: staffMember.id,
       amount: money(baseSalary),
-      workingDaysPerMonth: 26,
+      weeklyOffDay: 0,
+      standardHoursPerDay: "8.00",
       effectiveDate: offsetDateIso(-90),
       note: "Standard monthly salary",
     });
@@ -909,12 +934,14 @@ async function main() {
       const periodYear = period.getUTCFullYear();
       const periodMonth = period.getUTCMonth() + 1;
       const workingDays = 26;
+      const standardHoursPerDay = "8.00";
       const presentDays = randomInt(18, 24);
       const approvedLeaveDays = randomInt(0, 2);
       const payableDays = Math.min(workingDays, presentDays + approvedLeaveDays);
       const absentDays = Math.max(0, workingDays - presentDays - approvedLeaveDays);
-      const perDayAmount = money(baseSalary / workingDays);
-      const netAmount = money(Number(perDayAmount) * payableDays);
+      const hourlyRate = money(baseSalary / (workingDays * 8));
+      const basePay = money(Number(hourlyRate) * payableDays * 8);
+      const netAmount = basePay;
 
       await db.insert(salaryPayslips).values({
         shopId: SHOP_ID,
@@ -922,11 +949,14 @@ async function main() {
         periodYear,
         periodMonth,
         baseSalary: money(baseSalary),
+        weeklyOffDay: 0,
+        standardHoursPerDay,
         workingDays,
         presentDays,
         absentDays,
         approvedLeaveDays,
-        perDayAmount,
+        hourlyRate,
+        basePay,
         netAmount,
         generatedById: MANAGER_KANNUR_ID,
         generatedAt: offsetTimestamp(-monthsAgo * 30 + 3, 10),

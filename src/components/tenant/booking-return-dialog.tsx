@@ -62,10 +62,12 @@ const PAYMENT_METHOD_LABELS: Record<string, string> = {
 
 export function BookingReturnDialog({
   bookingId,
+  itemId,
   expectedBarcode,
   summary,
 }: {
   bookingId: string;
+  itemId: string;
   expectedBarcode: string;
   summary: PaymentSummary;
 }) {
@@ -109,7 +111,7 @@ export function BookingReturnDialog({
     setFormError(null);
 
     try {
-      await apiRequest(`/api/bookings/${bookingId}/return`, {
+      await apiRequest(`/api/bookings/${bookingId}/items/${itemId}/return`, {
         method: "POST",
         body: JSON.stringify(values),
       });

@@ -5,6 +5,7 @@ import { alias } from "drizzle-orm/pg-core";
 import { db } from "@/lib/db/client";
 import { AppError } from "@/lib/errors/app-error";
 import {
+  bookingItems,
   bookings,
   maintenanceTasks,
   outlets,
@@ -148,8 +149,12 @@ const TASK_SELECT = {
   productName: products.name,
   itemStatus: productVariations.status,
   bookingId: maintenanceTasks.bookingId,
+  // `maintenanceTasks.bookingId` is actually a `booking_items.id` (see its
+  // column doc comment) — this is the order's own id, for linking to
+  // `/dashboard/bookings/{orderId}` instead of the item id.
+  orderId: bookings.id,
   bookingNumber: bookings.bookingNumber,
-  bookingQuantity: bookings.quantity,
+  bookingQuantity: bookingItems.quantity,
   taskType: maintenanceTasks.taskType,
   status: maintenanceTasks.status,
   notes: maintenanceTasks.notes,
@@ -178,6 +183,7 @@ type TaskSelectRow = {
   productName: string;
   itemStatus: ProductVariation["status"];
   bookingId: string | null;
+  orderId: string | null;
   bookingNumber: string | null;
   bookingQuantity: number | null;
   taskType: MaintenanceTask["taskType"];
@@ -236,7 +242,8 @@ function baseTaskQuery() {
     )
     .innerJoin(products, eq(productVariations.productId, products.id))
     .leftJoin(outlets, eq(maintenanceTasks.outletId, outlets.id))
-    .leftJoin(bookings, eq(maintenanceTasks.bookingId, bookings.id))
+    .leftJoin(bookingItems, eq(maintenanceTasks.bookingId, bookingItems.id))
+    .leftJoin(bookings, eq(bookingItems.bookingId, bookings.id))
     .leftJoin(assignedToUser, eq(maintenanceTasks.assignedToId, assignedToUser.id))
     .leftJoin(
       completedByUser,

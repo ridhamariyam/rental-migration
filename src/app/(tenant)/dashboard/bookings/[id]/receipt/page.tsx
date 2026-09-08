@@ -45,6 +45,8 @@ export const metadata = {
   title: "Receipt — Rentique",
 };
 
+/** One combined receipt for the whole order — every item, one payment
+ * ledger, one total. */
 export default async function BookingReceiptPage({
   params,
 }: {
@@ -65,10 +67,6 @@ export default async function BookingReceiptPage({
   if (!receipt) {
     notFound();
   }
-
-  const itemLabel = [receipt.item.color, receipt.item.size]
-    .filter(Boolean)
-    .join(", ");
 
   return (
     <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-6 p-6">
@@ -109,32 +107,57 @@ export default async function BookingReceiptPage({
                 {receipt.booking.bookingNumber}
               </span>
               <span className="text-muted-foreground text-xs">
-                {formatDate(receipt.booking.fromDate, "long")} →{" "}
-                {formatDate(receipt.booking.toDate, "long")}
+                Created {formatDate(receipt.booking.createdAt, "long")}
               </span>
             </div>
           </div>
 
           <Separator />
 
-          <div className="grid grid-cols-1 gap-4 text-sm sm:grid-cols-2">
-            <div className="flex flex-col gap-0.5">
-              <span className="text-muted-foreground text-xs">Customer</span>
-              <span className="font-medium">{receipt.customer.name}</span>
-              <span className="text-muted-foreground">
-                {receipt.customer.phone}
-              </span>
-            </div>
-            <div className="flex flex-col gap-0.5">
-              <span className="text-muted-foreground text-xs">Item</span>
-              <span className="font-medium">
-                {receipt.item.productName}
-                {itemLabel ? ` (${itemLabel})` : ""}
-                {receipt.charges.quantity > 1 ? ` × ${receipt.charges.quantity}` : ""}
-              </span>
-              <span className="text-muted-foreground">
-                SKU {receipt.item.sku}
-              </span>
+          <div className="flex flex-col gap-0.5 text-sm">
+            <span className="text-muted-foreground text-xs">Customer</span>
+            <span className="font-medium">{receipt.customer.name}</span>
+            <span className="text-muted-foreground">
+              {receipt.customer.phone}
+            </span>
+          </div>
+
+          <Separator />
+
+          <div className="flex flex-col gap-3">
+            <span className="text-muted-foreground text-xs tracking-wide uppercase">
+              {receipt.items.length > 1 ? `Items (${receipt.items.length})` : "Item"}
+            </span>
+            <div className="flex flex-col gap-3 text-sm">
+              {receipt.items.map((item) => {
+                const itemLabel = [item.color, item.size]
+                  .filter(Boolean)
+                  .join(", ");
+                return (
+                  <div
+                    key={item.id}
+                    className="flex flex-wrap items-center justify-between gap-2"
+                  >
+                    <div className="flex flex-col gap-0.5">
+                      <span className="font-medium">
+                        {item.productName}
+                        {itemLabel ? ` (${itemLabel})` : ""}
+                        {item.quantity > 1 ? ` × ${item.quantity}` : ""}
+                      </span>
+                      <span className="text-muted-foreground text-xs">
+                        SKU {item.sku} · {formatDate(item.fromDate)} →{" "}
+                        {formatDate(item.toDate)}
+                        {Number(item.damageCharge) > 0
+                          ? ` · Damage ${formatMoney(item.damageCharge)}`
+                          : ""}
+                      </span>
+                    </div>
+                    <span className="font-medium">
+                      {formatMoney(item.grossRent)}
+                    </span>
+                  </div>
+                );
+              })}
             </div>
           </div>
 
@@ -142,12 +165,9 @@ export default async function BookingReceiptPage({
 
           <div className="flex flex-col gap-2 text-sm">
             <div className="flex items-center justify-between">
-              <span className="text-muted-foreground">
-                {formatMoney(receipt.charges.rentAmount)} per item
-                {receipt.charges.quantity > 1 ? ` × ${receipt.charges.quantity}` : ""}
-              </span>
+              <span className="text-muted-foreground">Rent (all items)</span>
               <span className="font-medium">
-                {formatMoney(receipt.charges.grossRent)}
+                {formatMoney(receipt.charges.grossRentTotal)}
               </span>
             </div>
             {Number(receipt.charges.discountAmount) > 0 ? (
@@ -170,11 +190,11 @@ export default async function BookingReceiptPage({
                 </span>
               </div>
             ) : null}
-            {Number(receipt.charges.damageCharge) > 0 ? (
+            {Number(receipt.charges.damageChargeTotal) > 0 ? (
               <div className="flex items-center justify-between">
                 <span className="text-muted-foreground">Damage charge</span>
                 <span className="font-medium">
-                  {formatMoney(receipt.charges.damageCharge)}
+                  {formatMoney(receipt.charges.damageChargeTotal)}
                 </span>
               </div>
             ) : null}
