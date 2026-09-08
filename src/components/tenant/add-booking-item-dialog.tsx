@@ -47,12 +47,12 @@ function startOfToday(): Date {
   return new Date(`${toDateString(new Date())}T00:00:00`);
 }
 
-function emptyValues() {
+function emptyValues(defaultFromDate?: string, defaultToDate?: string) {
   const today = toDateString(new Date());
   return {
     variationId: "",
-    fromDate: today,
-    toDate: today,
+    fromDate: defaultFromDate ?? today,
+    toDate: defaultToDate ?? today,
     quantity: "1",
   };
 }
@@ -67,9 +67,18 @@ function emptyValues() {
 export function AddBookingItemButton({
   bookingId,
   bookingNumber,
+  defaultFromDate,
+  defaultToDate,
 }: {
   bookingId: string;
   bookingNumber: string;
+  /** Pre-fill the new item's dates from the order's most recently added
+   * item, so adding a matching accessory/second unit doesn't require
+   * re-picking the same pickup/return dates by hand. Falls back to today
+   * when the order has no items yet (or the caller doesn't have them
+   * loaded, e.g. the edit page). */
+  defaultFromDate?: string;
+  defaultToDate?: string;
 }) {
   const [open, setOpen] = useState(false);
 
@@ -84,6 +93,8 @@ export function AddBookingItemButton({
         onOpenChange={setOpen}
         bookingId={bookingId}
         bookingNumber={bookingNumber}
+        defaultFromDate={defaultFromDate}
+        defaultToDate={defaultToDate}
       />
     </>
   );
@@ -94,11 +105,15 @@ function AddBookingItemDialog({
   onOpenChange,
   bookingId,
   bookingNumber,
+  defaultFromDate,
+  defaultToDate,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   bookingId: string;
   bookingNumber: string;
+  defaultFromDate?: string;
+  defaultToDate?: string;
 }) {
   const router = useRouter();
   const [formError, setFormError] = useState<string | null>(null);
@@ -109,7 +124,7 @@ function AddBookingItemDialog({
 
   const form = useForm<BookingItemInput>({
     resolver: zodResolver(bookingItemSchema),
-    defaultValues: emptyValues(),
+    defaultValues: emptyValues(defaultFromDate, defaultToDate),
     mode: "onTouched",
     reValidateMode: "onChange",
   });
@@ -195,7 +210,7 @@ function AddBookingItemDialog({
           setFormError(null);
           setSelectedItem(null);
           setQuote(null);
-          form.reset(emptyValues());
+          form.reset(emptyValues(defaultFromDate, defaultToDate));
         }
       }}
     >
@@ -231,6 +246,7 @@ function AddBookingItemDialog({
                   }}
                   disabled={isSubmitting}
                   invalid={!!form.formState.errors.barcode}
+                  autoFocus
                 />
                 <FieldError errors={[form.formState.errors.barcode]} />
               </Field>

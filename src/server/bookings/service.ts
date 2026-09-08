@@ -862,10 +862,10 @@ export async function createBooking(
 
         // The order just left `draft` — every item created with it is
         // still sitting at its own default `draft` status (see the insert
-        // above), which would permanently block pickup (`confirmPickup`
-        // only allows `confirmed`/`pickup_pending` -> `rented`). Bring
-        // them along to `confirmed` so the order and its items never
-        // disagree about being past draft.
+        // above). `confirmPickup` can pick up a `draft` item directly now,
+        // but bring them along to `confirmed` anyway so the order and its
+        // items never disagree about being past draft once a payment has
+        // actually landed.
         const confirmedItems = await tx
           .update(bookingItems)
           .set({ status: "confirmed", updatedAt: new Date() })
@@ -1203,9 +1203,9 @@ export async function addBookingItem(
         grossRent: quote.grossRent,
         // A `draft` order's items all match it, but an order past `draft`
         // (confirmed/pickup_pending/rented) already has settled payments —
-        // a new item should be immediately actionable too, not stuck at
-        // `draft` forever (pickup only allows confirmed/pickup_pending ->
-        // rented, never draft).
+        // a new item should immediately match that, not sit at `draft`
+        // once its siblings are already past it (even though a `draft`
+        // item is itself pickable now — see `booking-state.ts`).
         status: order.status === "draft" ? "draft" : "confirmed",
       })
       .returning();

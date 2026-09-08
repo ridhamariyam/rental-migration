@@ -6,9 +6,11 @@ import { Controller, useFieldArray, useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import {
   AlertCircleIcon,
+  PackageIcon,
   PlusIcon,
   ReceiptTextIcon,
   ShieldCheckIcon,
+  SlidersHorizontalIcon,
   TagIcon,
 } from "lucide-react";
 
@@ -68,11 +70,11 @@ function todayIso(): string {
   return toDateString(new Date());
 }
 
-function emptyItem() {
+function emptyItem(defaultFromDate?: string, defaultToDate?: string) {
   return {
     variationId: "",
-    fromDate: todayIso(),
-    toDate: todayIso(),
+    fromDate: defaultFromDate ?? todayIso(),
+    toDate: defaultToDate ?? todayIso(),
     securityDeposit: "",
     quantity: "1",
   };
@@ -161,7 +163,8 @@ export function BookingForm({
   }
 
   function handleAddItem() {
-    append(emptyItem());
+    const lastItem = watchedItems?.[watchedItems.length - 1];
+    append(emptyItem(lastItem?.fromDate, lastItem?.toDate));
     setFormError(null);
   }
 
@@ -370,30 +373,20 @@ export function BookingForm({
                 <FieldError errors={[form.formState.errors.customerId]} />
               </Field>
 
-              <div className="flex flex-col gap-3">
-                <div className="flex items-center justify-between gap-3">
-                  <FieldLabel>
+              <div className="flex flex-col gap-3 rounded-xl border border-border/70 bg-card overflow-hidden">
+                <div className="flex items-center justify-between gap-3 border-b border-border/60 bg-muted/30 px-4 py-3">
+                  <FieldLabel className="text-foreground/90 flex items-center gap-2 text-xs font-semibold tracking-wide uppercase">
+                    <PackageIcon className="size-3.5 text-primary" aria-hidden="true" />
                     Items
                     {lines.length > 1 ? (
-                      <span className="text-muted-foreground ml-1 font-normal">
+                      <span className="text-muted-foreground font-normal normal-case tracking-normal">
                         ({lines.length} lines · {totalUnits} units)
                       </span>
                     ) : null}
                   </FieldLabel>
-                  {lines.length < MAX_ITEM_LINES ? (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      disabled={isSubmitting}
-                      onClick={handleAddItem}
-                    >
-                      <PlusIcon />
-                      Add another item
-                    </Button>
-                  ) : null}
                 </div>
 
+                <div className="flex flex-col gap-3 px-4 pb-4">
                 {lines.map((line) => (
                   <BookingItemRow
                     key={line.key}
@@ -427,10 +420,26 @@ export function BookingForm({
                     </AlertDescription>
                   </Alert>
                 ) : null}
+
+                {lines.length < MAX_ITEM_LINES ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={isSubmitting}
+                    onClick={handleAddItem}
+                    className="self-end"
+                  >
+                    <PlusIcon />
+                    Add another item
+                  </Button>
+                ) : null}
+                </div>
               </div>
 
-              <div className="flex flex-col gap-4 rounded-lg border p-4">
-                <FieldLabel className="text-muted-foreground text-xs font-medium tracking-wide uppercase">
+              <div className="flex flex-col gap-4 rounded-xl border border-dashed border-border/70 bg-muted/20 p-4">
+                <FieldLabel className="text-foreground/90 flex items-center gap-2 text-xs font-semibold tracking-wide uppercase">
+                  <SlidersHorizontalIcon className="size-3.5 text-primary" aria-hidden="true" />
                   Order adjustments
                 </FieldLabel>
 

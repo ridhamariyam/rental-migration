@@ -1,14 +1,17 @@
 import { z } from "zod";
-import { moneySchema, uuidSchema } from "@/lib/validation/common";
+import { MONEY_PATTERN, moneySchema, uuidSchema } from "@/lib/validation/common";
 import { compareMoney, ZERO_MONEY } from "@/lib/money";
 
 export const bookingPaymentParamSchema = z.object({ id: uuidSchema });
 
 /** A payment amount must be strictly greater than zero — `moneySchema`
  * alone allows `"0.00"`, which is a valid *money* string but never a valid
- * payment. */
+ * payment. Zod still runs this refinement even when `moneySchema`'s own
+ * regex already failed (e.g. `"2-"`), so the `MONEY_PATTERN` guard comes
+ * first — otherwise `compareMoney` reaches `@/lib/money`'s `BigInt(...)`
+ * parsing with a malformed string and throws instead of failing gracefully. */
 export const positiveMoneySchema = moneySchema.refine(
-  (value) => compareMoney(value, ZERO_MONEY) > 0,
+  (value) => !MONEY_PATTERN.test(value) || compareMoney(value, ZERO_MONEY) > 0,
   { message: "Amount must be greater than zero" },
 );
 

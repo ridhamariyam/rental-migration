@@ -177,12 +177,6 @@ export default async function BookingDetailPage({
                 Receipt
               </Button>
             ) : null}
-            {canAddItem ? (
-              <AddBookingItemButton
-                bookingId={booking.id}
-                bookingNumber={booking.bookingNumber}
-              />
-            ) : null}
             {pickupEligibleItems.length > 1 && summary ? (
               <BookingPickupAllDialog
                 bookingId={booking.id}
@@ -233,6 +227,16 @@ export default async function BookingDetailPage({
                 />
               ))}
             </div>
+            {canAddItem ? (
+              <div className="border-border/60 mt-3 flex justify-end border-t pt-3">
+                <AddBookingItemButton
+                  bookingId={booking.id}
+                  bookingNumber={booking.bookingNumber}
+                  defaultFromDate={items.at(-1)?.fromDate}
+                  defaultToDate={items.at(-1)?.toDate}
+                />
+              </div>
+            ) : null}
           </CardContent>
         </Card>
 

@@ -121,43 +121,7 @@ export async function BookingsTable({
               <TableRow key={booking.id}>
                 <TableCell className="px-4 py-3 font-medium">
                   <div className="flex items-center gap-3">
-                    {groupItems.length > 1 ? (
-                      <div className="flex items-center -space-x-2.5 shrink-0 overflow-hidden">
-                        {groupItems.slice(0, 3).map((item, index) => {
-                          const zClass =
-                            index === 0 ? "z-30" : index === 1 ? "z-20" : "z-10";
-                          return (
-                            <Avatar
-                              key={index}
-                              className={`size-8 shrink-0 ring-2 ring-background ${zClass} shadow-xs`}
-                            >
-                              {item.productImage ? (
-                                <AvatarImage
-                                  src={item.productImage}
-                                  alt={item.productName}
-                                  className="object-cover"
-                                />
-                              ) : null}
-                              <AvatarFallback
-                                className="text-white text-[10px] font-semibold uppercase"
-                                style={{
-                                  backgroundImage: productAvatarGradient(
-                                    item.productName,
-                                  ),
-                                }}
-                              >
-                                {item.productName.slice(0, 2)}
-                              </AvatarFallback>
-                            </Avatar>
-                          );
-                        })}
-                        {groupItems.length > 3 ? (
-                          <div className="size-8 shrink-0 ring-2 ring-background z-0 flex items-center justify-center rounded-full bg-muted text-xs font-semibold text-muted-foreground shadow-xs">
-                            +{groupItems.length - 3}
-                          </div>
-                        ) : null}
-                      </div>
-                    ) : (
+                    <div className="relative shrink-0">
                       <Avatar className="size-8 shrink-0 shadow-xs">
                         {groupItems[0]?.productImage ? (
                           <AvatarImage
@@ -177,7 +141,12 @@ export async function BookingsTable({
                           {(groupItems[0]?.productName ?? "").slice(0, 2)}
                         </AvatarFallback>
                       </Avatar>
-                    )}
+                      {groupItems.length > 1 ? (
+                        <div className="ring-background bg-muted text-muted-foreground absolute -right-1 -bottom-1 flex size-4.5 items-center justify-center rounded-full text-[9px] font-semibold ring-2">
+                          +{groupItems.length - 1}
+                        </div>
+                      ) : null}
+                    </div>
 
                     <Link
                       href={`${tenantPaths.bookings}/${booking.id}`}

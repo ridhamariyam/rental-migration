@@ -503,8 +503,9 @@ export async function recordPayment(
       .where(eq(bookings.id, booking.id));
 
     // Bring any still-`draft` items along the same time the order itself
-    // leaves `draft` — otherwise they're permanently stuck (pickup only
-    // allows `confirmed`/`pickup_pending` -> `rented`, never `draft`).
+    // leaves `draft` — a `draft` item can be picked up directly too, but
+    // once a qualifying payment lands the item and its order shouldn't
+    // keep disagreeing about being past `draft`.
     if (nextStatus !== booking.status) {
       await tx
         .update(bookingItems)
