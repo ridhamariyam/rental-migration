@@ -4,6 +4,7 @@ export const REPORT_TYPES = [
   { value: "pending-returns", label: "Pending returns" },
   { value: "deposits-held", label: "Deposits held" },
   { value: "most-rented", label: "Most rented" },
+  { value: "not-rented", label: "Not rented" },
   { value: "revenue-by-outlet", label: "Revenue by outlet" },
   { value: "staff-performance", label: "Staff performance" },
 ] as const;

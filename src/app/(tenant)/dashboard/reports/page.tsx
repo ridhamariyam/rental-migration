@@ -6,6 +6,7 @@ import {
   MonthlyIncomeReport,
 } from "@/components/tenant/income-reports";
 import { MostRentedReport } from "@/components/tenant/most-rented-report";
+import { NotRentedReport } from "@/components/tenant/not-rented-report";
 import { ReportFilters } from "@/components/tenant/report-filters";
 import { ReportNavTabs } from "@/components/tenant/report-nav-tabs";
 import { ReportTableSkeleton } from "@/components/tenant/report-table-skeleton";
@@ -101,6 +102,7 @@ export default async function ReportsPage({
             <MonthlyIncomeReport actor={actor} year={Number(year)} outletId={outletId || undefined} />
           ) : null}
           {report === "most-rented" ? <MostRentedReport {...commonProps} /> : null}
+          {report === "not-rented" ? <NotRentedReport {...commonProps} /> : null}
           {report === "revenue-by-outlet" ? (
             <RevenueByOutletReport actor={actor} fromDate={fromDate || undefined} toDate={toDate || undefined} />
           ) : null}

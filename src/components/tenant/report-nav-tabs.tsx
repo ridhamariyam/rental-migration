@@ -8,6 +8,7 @@ import {
   CalendarDaysIcon,
   CalendarIcon,
   ClockIcon,
+  PackageXIcon,
   ShieldCheckIcon,
   TrendingUpIcon,
   UsersIcon,
@@ -22,6 +23,7 @@ const REPORT_ICONS: Record<string, React.ComponentType<{ className?: string }>> 
   "pending-returns": ClockIcon,
   "deposits-held": ShieldCheckIcon,
   "most-rented": TrendingUpIcon,
+  "not-rented": PackageXIcon,
   "revenue-by-outlet": Building2Icon,
   "staff-performance": UsersIcon,
 };

@@ -7,6 +7,7 @@ import { AppError } from "@/lib/errors/app-error";
 import {
   bookingItems,
   bookings,
+  categories,
   customers,
   maintenanceTasks,
   outlets,
@@ -25,6 +26,7 @@ import type {
   DashboardQuery,
   MonthlyIncomeQuery,
   MostRentedQuery,
+  NotRentedQuery,
   ReportDateRangeQuery,
 } from "@/lib/validation/reports";
 
@@ -394,6 +396,96 @@ export async function getMostRentedProducts(
     productName: row.productName,
     rentalCount: row.rentalCount,
     revenue: normalizeMoneyFromSql(row.revenue),
+  }));
+}
+
+export type NotRentedRow = {
+  productId: string;
+  productName: string;
+  categoryName: string | null;
+  variationCount: number;
+};
+
+/**
+ * The inverse of `getMostRentedProducts` — active catalogue products with
+ * zero booking items in the window (or ever, when no range is given), i.e.
+ * idle stock a shop owner might want to discount, promote, or stop
+ * restocking. A left join keeps a product with zero matches instead of
+ * dropping it (same pattern as `getRevenueByOutlet`); the date/outlet
+ * filters have to live in the join's `ON` clause, not a `WHERE`, or they'd
+ * undo the left join for exactly the products meant to survive it.
+ *
+ * Variation counts are fetched in a second, batched query keyed off the
+ * surviving product ids rather than joined into the same query — joining
+ * `productVariations` here too would fan out against `bookingItems` and
+ * corrupt the very count this query is filtering on.
+ */
+export async function getNotRentedProducts(
+  actor: TenantSessionUser,
+  query: NotRentedQuery,
+): Promise<NotRentedRow[]> {
+  requireReportAccess(actor);
+
+  const productConditions = [
+    eq(products.shopId, actor.shopId),
+    eq(products.isActive, true),
+  ];
+  if (query.outletId) {
+    productConditions.push(
+      inArray(
+        products.id,
+        db
+          .select({ id: productVariations.productId })
+          .from(productVariations)
+          .where(eq(productVariations.outletId, query.outletId)),
+      ),
+    );
+  }
+
+  const joinConditions = [eq(bookingItems.productId, products.id)];
+  if (query.outletId) joinConditions.push(eq(bookingItems.outletId, query.outletId));
+  if (query.fromDate) joinConditions.push(sql`${bookingItems.fromDate} >= ${query.fromDate}`);
+  if (query.toDate) joinConditions.push(sql`${bookingItems.toDate} <= ${query.toDate}`);
+
+  const rows = await db
+    .select({
+      productId: products.id,
+      productName: products.name,
+      categoryName: categories.name,
+    })
+    .from(products)
+    .leftJoin(categories, eq(products.categoryId, categories.id))
+    .leftJoin(bookingItems, and(...joinConditions))
+    .where(and(...productConditions))
+    .groupBy(products.id, products.name, categories.name)
+    .having(sql`count(${bookingItems.id}) = 0`)
+    .orderBy(products.name)
+    .limit(query.limit);
+
+  if (rows.length === 0) return [];
+
+  const productIds = rows.map((row) => row.productId);
+  const variationConditions = [inArray(productVariations.productId, productIds)];
+  if (query.outletId) variationConditions.push(eq(productVariations.outletId, query.outletId));
+
+  const variationRows = await db
+    .select({
+      productId: productVariations.productId,
+      variationCount: count(productVariations.id),
+    })
+    .from(productVariations)
+    .where(and(...variationConditions))
+    .groupBy(productVariations.productId);
+
+  const variationCountByProduct = new Map(
+    variationRows.map((row) => [row.productId, row.variationCount]),
+  );
+
+  return rows.map((row) => ({
+    productId: row.productId,
+    productName: row.productName,
+    categoryName: row.categoryName,
+    variationCount: variationCountByProduct.get(row.productId) ?? 0,
   }));
 }
 
