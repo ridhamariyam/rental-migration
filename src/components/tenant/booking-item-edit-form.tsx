@@ -112,6 +112,23 @@ export function BookingItemEditForm({
     return () => clearTimeout(timeout);
   }, [fromDate, toDate, quantity, item.quantity, item.id, item.variationId]);
 
+  // The schema's own `bookingQuantitySchema` only knows a static 1..20
+  // range — "can't exceed what's currently booked" depends on this
+  // specific item's `item.quantity`, a runtime value, so it's enforced
+  // here instead of in the zod schema (server still re-checks this on
+  // submit regardless).
+  useEffect(() => {
+    const parsedQuantity = Number(quantity);
+    if (Number.isInteger(parsedQuantity) && parsedQuantity > item.quantity) {
+      form.setError("quantity", {
+        type: "max",
+        message: `Can only be reduced — ${item.quantity} currently booked`,
+      });
+    } else if (form.formState.errors.quantity?.type === "max") {
+      form.clearErrors("quantity");
+    }
+  }, [quantity, item.quantity, form]);
+
   const onSubmit = form.handleSubmit(async (values) => {
     setFormError(null);
 
@@ -291,7 +308,11 @@ export function BookingItemEditForm({
         </Button>
         <Button
           type="submit"
-          disabled={isSubmitting || Boolean(quote && !quote.available)}
+          disabled={
+            isSubmitting ||
+            Boolean(quote && !quote.available) ||
+            !!form.formState.errors.quantity
+          }
           className="min-w-32"
         >
           {isSubmitting ? (

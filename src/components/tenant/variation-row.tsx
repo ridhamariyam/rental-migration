@@ -137,6 +137,9 @@ export function VariationRow({
           </div>
         </TableCell>
         <TableCell className="text-muted-foreground px-6 py-3.5 text-sm font-medium">
+          {variation.quantity}
+        </TableCell>
+        <TableCell className="text-muted-foreground px-6 py-3.5 text-sm font-medium">
           {variation.outletName ?? "Unassigned"}
         </TableCell>
         <TableCell className="px-6 py-3.5">

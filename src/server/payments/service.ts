@@ -59,6 +59,12 @@ export type PaymentSummary = {
   depositBalance: string;
   depositHeld: string;
   outstanding: string;
+  /** The flip side of `outstanding`: money already collected that now
+   * exceeds what's payable (e.g. an item was cancelled after its rent was
+   * already paid) — a refund the shop owes the customer. Zero in the
+   * common case; `outstanding` and `creditBalance` are never both
+   * positive at once (one side of the ledger nets to zero first). */
+  creditBalance: string;
   status: Booking["paymentStatus"];
 };
 
@@ -97,6 +103,15 @@ export function computePaymentSummary(
     nonNegativeMoney(depositBalance),
   );
 
+  // A negative balance means more was collected than is now payable (most
+  // often: an already-paid item got cancelled, shrinking rentPayable) —
+  // surface it as a credit owed back to the customer instead of silently
+  // clamping it away like `outstanding` does.
+  const creditBalance = addMoney(
+    nonNegativeMoney(subtractMoney(ZERO_MONEY, rentBalance)),
+    nonNegativeMoney(subtractMoney(ZERO_MONEY, depositBalance)),
+  );
+
   let status: Booking["paymentStatus"];
   if (compareMoney(outstanding, ZERO_MONEY) <= 0) {
     status = "paid";
@@ -131,6 +146,7 @@ export function computePaymentSummary(
     depositBalance,
     depositHeld,
     outstanding,
+    creditBalance,
     status,
   };
 }
@@ -322,25 +338,28 @@ export async function recordPayment(
     const movements: LedgerMovement[] = [];
 
     if (isRefundType(input.paymentType)) {
-      const collectedTotal = addMoney(
-        addMoney(
-          sumByType(existingRows, "advance"),
-          sumByType(existingRows, "balance"),
-        ),
-        sumByType(existingRows, "security_deposit"),
-      );
-      const alreadyReturned = addMoney(
-        sumByType(existingRows, "refund"),
-        sumByType(existingRows, "deposit_release"),
-      );
-      const refundable = subtractMoneyNonNegative(
-        collectedTotal,
-        alreadyReturned,
-      );
+      // Rent and deposit money are kept in separate pools for INflows
+      // (see the `isDepositPayment` branch below) — outflows have to
+      // honour that same separation, or a "deposit refund" can silently
+      // hand back money that was actually collected as rent (and vice
+      // versa for a plain rent "refund"), which is exactly the kind of
+      // cross-bucket leak the separate pools exist to prevent.
+      const isDepositRefund = input.paymentType === "deposit_release";
+      const collected = isDepositRefund
+        ? sumByType(existingRows, "security_deposit")
+        : addMoney(
+            sumByType(existingRows, "advance"),
+            sumByType(existingRows, "balance"),
+          );
+      const alreadyReturned = isDepositRefund
+        ? sumByType(existingRows, "deposit_release")
+        : sumByType(existingRows, "refund");
+      const refundable = subtractMoneyNonNegative(collected, alreadyReturned);
 
       if (compareMoney(input.amount, refundable) > 0) {
+        const bucket = isDepositRefund ? "deposit" : "rent";
         throw new AppError(
-          `Cannot refund more than the ${formatMoney(refundable)} already collected for this booking`,
+          `Cannot refund more than the ${formatMoney(refundable)} ${bucket} already collected for this booking`,
           400,
           [
             {

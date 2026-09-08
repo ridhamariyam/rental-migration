@@ -37,10 +37,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { ApiClientError, apiRequest } from "@/lib/api-client";
 import { formatMoney } from "@/lib/format";
 import {
-  addMoney,
   compareMoney,
   nonNegativeMoney,
-  subtractMoneyNonNegative,
   ZERO_MONEY,
 } from "@/lib/money";
 import {
@@ -82,17 +80,14 @@ const PAYMENT_METHOD_LABELS: Record<string, string> = {
 
 const REFERENCE_REQUIRED_METHODS = new Set(["upi", "card", "bank_transfer"]);
 
-/** The most this booking could still have refunded — collected rent/
- * deposit minus whatever's already been returned. Mirrors the same cap
- * `recordPayment()` enforces server-side, so the hint here is never just
- * decorative: submitting more than this is guaranteed to be rejected. */
+/** The most this booking's plain "Refund" (rent-side) could still return —
+ * rent collected minus whatever's already been refunded. Deposit money is
+ * a separate pool (see "Deposit refund"'s own `depositHeld`), matching
+ * the same per-bucket cap `recordPayment()` enforces server-side, so the
+ * hint here is never just decorative: submitting more than this is
+ * guaranteed to be rejected. */
 function refundableAmount(summary: PaymentSummary): string {
-  const collected = addMoney(
-    addMoney(summary.advancePaid, summary.balancePaid),
-    summary.depositCollected,
-  );
-  const alreadyReturned = addMoney(summary.refunded, summary.depositReleased);
-  return subtractMoneyNonNegative(collected, alreadyReturned);
+  return nonNegativeMoney(summary.rentCollected);
 }
 
 /** A short, contextual hint next to the amount field so staff don't have

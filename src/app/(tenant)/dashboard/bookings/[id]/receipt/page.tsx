@@ -13,7 +13,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { PrintReceiptButton } from "@/components/tenant/print-receipt-button";
-import { outstandingBreakdown } from "@/components/tenant/booking-payments-card";
+import { creditBreakdown, outstandingBreakdown } from "@/components/tenant/booking-payments-card";
 import { getCurrentUser } from "@/lib/auth/session";
 import { hasPermission, Permission } from "@/lib/auth/permissions";
 import { tenantPaths } from "@/lib/tenant-paths";
@@ -311,6 +311,11 @@ export default async function BookingReceiptPage({
             {outstandingBreakdown(receipt.summary) ? (
               <p className="text-muted-foreground -mt-2 text-xs">
                 {outstandingBreakdown(receipt.summary)}
+              </p>
+            ) : null}
+            {creditBreakdown(receipt.summary) ? (
+              <p className="-mt-2 text-xs text-amber-600 dark:text-amber-400">
+                {creditBreakdown(receipt.summary)} — a refund is owed.
               </p>
             ) : null}
           </div>
