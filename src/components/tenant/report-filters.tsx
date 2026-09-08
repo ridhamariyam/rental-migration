@@ -53,13 +53,17 @@ export function ReportFilters({
     router.replace(`${pathname}?${params.toString()}`);
   }
 
-  const showDateRange = ["daily-income", "most-rented", "staff-performance"].includes(
-    report,
-  );
+  const showDateRange = [
+    "daily-income",
+    "most-rented",
+    "not-rented",
+    "staff-performance",
+  ].includes(report);
   const showYear = report === "monthly-income";
   const showOutlet = [
     "monthly-income",
     "most-rented",
+    "not-rented",
     "staff-performance",
     "pending-returns",
     "deposits-held",

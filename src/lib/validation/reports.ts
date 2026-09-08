@@ -59,6 +59,13 @@ export const mostRentedQuerySchema = reportDateRangeQuerySchema.and(
 
 export type MostRentedQuery = z.infer<typeof mostRentedQuerySchema>;
 
+/** Same shape as `mostRentedQuerySchema` — the "not rented" report is its
+ * inverse (zero bookings in the window instead of the most), so it takes
+ * the same date-range/outlet/limit filters. */
+export const notRentedQuerySchema = mostRentedQuerySchema;
+
+export type NotRentedQuery = MostRentedQuery;
+
 const PENDING_LIST_KIND_VALUES = ["returns", "deposits"] as const;
 
 /** Shared by the "currently out" lists (pending returns / deposits held) —
