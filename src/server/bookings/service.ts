@@ -892,8 +892,15 @@ export async function createBooking(
           },
         });
 
+        // One booking-level "Booking Confirmed" WhatsApp for the whole
+        // order — sent after the advance is recorded so
+        // advance_paid/balance_amount reflect it, not before.
+        await queueBookingNotification(tx, updatedOrder, "booking_confirmed");
+
         return { booking: updatedOrder, items: confirmedItems };
       }
+
+      await queueBookingNotification(tx, order, "booking_confirmed");
 
       return { booking: order, items: createdItems };
     });
@@ -1346,7 +1353,8 @@ export async function cancelBookingOrder(
     // still-rented item's rent (and share of the deposit) stays counted.
     const recomputed = await recomputeOrderTotal(tx, id);
 
-    await queueBookingNotification(tx, updated, "booking_cancelled");
+    // No customer-facing "booking cancelled" WhatsApp template exists yet
+    // (see `NOTIFICATION_EVENTS`) — only the item owner is notified.
     for (const itemId of cancelledItemIds) {
       await queueOwnerBookingNotification(tx, updated, itemId, "owner_item_cancelled");
     }

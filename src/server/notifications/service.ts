@@ -10,6 +10,7 @@ import {
   ilike,
   inArray,
   isNull,
+  lt,
   lte,
   or,
   sql,
@@ -37,10 +38,11 @@ import {
 } from "@/lib/db/schema";
 import { env } from "@/lib/env";
 import { AppError } from "@/lib/errors/app-error";
-import { formatDate, formatMoney, parseDateString } from "@/lib/format";
-import { addMoney, ZERO_MONEY } from "@/lib/money";
+import { formatDate, formatMoney, parseDateString, toDateString } from "@/lib/format";
+import { addMoney, subtractMoneyNonNegative, ZERO_MONEY } from "@/lib/money";
 import {
   DEFAULT_ENABLED_NOTIFICATION_EVENTS,
+  NOTIFICATION_EVENT_SCOPE,
   NOTIFICATION_EVENTS,
   buildTemplateComponents,
   normalizeWhatsAppPhone,
@@ -60,13 +62,15 @@ type NotificationTx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 type DbOrTx = typeof db | NotificationTx;
 type RuleInput = (typeof updateNotificationRulesSchema._output)["rules"][number];
 
-export type NotificationRuleView = NotificationRule & {
+export type NotificationRuleView = Omit<NotificationRule, "event"> & {
+  event: NotificationEvent;
   templateName: string | null;
   templateLanguage: string | null;
   integratedNumber: string | null;
 };
 
-export type NotificationLogView = NotificationLog & {
+export type NotificationLogView = Omit<NotificationLog, "event"> & {
+  event: NotificationEvent;
   customerName: string | null;
   bookingNumber: string | null;
 };
@@ -147,7 +151,7 @@ export async function listNotificationRules(
 ): Promise<NotificationRuleView[]> {
   await ensureDefaultNotificationRules(shopId);
 
-  return db
+  const rows = await db
     .select({
       id: notificationRules.id,
       shopId: notificationRules.shopId,
@@ -167,8 +171,18 @@ export async function listNotificationRules(
     .from(notificationRules)
     .leftJoin(whatsappTemplates, eq(notificationRules.templateId, whatsappTemplates.id))
     .leftJoin(whatsappNumbers, eq(notificationRules.whatsappNumberId, whatsappNumbers.id))
-    .where(eq(notificationRules.shopId, shopId))
+    // Excludes any pre-2026-09 rows for the now-retired events (see
+    // `NOTIFICATION_EVENTS`'s doc comment) — the console should only ever
+    // show the 10 events that actually have a template/queue path today.
+    .where(
+      and(
+        eq(notificationRules.shopId, shopId),
+        inArray(notificationRules.event, NOTIFICATION_EVENTS),
+      ),
+    )
     .orderBy(notificationRules.event);
+
+  return rows.map((row) => ({ ...row, event: row.event as NotificationEvent }));
 }
 
 export async function updateNotificationRules(
@@ -409,7 +423,12 @@ export async function listNotificationLogs(
   shopId: string,
   query: NotificationListQuery,
 ): Promise<NotificationListResult> {
-  const conditions = [eq(notificationLogs.shopId, shopId)];
+  const conditions = [
+    eq(notificationLogs.shopId, shopId),
+    // Same reasoning as `listNotificationRules` — a pre-2026-09 log for a
+    // now-retired event should never resurface in the console.
+    inArray(notificationLogs.event, NOTIFICATION_EVENTS),
+  ];
   if (query.status !== "all") conditions.push(eq(notificationLogs.status, query.status));
   if (query.event !== "all") conditions.push(eq(notificationLogs.event, query.event));
   if (query.q) {
@@ -436,6 +455,7 @@ export async function listNotificationLogs(
         id: notificationLogs.id,
         shopId: notificationLogs.shopId,
         bookingId: notificationLogs.bookingId,
+        bookingItemId: notificationLogs.bookingItemId,
         recipientPhone: notificationLogs.recipientPhone,
         recipientName: notificationLogs.recipientName,
         event: notificationLogs.event,
@@ -475,6 +495,7 @@ export async function listNotificationLogs(
   return {
     items: rows.map((row) => ({
       ...row,
+      event: row.event as NotificationEvent,
       customerName: row.customerFirstName
         ? `${row.customerFirstName} ${row.customerLastName}`
         : row.recipientName,
@@ -528,16 +549,115 @@ export async function getNotificationDashboard(
   };
 }
 
-async function buildBookingContext(
-  database: DbOrTx,
-  bookingId: string,
-  extra: Record<string, string> = {},
-): Promise<{
+function formatItemLabel(
+  productName: string,
+  size: string | null,
+  color: string | null,
+): string {
+  const attrs = [size, color].filter((value): value is string => Boolean(value?.trim()));
+  return attrs.length > 0 ? `${productName} (${attrs.join(", ")})` : productName;
+}
+
+type NotificationTarget = {
   shopId: string;
   recipientPhone: string;
   recipientName: string;
   values: Record<string, string>;
-}> {
+};
+
+type ResolvedRuleTarget = {
+  rule: NotificationRule;
+  number: WhatsappNumber;
+  template: WhatsappTemplate;
+};
+
+/** Looks up the enabled rule + connected number + approved template for
+ * one shop/event, or `null` if any leg isn't ready to send — the one
+ * check every queue function needs before it can build a message. */
+async function resolveRuleTarget(
+  database: DbOrTx,
+  shopId: string,
+  event: NotificationEvent,
+): Promise<ResolvedRuleTarget | null> {
+  const [rule] = await database
+    .select()
+    .from(notificationRules)
+    .where(and(eq(notificationRules.shopId, shopId), eq(notificationRules.event, event)))
+    .limit(1);
+  if (!rule?.isEnabled || !rule.templateId || !rule.whatsappNumberId) return null;
+
+  const [number] = await database
+    .select()
+    .from(whatsappNumbers)
+    .where(and(eq(whatsappNumbers.id, rule.whatsappNumberId), eq(whatsappNumbers.shopId, shopId)))
+    .limit(1);
+  const [template] = await database
+    .select()
+    .from(whatsappTemplates)
+    .where(and(eq(whatsappTemplates.id, rule.templateId), eq(whatsappTemplates.shopId, shopId)))
+    .limit(1);
+  if (!number || !template || template.status.toLowerCase() !== "approved") return null;
+
+  return { rule, number, template };
+}
+
+/** Inserts one queued row — the one write path every queue function ends
+ * at, so crqid/component-building/log shape never drifts between them. */
+async function insertNotificationLog(
+  database: DbOrTx,
+  target: ResolvedRuleTarget,
+  params: {
+    shopId: string;
+    bookingId: string;
+    bookingItemId: string | null;
+    event: NotificationEvent;
+    recipientPhone: string;
+    recipientName: string;
+    values: Record<string, string>;
+    scheduledFor: Date | null;
+  },
+): Promise<NotificationLog> {
+  const { rule, number, template } = target;
+  const components = buildTemplateComponents(rule.variableMapping, params.values);
+  const logId = randomUUID();
+
+  const [log] = await database
+    .insert(notificationLogs)
+    .values({
+      id: logId,
+      shopId: params.shopId,
+      bookingId: params.bookingId,
+      bookingItemId: params.bookingItemId,
+      recipientPhone: params.recipientPhone,
+      recipientName: params.recipientName,
+      event: params.event,
+      whatsappNumberId: number.id,
+      templateId: template.id,
+      integratedNumber: number.integratedNumber,
+      templateName: template.name,
+      templateNamespace: template.namespace,
+      templateLanguage: template.language,
+      components,
+      payload: { context: params.values },
+      status: "queued",
+      scheduledFor: params.scheduledFor,
+      crqid: logId.replace(/-/g, "").slice(0, 52),
+    })
+    .returning();
+
+  return log;
+}
+
+/**
+ * Booking-scoped context (whole-order totals, no specific item) for
+ * `booking_confirmed`/`payment_received`/`feedback_request` — the events
+ * that fire once per order no matter how many items it has.
+ */
+async function buildOrderContext(
+  database: DbOrTx,
+  bookingId: string,
+  extra: Record<string, string> = {},
+): Promise<NotificationTarget> {
   const [row] = await database
     .select({
       booking: bookings,
@@ -554,21 +674,9 @@ async function buildBookingContext(
 
   if (!row) throw AppError.notFound("Booking not found");
 
-  // The order's earliest item stands in for "the item" in message
-  // variables (product_name/dates) — a multi-item order only gets one
-  // set of these, a known simplification (see the doc comment on
-  // `queueBookingLifecycleNotifications`).
-  const [item] = await database
-    .select({
-      productName: products.name,
-      outletName: outlets.name,
-      fromDate: bookingItems.fromDate,
-      toDate: bookingItems.toDate,
-      damageCharge: bookingItems.damageCharge,
-      depositRefunded: bookingItems.depositRefunded,
-    })
+  const [firstItem] = await database
+    .select({ outletName: outlets.name })
     .from(bookingItems)
-    .innerJoin(products, eq(bookingItems.productId, products.id))
     .leftJoin(outlets, eq(bookingItems.outletId, outlets.id))
     .where(eq(bookingItems.bookingId, bookingId))
     .orderBy(asc(bookingItems.createdAt), asc(bookingItems.id))
@@ -601,20 +709,97 @@ async function buildBookingContext(
     values: {
       customer_name: recipientName,
       booking_number: row.booking.bookingNumber,
-      product_name: item?.productName ?? "",
-      from_date: item ? formatDate(item.fromDate) : "",
-      to_date: item ? formatDate(item.toDate) : "",
+      booking_date: formatDate(row.booking.createdAt),
+      rental_amount: formatMoney(row.booking.totalAmount),
+      advance_paid: formatMoney(summary.rentCollected),
+      balance_amount: formatMoney(
+        subtractMoneyNonNegative(row.booking.totalAmount, summary.rentCollected),
+      ),
       outstanding: formatMoney(summary.outstanding),
       shop_name: row.shopName,
       receipt_url: `${appUrl}/dashboard/bookings/${row.booking.id}/receipt`,
-      damage_charge: formatMoney(totalDamageCharge),
-      deposit_refunded: formatMoney(item?.depositRefunded ?? ZERO_MONEY),
-      outlet_name: item?.outletName ?? row.shopName,
+      outlet_name: firstItem?.outletName ?? row.shopName,
       ...extra,
     },
   };
 }
 
+/**
+ * Item-scoped context — one specific `booking_items` row's own product/
+ * size/color/dates, for events that fire once per item:
+ * `pickup_reminder`/`pickup_confirmed`/`return_reminder`/
+ * `overdue_reminder`/`booking_returned`.
+ */
+async function buildItemContext(
+  database: DbOrTx,
+  bookingId: string,
+  itemId: string,
+  extra: Record<string, string> = {},
+): Promise<NotificationTarget> {
+  const [row] = await database
+    .select({
+      booking: bookings,
+      shopName: shops.name,
+      customerFirstName: customers.firstName,
+      customerLastName: customers.lastName,
+      customerPhone: customers.phone,
+      outletName: outlets.name,
+      productName: products.name,
+      size: productVariations.size,
+      color: productVariations.color,
+      fromDate: bookingItems.fromDate,
+      toDate: bookingItems.toDate,
+      damageCharge: bookingItems.damageCharge,
+      depositRefunded: bookingItems.depositRefunded,
+    })
+    .from(bookingItems)
+    .innerJoin(bookings, eq(bookingItems.bookingId, bookings.id))
+    .innerJoin(shops, eq(bookings.shopId, shops.id))
+    .innerJoin(customers, eq(bookings.customerId, customers.id))
+    .innerJoin(products, eq(bookingItems.productId, products.id))
+    .innerJoin(productVariations, eq(bookingItems.variationId, productVariations.id))
+    .leftJoin(outlets, eq(bookingItems.outletId, outlets.id))
+    .where(and(eq(bookingItems.id, itemId), eq(bookingItems.bookingId, bookingId)))
+    .limit(1);
+
+  if (!row) throw AppError.notFound("Booking item not found");
+
+  const recipientName = `${row.customerFirstName} ${row.customerLastName}`;
+
+  return {
+    shopId: row.booking.shopId,
+    recipientPhone: normalizeWhatsAppPhone(
+      row.customerPhone,
+      env.WHATSAPP_DEFAULT_COUNTRY_CODE,
+    ),
+    recipientName,
+    values: {
+      customer_name: recipientName,
+      booking_number: row.booking.bookingNumber,
+      booking_date: formatDate(row.booking.createdAt),
+      item: formatItemLabel(row.productName, row.size, row.color),
+      pickup_date: formatDate(row.fromDate),
+      return_date: formatDate(row.toDate),
+      damage_charge: formatMoney(row.damageCharge),
+      deposit_refunded: formatMoney(row.depositRefunded),
+      shop_name: row.shopName,
+      outlet_name: row.outletName ?? row.shopName,
+      ...extra,
+    },
+  };
+}
+
+/**
+ * Queues one event for a booking. Booking-scoped events (see
+ * `NOTIFICATION_EVENT_SCOPE`) dedupe on `bookingId + event`; item-scoped
+ * events dedupe on `bookingId + event + itemId` so a multi-item order gets
+ * its own reminder/confirmation per item instead of only ever sending for
+ * whichever item happened to queue first. `allowRepeat: true` skips the
+ * dedupe check entirely and always inserts a fresh row — for events that
+ * can legitimately fire more than once for the same booking/item
+ * (`payment_received`, one per payment; `overdue_reminder`, handled by its
+ * own `queueOverdueReminders` scan instead of this function).
+ */
 export async function queueBookingNotification(
   database: DbOrTx,
   booking: Pick<Booking, "id" | "shopId">,
@@ -622,101 +807,77 @@ export async function queueBookingNotification(
   options: {
     scheduledFor?: Date | null;
     extraContext?: Record<string, string>;
+    itemId?: string;
+    allowRepeat?: boolean;
   } = {},
 ): Promise<NotificationLog | null> {
   await ensureDefaultNotificationRules(booking.shopId, database);
 
-  const [rule] = await database
-    .select()
-    .from(notificationRules)
-    .where(and(eq(notificationRules.shopId, booking.shopId), eq(notificationRules.event, event)))
-    .limit(1);
+  const target = await resolveRuleTarget(database, booking.shopId, event);
+  if (!target) return null;
 
-  if (!rule?.isEnabled || !rule.templateId || !rule.whatsappNumberId) return null;
+  const scope = NOTIFICATION_EVENT_SCOPE[event];
+  if (scope === "item" && !options.itemId) {
+    throw new AppError(`"${event}" requires an itemId (item-scoped event)`, 500);
+  }
+  // Booking-scoped events never key on an item, even if a caller passed
+  // one by mistake — keeps dedupe/log shape consistent with the event's
+  // declared scope.
+  const itemId = scope === "item" ? (options.itemId as string) : null;
 
-  const [number] = await database
-    .select()
-    .from(whatsappNumbers)
-    .where(and(eq(whatsappNumbers.id, rule.whatsappNumberId), eq(whatsappNumbers.shopId, booking.shopId)))
-    .limit(1);
-  const [template] = await database
-    .select()
-    .from(whatsappTemplates)
-    .where(and(eq(whatsappTemplates.id, rule.templateId), eq(whatsappTemplates.shopId, booking.shopId)))
-    .limit(1);
+  if (!options.allowRepeat) {
+    const [existing] = await database
+      .select()
+      .from(notificationLogs)
+      .where(
+        and(
+          eq(notificationLogs.shopId, booking.shopId),
+          eq(notificationLogs.bookingId, booking.id),
+          eq(notificationLogs.event, event),
+          itemId ? eq(notificationLogs.bookingItemId, itemId) : isNull(notificationLogs.bookingItemId),
+        ),
+      )
+      .limit(1);
+    if (existing) return existing;
+  }
 
-  if (!number || !template || template.status.toLowerCase() !== "approved") return null;
+  const context =
+    scope === "item"
+      ? await buildItemContext(database, booking.id, itemId as string, options.extraContext)
+      : await buildOrderContext(database, booking.id, options.extraContext);
 
-  const [existing] = await database
-    .select()
-    .from(notificationLogs)
-    .where(
-      and(
-        eq(notificationLogs.shopId, booking.shopId),
-        eq(notificationLogs.bookingId, booking.id),
-        eq(notificationLogs.event, event),
-      ),
-    )
-    .limit(1);
-  if (existing) return existing;
+  const scheduledFor = offsetDate(options.scheduledFor, target.rule.scheduleOffsetMinutes);
 
-  const context = await buildBookingContext(database, booking.id, options.extraContext);
-  const components = buildTemplateComponents(rule.variableMapping, context.values);
-  const logId = randomUUID();
-  const scheduledFor = offsetDate(options.scheduledFor, rule.scheduleOffsetMinutes);
-
-  const [log] = await database
-    .insert(notificationLogs)
-    .values({
-      id: logId,
-      shopId: booking.shopId,
-      bookingId: booking.id,
-      recipientPhone: context.recipientPhone,
-      recipientName: context.recipientName,
-      event,
-      whatsappNumberId: number.id,
-      templateId: template.id,
-      integratedNumber: number.integratedNumber,
-      templateName: template.name,
-      templateNamespace: template.namespace,
-      templateLanguage: template.language,
-      components,
-      payload: { context: context.values },
-      status: "queued",
-      scheduledFor,
-      crqid: logId.replace(/-/g, "").slice(0, 52),
-    })
-    .returning();
-
-  return log;
+  return insertNotificationLog(database, target, {
+    shopId: booking.shopId,
+    bookingId: booking.id,
+    bookingItemId: itemId,
+    event,
+    recipientPhone: context.recipientPhone,
+    recipientName: context.recipientName,
+    values: context.values,
+    scheduledFor,
+  });
 }
 
 /**
- * Schedules the lifecycle reminders for one order, based on one item's own
- * pickup/return dates — called once per item created (in
- * `src/server/bookings/service.ts`), but every event dedupes per *order*
- * (not per item, see `notification_logs.bookingId`'s doc comment), so only
- * the first item processed actually gets its dates used. A multi-item
- * order whose items have different dates only gets reminders for that
- * first item — a known simplification, not a full per-item scheduler.
+ * Schedules one item's own pickup/return reminders (1 day before each
+ * date) — called once per item created, in
+ * `src/server/bookings/service.ts`. `booking_confirmed` is queued
+ * separately, once per order, by the caller.
  */
 export async function queueBookingLifecycleNotifications(
   database: DbOrTx,
   booking: Pick<Booking, "id" | "shopId">,
-  item: Pick<BookingItem, "fromDate" | "toDate">,
+  item: Pick<BookingItem, "id" | "fromDate" | "toDate">,
 ): Promise<void> {
-  await queueBookingNotification(database, booking, "booking_created");
   await queueBookingNotification(database, booking, "pickup_reminder", {
+    itemId: item.id,
     scheduledFor: addDays(atLocalHour(item.fromDate), -1),
   });
-  await queueBookingNotification(database, booking, "pickup_today", {
-    scheduledFor: atLocalHour(item.fromDate),
-  });
   await queueBookingNotification(database, booking, "return_reminder", {
+    itemId: item.id,
     scheduledFor: addDays(atLocalHour(item.toDate), -1),
-  });
-  await queueBookingNotification(database, booking, "return_due_today", {
-    scheduledFor: atLocalHour(item.toDate),
   });
 }
 
@@ -725,23 +886,15 @@ type OwnerNotificationEvent = "owner_item_booked" | "owner_item_cancelled";
 /**
  * Builds the notification context for a customer-owned item's *owner*
  * (`product_variations.ownershipType === "customer_owned"`) — a different
- * recipient from `buildBookingContext`'s renting customer. Returns `null`
- * for a shop-owned item or an owner with no phone on file, so callers can
+ * recipient from `buildItemContext`'s renting customer. Returns `null` for
+ * a shop-owned item or an owner with no phone on file, so callers can
  * silently skip queueing rather than special-casing every call site.
- * Scoped to one specific item (ownership is a per-variation concern) —
- * dedup is still per-order+event, so a second customer-owned item added to
- * the same order won't get its own separate owner notification.
  */
-async function buildOwnerBookingContext(
+async function buildOwnerItemContext(
   database: DbOrTx,
   bookingId: string,
   itemId: string,
-): Promise<{
-  shopId: string;
-  recipientPhone: string;
-  recipientName: string;
-  values: Record<string, string>;
-} | null> {
+): Promise<NotificationTarget | null> {
   const [row] = await database
     .select({
       booking: bookings,
@@ -750,6 +903,8 @@ async function buildOwnerBookingContext(
       fromDate: bookingItems.fromDate,
       toDate: bookingItems.toDate,
       productName: products.name,
+      size: productVariations.size,
+      color: productVariations.color,
       ownershipType: productVariations.ownershipType,
       ownerName: productVariations.ownerName,
       ownerPhone: productVariations.ownerPhone,
@@ -781,9 +936,10 @@ async function buildOwnerBookingContext(
     values: {
       owner_name: recipientName,
       booking_number: row.booking.bookingNumber,
-      product_name: row.productName,
-      from_date: formatDate(row.fromDate),
-      to_date: formatDate(row.toDate),
+      booking_date: formatDate(row.booking.createdAt),
+      item: formatItemLabel(row.productName, row.size, row.color),
+      pickup_date: formatDate(row.fromDate),
+      return_date: formatDate(row.toDate),
       shop_name: row.shopName,
       outlet_name: row.outletName ?? row.shopName,
     },
@@ -792,8 +948,10 @@ async function buildOwnerBookingContext(
 
 /**
  * Owner-side counterpart to `queueBookingNotification` — same rule/
- * template/dedupe mechanics, but the recipient is one specific item's
- * owner (via `buildOwnerBookingContext`), not the renting customer.
+ * template mechanics, but the recipient is one specific item's owner (via
+ * `buildOwnerItemContext`), and dedup always keys on that item (owner
+ * events are inherently item-scoped), so a second customer-owned item
+ * added to the same order gets its own separate owner notification.
  * No-ops for a shop-owned item or an owner with no phone on file.
  */
 export async function queueOwnerBookingNotification(
@@ -804,29 +962,11 @@ export async function queueOwnerBookingNotification(
 ): Promise<NotificationLog | null> {
   await ensureDefaultNotificationRules(booking.shopId, database);
 
-  const [rule] = await database
-    .select()
-    .from(notificationRules)
-    .where(and(eq(notificationRules.shopId, booking.shopId), eq(notificationRules.event, event)))
-    .limit(1);
+  const target = await resolveRuleTarget(database, booking.shopId, event);
+  if (!target) return null;
 
-  if (!rule?.isEnabled || !rule.templateId || !rule.whatsappNumberId) return null;
-
-  const context = await buildOwnerBookingContext(database, booking.id, itemId);
+  const context = await buildOwnerItemContext(database, booking.id, itemId);
   if (!context) return null;
-
-  const [number] = await database
-    .select()
-    .from(whatsappNumbers)
-    .where(and(eq(whatsappNumbers.id, rule.whatsappNumberId), eq(whatsappNumbers.shopId, booking.shopId)))
-    .limit(1);
-  const [template] = await database
-    .select()
-    .from(whatsappTemplates)
-    .where(and(eq(whatsappTemplates.id, rule.templateId), eq(whatsappTemplates.shopId, booking.shopId)))
-    .limit(1);
-
-  if (!number || !template || template.status.toLowerCase() !== "approved") return null;
 
   const [existing] = await database
     .select()
@@ -836,38 +976,89 @@ export async function queueOwnerBookingNotification(
         eq(notificationLogs.shopId, booking.shopId),
         eq(notificationLogs.bookingId, booking.id),
         eq(notificationLogs.event, event),
+        eq(notificationLogs.bookingItemId, itemId),
       ),
     )
     .limit(1);
   if (existing) return existing;
 
-  const components = buildTemplateComponents(rule.variableMapping, context.values);
-  const logId = randomUUID();
+  return insertNotificationLog(database, target, {
+    shopId: booking.shopId,
+    bookingId: booking.id,
+    bookingItemId: itemId,
+    event,
+    recipientPhone: context.recipientPhone,
+    recipientName: context.recipientName,
+    values: context.values,
+    scheduledFor: offsetDate(null, target.rule.scheduleOffsetMinutes),
+  });
+}
 
-  const [log] = await database
-    .insert(notificationLogs)
-    .values({
-      id: logId,
-      shopId: booking.shopId,
-      bookingId: booking.id,
+const OVERDUE_REMINDER_MIN_HOURS_BETWEEN = 24;
+
+/**
+ * Cron-driven scan for `overdue_reminder` — unlike every other event,
+ * this one can't be pre-scheduled at booking-creation time (whether an
+ * item is actually overdue depends on whether it was returned in time,
+ * which isn't known yet). Called from `dispatchDueNotifications` on every
+ * tick: finds every not-yet-returned item whose `toDate` has passed, and
+ * (re-)queues an immediate reminder for it, capped at the rule's
+ * `repeatLimit` and spaced at least `OVERDUE_REMINDER_MIN_HOURS_BETWEEN`
+ * apart, so a shop's cron cadence (e.g. every 30s) doesn't spam the same
+ * overdue item every tick.
+ */
+export async function queueOverdueReminders(now = new Date()): Promise<number> {
+  const overdueItems = await db
+    .select({
+      itemId: bookingItems.id,
+      bookingId: bookingItems.bookingId,
+      shopId: bookingItems.shopId,
+    })
+    .from(bookingItems)
+    .where(
+      and(
+        inArray(bookingItems.status, ["pickup_pending", "rented", "return_pending", "overdue"]),
+        lt(bookingItems.toDate, toDateString(now)),
+      ),
+    );
+
+  let queued = 0;
+  for (const item of overdueItems) {
+    const target = await resolveRuleTarget(db, item.shopId, "overdue_reminder");
+    if (!target) continue;
+
+    const priorLogs = await db
+      .select({ createdAt: notificationLogs.createdAt })
+      .from(notificationLogs)
+      .where(
+        and(
+          eq(notificationLogs.bookingItemId, item.itemId),
+          eq(notificationLogs.event, "overdue_reminder"),
+        ),
+      )
+      .orderBy(desc(notificationLogs.createdAt));
+
+    if (priorLogs.length >= target.rule.repeatLimit) continue;
+    const lastSentHoursAgo = priorLogs[0]
+      ? (now.getTime() - new Date(priorLogs[0].createdAt).getTime()) / (1000 * 60 * 60)
+      : Infinity;
+    if (lastSentHoursAgo < OVERDUE_REMINDER_MIN_HOURS_BETWEEN) continue;
+
+    const context = await buildItemContext(db, item.bookingId, item.itemId);
+    await insertNotificationLog(db, target, {
+      shopId: item.shopId,
+      bookingId: item.bookingId,
+      bookingItemId: item.itemId,
+      event: "overdue_reminder",
       recipientPhone: context.recipientPhone,
       recipientName: context.recipientName,
-      event,
-      whatsappNumberId: number.id,
-      templateId: template.id,
-      integratedNumber: number.integratedNumber,
-      templateName: template.name,
-      templateNamespace: template.namespace,
-      templateLanguage: template.language,
-      components,
-      payload: { context: context.values },
-      status: "queued",
-      scheduledFor: offsetDate(null, rule.scheduleOffsetMinutes),
-      crqid: logId.replace(/-/g, "").slice(0, 52),
-    })
-    .returning();
+      values: context.values,
+      scheduledFor: null,
+    });
+    queued += 1;
+  }
 
-  return log;
+  return queued;
 }
 
 export async function retryNotification(
@@ -968,7 +1159,14 @@ async function sendClaimedNotifications(claimed: NotificationLog[]): Promise<num
   return claimed.length;
 }
 
+/**
+ * Runs the `overdue_reminder` scan before claiming/sending — this is the
+ * only event that isn't pre-scheduled at booking/pickup/return time (see
+ * `queueOverdueReminders`'s doc comment), so it has to be (re-)discovered
+ * on every tick of the same cron/worker that sends everything else.
+ */
 export async function dispatchDueNotifications(now = new Date()): Promise<number> {
+  await queueOverdueReminders(now);
   return sendClaimedNotifications(await claimDueNotifications(now, null, 50));
 }
 
