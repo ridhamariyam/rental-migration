@@ -214,7 +214,19 @@ export const MAX_TOTAL_BOOKING_UNITS = 40;
  * pair is submitted with the booking — same two-step shape as an item
  * photo, so a failed upload never leaves a half-created booking. */
 export const bookingDocumentSchema = z.object({
-  url: z.url("Invalid document"),
+  // Uploads now return an app-relative `/api/files/...` path rather than an
+  // absolute Cloudinary URL (see `src/lib/storage.ts`), so this accepts
+  // either: a relative path for anything stored since, and a still-valid
+  // absolute URL for documents attached before the move.
+  url: z
+    .string()
+    .trim()
+    .min(1, "Invalid document")
+    .max(2048, "Invalid document")
+    .refine(
+      (value) => value.startsWith("/") || URL.canParse(value),
+      "Invalid document",
+    ),
   name: z
     .string()
     .trim()

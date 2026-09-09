@@ -37,8 +37,8 @@ export const users = pgTable(
     email: text("email").notNull(),
     phone: text("phone"),
     passwordHash: text("password_hash").notNull(),
-    //: Self-service profile photo (Profile page) — uploaded to Cloudinary,
-    //: never local disk (see `src/lib/cloudinary.ts`). Null means "no photo
+    //: Self-service profile photo (Profile page) — stored in the project's
+    //: Railway bucket, never local disk (see `src/lib/storage.ts`). Null means "no photo
     //: uploaded yet", in which case every avatar render falls back to the
     //: deterministic gradient/initials or staff placeholder image (see
     //: `src/lib/tenant-avatar.ts`'s `resolveAvatarSrc`).

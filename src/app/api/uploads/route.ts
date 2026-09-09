@@ -2,26 +2,26 @@ import { requireTenantUser } from "@/server/auth/guard";
 import { Permission } from "@/lib/auth/permissions";
 import { AppError } from "@/lib/errors/app-error";
 import { apiError, apiSuccess } from "@/lib/errors/api-response";
-import { uploadImageToCloudinary } from "@/lib/cloudinary";
+import { uploadToStorage } from "@/lib/storage";
 import { sniffImageType } from "@/lib/uploads/sniff-image-type";
 
 const MAX_FILE_BYTES = 5 * 1024 * 1024; // 5 MB
 
-/** Sniffed MIME types this endpoint accepts — checked before the file ever
- * reaches Cloudinary, not relied on as the only guard (Cloudinary itself
- * also rejects non-image uploads). */
+/** Sniffed MIME types this endpoint accepts — the bytes are checked below
+ * before anything is stored, since object storage will happily accept
+ * whatever it is handed. */
 const ALLOWED_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
 
-const UPLOAD_FOLDER = "rental-migration/products";
+const UPLOAD_FOLDER = "products";
 
 /**
  * A single item (product variation) image upload, kept as its own step
  * separate from creating or editing the item itself (see
  * `createVariationSchema`'s doc comment) — the record only ever stores the
- * resulting Cloudinary URL this returns.
+ * `/api/files/...` URL this returns.
  *
- * Uploaded straight to Cloudinary (see `src/lib/cloudinary.ts`), not local
- * disk — this app may run on ephemeral/serverless compute where a local
+ * Stored in the project's Railway bucket (see `src/lib/storage.ts`), not
+ * local disk — this app runs on ephemeral compute where a local
  * `public/uploads` write wouldn't reliably survive past the current
  * request, let alone a redeploy.
  */
@@ -57,15 +57,17 @@ export async function POST(request: Request) {
 
     // Defense-in-depth: `file.type` above is just a client-supplied label
     // read off the request — cross-check the bytes actually match one of
-    // the three formats we claim to accept before this ever reaches
-    // Cloudinary.
-    if (!sniffImageType(buffer)) {
+    // the three formats we claim to accept before any of this is stored.
+    // The sniffed type, not the client's label, is what gets recorded as
+    // the object's content type and served back later.
+    const sniffedType = sniffImageType(buffer);
+    if (!sniffedType) {
       throw new AppError("The uploaded file is not a valid image", 400, [
         { field: "file", message: "The uploaded file is not a valid image" },
       ]);
     }
 
-    const url = await uploadImageToCloudinary(buffer, UPLOAD_FOLDER);
+    const url = await uploadToStorage(buffer, UPLOAD_FOLDER, sniffedType);
 
     return apiSuccess({ url }, "Uploaded", 201);
   } catch (error) {

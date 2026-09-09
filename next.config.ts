@@ -12,10 +12,11 @@ process.env.TZ = "Asia/Kolkata";
 
 const nextConfig: NextConfig = {
   images: {
-    // Product/variation cover images are uploaded straight to Cloudinary
-    // (see src/lib/cloudinary.ts) — every `next/image` usage of one
-    // currently also passes `unoptimized`, so this isn't load-bearing yet,
-    // but it's the correct config to have in place regardless.
+    // Uploads now live in this project's Railway bucket and are served
+    // same-origin from `/api/files/...` (see src/lib/storage.ts), which
+    // needs no `remotePatterns` entry. The Cloudinary pattern stays only
+    // so images uploaded before that move still render from the absolute
+    // URLs already stored on those rows.
     remotePatterns: [
       { protocol: "https", hostname: "res.cloudinary.com", pathname: "/**" },
     ],
