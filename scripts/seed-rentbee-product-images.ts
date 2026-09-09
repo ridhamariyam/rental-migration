@@ -1,7 +1,7 @@
 /**
  * Dev-only: fills in a cover photo for every Rentbee ("c5a33db7-...") demo
  * product that doesn't have one yet, uploaded to this project's own
- * Cloudinary account, then updates `products.image` with the result.
+ * Railway bucket, then updates `products.image` with the result.
  *
  * Image source: Lorem Picsum (`https://picsum.photos`) — real photography,
  * freely licensed for both personal and commercial use with no permission
@@ -21,42 +21,51 @@ config({ path: ".env.local" });
 import postgres from "postgres";
 import { drizzle } from "drizzle-orm/postgres-js";
 import { and, eq, isNull, or } from "drizzle-orm";
-import { v2 as cloudinary } from "cloudinary";
+import { PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import { randomUUID } from "node:crypto";
 import { products } from "../src/lib/db/schema";
 
 const databaseUrl = process.env.DATABASE_URL;
 if (!databaseUrl) throw new Error("DATABASE_URL is not set — check .env.local");
 
-const cloudName = process.env.CLOUDINARY_CLOUD_NAME;
-const apiKey = process.env.CLOUDINARY_API_KEY;
-const apiSecret = process.env.CLOUDINARY_API_SECRET;
-if (!cloudName || !apiKey || !apiSecret) {
-  throw new Error("CLOUDINARY_* env vars are not set — check .env.local");
+const bucket = process.env.STORAGE_BUCKET;
+const accessKeyId = process.env.STORAGE_ACCESS_KEY_ID;
+const secretAccessKey = process.env.STORAGE_SECRET_ACCESS_KEY;
+if (!bucket || !accessKeyId || !secretAccessKey) {
+  throw new Error("STORAGE_* env vars are not set — check .env.local");
 }
 
-cloudinary.config({ cloud_name: cloudName, api_key: apiKey, api_secret: apiSecret, secure: true });
+const s3 = new S3Client({
+  region: process.env.STORAGE_REGION || "auto",
+  endpoint: process.env.STORAGE_ENDPOINT || "https://t3.storageapi.dev",
+  credentials: { accessKeyId, secretAccessKey },
+});
 
 const client = postgres(databaseUrl, { max: 1 });
 const db = drizzle(client);
 
 const SHOP_ID = "c5a33db7-0edd-470d-aedd-26dfcca3db82";
-const UPLOAD_FOLDER = "rental-migration/products";
+const UPLOAD_FOLDER = "products";
 
 function slugify(name: string): string {
   return name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
 }
 
-async function uploadBufferToCloudinary(buffer: Buffer, folder: string): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const stream = cloudinary.uploader.upload_stream({ folder, resource_type: "image" }, (error, result) => {
-      if (error || !result) {
-        reject(error ?? new Error("Cloudinary upload returned no result"));
-        return;
-      }
-      resolve(result.secure_url);
-    });
-    stream.end(buffer);
-  });
+/** Mirrors `uploadToStorage` in `src/lib/storage.ts` — kept separate because
+ * this script runs outside Next.js and so can't import a `server-only`
+ * module. Picsum always returns JPEG. */
+async function uploadBufferToStorage(buffer: Buffer, folder: string): Promise<string> {
+  const key = `${folder}/${randomUUID()}.jpg`;
+  await s3.send(
+    new PutObjectCommand({
+      Bucket: bucket,
+      Key: key,
+      Body: buffer,
+      ContentType: "image/jpeg",
+      CacheControl: "public, max-age=31536000, immutable",
+    }),
+  );
+  return `/api/files/${key}`;
 }
 
 async function main() {
@@ -79,7 +88,7 @@ async function main() {
     }
     const buffer = Buffer.from(await response.arrayBuffer());
 
-    const secureUrl = await uploadBufferToCloudinary(buffer, UPLOAD_FOLDER);
+    const secureUrl = await uploadBufferToStorage(buffer, UPLOAD_FOLDER);
 
     await db.update(products).set({ image: secureUrl, updatedAt: new Date() }).where(eq(products.id, product.id));
 

@@ -2,7 +2,7 @@ import { requireTenantUser } from "@/server/auth/guard";
 import { Permission } from "@/lib/auth/permissions";
 import { AppError } from "@/lib/errors/app-error";
 import { apiError, apiSuccess } from "@/lib/errors/api-response";
-import { uploadDocumentToCloudinary } from "@/lib/cloudinary";
+import { uploadToStorage } from "@/lib/storage";
 import { sniffDocumentType } from "@/lib/uploads/sniff-image-type";
 
 /** Documents run larger than a cover photo (a scanned, multi-page rental
@@ -10,7 +10,9 @@ import { sniffDocumentType } from "@/lib/uploads/sniff-image-type";
  * the route for long. */
 const MAX_FILE_BYTES = 10 * 1024 * 1024;
 
-const UPLOAD_FOLDER = "rental-migration/booking-documents";
+/** Unlike item photos and avatars, everything in this folder is served
+ * only to a signed-in tenant user — see `GET /api/files/[...key]`. */
+const UPLOAD_FOLDER = "booking-documents";
 
 /**
  * One booking document (ID proof, signed agreement, handover photo)
@@ -45,8 +47,10 @@ export async function POST(request: Request) {
     const buffer = Buffer.from(await file.arrayBuffer());
 
     // The client's `file.type` is just a label on the request — the bytes
-    // themselves decide whether this is one of the four formats accepted.
-    if (!sniffDocumentType(buffer)) {
+    // themselves decide whether this is one of the four formats accepted,
+    // and the sniffed type is what gets stored and served back later.
+    const sniffedType = sniffDocumentType(buffer);
+    if (!sniffedType) {
       throw new AppError("Only PDF, JPEG, PNG, or WebP files are allowed", 400, [
         {
           field: "file",
@@ -61,7 +65,7 @@ export async function POST(request: Request) {
     // rather than an unexplained 500.
     let url: string;
     try {
-      url = await uploadDocumentToCloudinary(buffer, UPLOAD_FOLDER);
+      url = await uploadToStorage(buffer, UPLOAD_FOLDER, sniffedType);
     } catch {
       throw new AppError(
         "That file could not be uploaded — try a different one",

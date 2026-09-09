@@ -52,7 +52,7 @@ export function BookingDocumentsField({
     setError(null);
 
     // Anything past the cap is dropped here rather than uploaded and then
-    // rejected by `createBookingSchema` — the file would be in Cloudinary
+    // rejected by `createBookingSchema` — the file would be in the bucket
     // with nothing pointing at it.
     const room = MAX_BOOKING_DOCUMENTS - value.length;
     const accepted = files.slice(0, room);

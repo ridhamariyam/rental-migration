@@ -26,13 +26,24 @@ const envSchema = z.object({
       SUPER_ADMIN_PASSWORD_MIN_LENGTH,
       `SUPER_ADMIN_PASSWORD must be at least ${SUPER_ADMIN_PASSWORD_MIN_LENGTH} characters`,
     ),
-  // Image uploads (Phase 9 — product/variation cover images) go straight to
-  // Cloudinary, never local disk: this app may run on ephemeral/serverless
-  // compute where a local `public/uploads` write wouldn't survive a
-  // redeploy or even the next request. See `src/lib/cloudinary.ts`.
-  CLOUDINARY_CLOUD_NAME: z.string().min(1, "CLOUDINARY_CLOUD_NAME is required"),
-  CLOUDINARY_API_KEY: z.string().min(1, "CLOUDINARY_API_KEY is required"),
-  CLOUDINARY_API_SECRET: z.string().min(1, "CLOUDINARY_API_SECRET is required"),
+  // Uploads (item photos, avatars/logos, booking documents) go to a Railway
+  // bucket — S3-compatible object storage in the same project — never local
+  // disk: this app runs on ephemeral compute where a local `public/uploads`
+  // write wouldn't survive a redeploy or even the next request. See
+  // `src/lib/storage.ts`.
+  STORAGE_ENDPOINT: z
+    .string()
+    .url("STORAGE_ENDPOINT must be a valid URL")
+    .default("https://t3.storageapi.dev"),
+  STORAGE_BUCKET: z.string().min(1, "STORAGE_BUCKET is required"),
+  STORAGE_ACCESS_KEY_ID: z.string().min(1, "STORAGE_ACCESS_KEY_ID is required"),
+  STORAGE_SECRET_ACCESS_KEY: z
+    .string()
+    .min(1, "STORAGE_SECRET_ACCESS_KEY is required"),
+  // Railway buckets are region-scoped by the bucket itself, so the S3
+  // client only needs a placeholder here — `auto` is what Railway's own
+  // credentials output reports.
+  STORAGE_REGION: z.string().min(1).default("auto"),
   MSG91_AUTHKEY: z.string().default(""),
   MSG91_WHATSAPP_BASE_URL: z
     .string()

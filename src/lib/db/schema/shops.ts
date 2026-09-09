@@ -12,7 +12,7 @@ export const shops = pgTable("shops", {
   address: text("address"),
   //: The business's own logo, set by the tenant owner via the tenant-
   //: dashboard "Business Settings" page (admin-only) — uploaded to
-  //: Cloudinary, same as a user's `avatarUrl`. Null falls back to the
+  //: the project's Railway bucket, same as a user's `avatarUrl`. Null falls back to the
   //: deterministic gradient/initials avatar wherever the shop's identity
   //: is rendered.
   logoUrl: text("logo_url"),
