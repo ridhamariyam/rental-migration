@@ -49,6 +49,11 @@ export async function POST(
     if (!hasPermission(user.role, Permission.PRODUCT_COST_VIEW)) {
       body.buyingPrice = undefined;
     }
+    // Same guarantee for outlet scope — an outlet-scoped actor's picker
+    // never offers another outlet, but a hand-crafted request could.
+    if (user.outletId && body.outletIds.some((outletId) => outletId !== user.outletId)) {
+      throw AppError.forbidden("You can only add items to your own outlet");
+    }
     const created = await createVariation(user.shopId, id, body);
 
     const message =

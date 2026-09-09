@@ -64,7 +64,7 @@ export default async function ProductDetailPage({
     notFound();
   }
 
-  const [rawVariations, outlets] = await Promise.all([
+  const [rawVariations, allOutlets] = await Promise.all([
     listVariationsForProduct(user.shopId, product.id),
     listActiveOutletsForSelect(user.shopId),
   ]);
@@ -74,6 +74,12 @@ export default async function ProductDetailPage({
   const variations = canViewCost
     ? rawVariations
     : rawVariations.map((variation) => ({ ...variation, buyingPrice: null }));
+
+  // An outlet-scoped actor (manager/staff) only ever adds/edits items at
+  // their own outlet — the picker never offers another outlet's option.
+  const outlets = user.outletId
+    ? allOutlets.filter((outlet) => outlet.id === user.outletId)
+    : allOutlets;
 
   const fields = [
     { label: "Category", value: product.categoryName, icon: TagIcon },

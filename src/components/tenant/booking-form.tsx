@@ -684,7 +684,11 @@ export function BookingForm({
               </Field>
             </FieldGroup>
 
-            <div className="flex items-center justify-end gap-3">
+            {/* Mobile submit lives in the sticky bar below instead, next to
+             * the running total — this row only needs to show on the
+             * two-column desktop layout, where the total is already
+             * visible beside the form without scrolling. */}
+            <div className="hidden items-center justify-end gap-3 lg:flex">
               <Button
                 type="button"
                 variant="outline"
@@ -852,6 +856,33 @@ export function BookingForm({
         </CardContent>
       </Card>
 
+      {/* Mobile-only: keeps the running total and submit reachable without
+       * scrolling past the whole form, mirroring what desktop already gets
+       * for free from the two-column layout. */}
+      <div className="fixed inset-x-0 bottom-0 z-40 flex items-center justify-between gap-3 border-t border-border/60 bg-background/95 p-4 shadow-[0_-4px_16px_rgba(0,0,0,0.08)] backdrop-blur-sm lg:hidden">
+        <div className="flex min-w-0 flex-col">
+          <span className="text-muted-foreground text-[11px]">
+            {Number(totals.advance) > 0 ? "Due at pickup" : "Total due at pickup"}
+          </span>
+          <span className="truncate text-lg font-bold text-primary">
+            {formatMoney(totals.dueAtPickup)}
+          </span>
+        </div>
+        <Button
+          type="submit"
+          disabled={isSubmitting || !canSubmit}
+          className="min-w-36"
+        >
+          {isSubmitting ? (
+            <>
+              <Spinner />
+              Creating…
+            </>
+          ) : (
+            "Create booking"
+          )}
+        </Button>
+      </div>
     </form>
   );
 }
