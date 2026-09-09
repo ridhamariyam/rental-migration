@@ -101,10 +101,10 @@ const dateRangeRefinement = <T extends { fromDate: string; toDate: string }>(
   }
 };
 
-/** A **new** booking's pickup date can't be backdated — only enforced for
- * creating/quoting a fresh line, never for `updateBookingSchema` (editing an
- * existing draft's paperwork can legitimately keep a pickup date that's
- * since slipped into the past). */
+/** A **new** booking's pickup date can't be backdated — never enforced for
+ * `updateBookingItemSchema`, and skipped in `quoteRequestSchema` whenever
+ * `excludeBookingId` is set (previewing an edit to an existing draft can
+ * legitimately keep a pickup date that's since slipped into the past). */
 const pickupNotInPastRefinement = <T extends { fromDate: string }>(
   data: T,
   ctx: z.RefinementCtx,
@@ -168,7 +168,13 @@ export const quoteRequestSchema = z
   .superRefine((data, ctx) => {
     itemIdentifierRefinement(data, ctx);
     dateRangeRefinement(data, ctx);
-    pickupNotInPastRefinement(data, ctx);
+    // Previewing an edit to an existing item (see `excludeBookingId` above)
+    // can legitimately keep a pickup date that's since slipped into the
+    // past — mirrors `updateBookingItemSchema`, which never runs this
+    // check at all. Only a fresh line (no `excludeBookingId`) enforces it.
+    if (!data.excludeBookingId) {
+      pickupNotInPastRefinement(data, ctx);
+    }
   });
 
 export type QuoteRequestInput = z.infer<typeof quoteRequestSchema>;

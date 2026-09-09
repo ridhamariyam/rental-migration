@@ -1,5 +1,6 @@
 "use client";
 
+import * as React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
@@ -33,6 +34,7 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarRail,
+  useSidebar,
 } from "@/components/ui/sidebar";
 import { LogoMark } from "@/components/admin/logo-mark";
 import { TenantAccountButton } from "@/components/tenant/tenant-account-button";
@@ -172,6 +174,18 @@ export function TenantSidebar({
   };
 }) {
   const pathname = usePathname();
+  const { isMobile, setOpenMobile } = useSidebar();
+
+  // Tapping a nav item navigates but (being a plain `Link`, not a submit)
+  // never closes the mobile off-canvas sheet on its own — close it
+  // whenever the route actually changes instead of wiring every link.
+  React.useEffect(() => {
+    if (isMobile) {
+      setOpenMobile(false);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pathname]);
+
   const isOwner = user.role === "admin" || user.role === "super_admin";
   // Plain staff accounts get no dashboard/overview page at all (see
   // `dashboard/page.tsx`'s matching redirect) — Bookings is their

@@ -1,5 +1,6 @@
 "use client";
 
+import * as React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Building2Icon, LayoutDashboardIcon } from "lucide-react";
@@ -15,6 +16,7 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarRail,
+  useSidebar,
 } from "@/components/ui/sidebar";
 import { AdminCommandMenu } from "@/components/admin/admin-command-menu";
 import { AdminSignOutButton } from "@/components/admin/admin-sign-out-button";
@@ -28,6 +30,16 @@ const navItems = [
 
 export function AppSidebar({ adminEmail }: { adminEmail: string }) {
   const pathname = usePathname();
+  const { isMobile, setOpenMobile } = useSidebar();
+
+  // Tapping a nav item navigates but never closes the mobile off-canvas
+  // sheet on its own — close it whenever the route actually changes.
+  React.useEffect(() => {
+    if (isMobile) {
+      setOpenMobile(false);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pathname]);
 
   return (
     <Sidebar collapsible="icon" variant="inset">

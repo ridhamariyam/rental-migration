@@ -77,23 +77,19 @@ export function ReportFilters({
     <div className="flex flex-col gap-3.5 sm:flex-row sm:flex-wrap sm:items-center">
       {showDateRange ? (
         <>
-          <div className="flex items-center gap-2">
-            <span className="text-muted-foreground text-xs font-semibold uppercase tracking-wider">From</span>
-            <DatePicker
-              value={fromDate}
-              onChange={(value) => updateParams({ fromDate: value })}
-              className="w-full sm:w-40"
-            />
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="text-muted-foreground text-xs font-semibold uppercase tracking-wider">To</span>
-            <DatePicker
-              value={toDate}
-              onChange={(value) => updateParams({ toDate: value })}
-              disabledMatcher={fromDate ? { before: new Date(fromDate) } : undefined}
-              className="w-full sm:w-40"
-            />
-          </div>
+          <DatePicker
+            value={fromDate}
+            onChange={(value) => updateParams({ fromDate: value })}
+            placeholder="From date"
+            className="w-full sm:w-40"
+          />
+          <DatePicker
+            value={toDate}
+            onChange={(value) => updateParams({ toDate: value })}
+            placeholder="To date"
+            disabledMatcher={fromDate ? { before: new Date(fromDate) } : undefined}
+            className="w-full sm:w-40"
+          />
         </>
       ) : null}
 
