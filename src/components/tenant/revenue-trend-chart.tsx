@@ -37,6 +37,19 @@ function shortDate(value: string): string {
   return `${MONTH_NAMES[Number(month) - 1]} ${Number(day)}`;
 }
 
+/** Compact axis-only variant of `formatMoney` — the full "₹16,000.00" is
+ * wider than the Y-axis column has room for and gets clipped by the
+ * chart's SVG edge (most visible on mobile). Compact notation in `en-IN`
+ * collapses it to e.g. "₹16K"/"₹1.2L". */
+function formatAxisMoney(value: number): string {
+  return new Intl.NumberFormat("en-IN", {
+    style: "currency",
+    currency: "INR",
+    notation: "compact",
+    maximumFractionDigits: 1,
+  }).format(value);
+}
+
 function fillDateGaps(
   data: { date: string; amount: number; bookings: number }[],
   fromDate?: string,
@@ -112,9 +125,9 @@ export function RevenueTrendChart({
           tickLine={false}
           axisLine={false}
           tickMargin={4}
-          width={56}
+          width={44}
           tick={{ fontSize: 11, fill: "var(--muted-foreground)" }}
-          tickFormatter={(value: number) => formatMoney(String(value))}
+          tickFormatter={(value: number) => formatAxisMoney(value)}
         />
         {hasBookings && (
           <YAxis

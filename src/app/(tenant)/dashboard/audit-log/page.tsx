@@ -55,7 +55,7 @@ export default async function AuditLogPage({
       </div>
 
       <div className="bg-card ring-foreground/10 overflow-hidden rounded-xl shadow-xs ring-1">
-        <div className="flex flex-col gap-3 border-b p-4 sm:flex-row sm:flex-wrap sm:items-center">
+        <div className="border-b p-4">
           <AuditLogFilters
             defaultAction={query.action ?? "all"}
             defaultEntityType={query.entityType ?? "all"}

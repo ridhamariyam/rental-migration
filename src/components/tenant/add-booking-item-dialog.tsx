@@ -264,7 +264,6 @@ function AddBookingItemDialog({
                   id="add-item-quantity"
                   inputMode="numeric"
                   disabled={isSubmitting}
-                  className="max-w-32"
                   aria-invalid={!!form.formState.errors.quantity}
                   {...form.register("quantity")}
                 />

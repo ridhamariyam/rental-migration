@@ -41,8 +41,12 @@ export default async function TenantDashboardLayout({
   }
 
   // Only staff/managers self-check-in (see the attendance page's own
-  // owner/super-admin redirect) — the header widget mirrors that.
-  const canSelfCheckIn = hasPermission(user.role, Permission.ATTENDANCE_SELF);
+  // owner/super-admin redirect) — the header widget mirrors that. Owner
+  // roles hold `ATTENDANCE_SELF` too (it's part of `ALL_PERMISSIONS`), so
+  // the permission check alone isn't enough to exclude them here.
+  const isOwner = user.role === "admin" || user.role === "super_admin";
+  const canSelfCheckIn =
+    !isOwner && hasPermission(user.role, Permission.ATTENDANCE_SELF);
   const today = canSelfCheckIn ? await getTodaysAttendance(user.id) : null;
 
   return (
