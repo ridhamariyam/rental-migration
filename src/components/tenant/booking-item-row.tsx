@@ -203,7 +203,6 @@ export function BookingItemRow({
           id={`quantity-item-${index}`}
           inputMode="numeric"
           disabled={disabled}
-          className="max-w-32"
           aria-invalid={!!errors?.quantity}
           {...register(`items.${index}.quantity`)}
         />

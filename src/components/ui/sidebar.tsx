@@ -31,6 +31,24 @@ const SIDEBAR_WIDTH = "16rem";
 const SIDEBAR_WIDTH_MOBILE = "18rem";
 const SIDEBAR_WIDTH_ICON = "3rem";
 const SIDEBAR_KEYBOARD_SHORTCUT = "b";
+// Below this, the fixed desktop sidebar (open by default) would eat too
+// much of a tablet's viewport — same idea as `useIsMobile`, just a wider
+// cutoff so it also covers tablet-in-portrait widths (e.g. iPad's 768px).
+const SIDEBAR_TABLET_BREAKPOINT = 1024;
+
+function useIsTabletOrNarrower() {
+  return React.useSyncExternalStore(
+    (callback) => {
+      const mql = window.matchMedia(
+        `(max-width: ${SIDEBAR_TABLET_BREAKPOINT - 1}px)`,
+      );
+      mql.addEventListener("change", callback);
+      return () => mql.removeEventListener("change", callback);
+    },
+    () => window.innerWidth < SIDEBAR_TABLET_BREAKPOINT,
+    () => false,
+  );
+}
 
 type SidebarContextProps = {
   state: "expanded" | "collapsed";
@@ -67,6 +85,7 @@ function SidebarProvider({
   onOpenChange?: (open: boolean) => void;
 }) {
   const isMobile = useIsMobile();
+  const isTabletOrNarrower = useIsTabletOrNarrower();
   const [openMobile, setOpenMobile] = React.useState(false);
 
   // This is the internal state of the sidebar.
@@ -87,6 +106,20 @@ function SidebarProvider({
     },
     [setOpenProp, open],
   );
+
+  // Start collapsed on tablet-width screens too, not just real mobile —
+  // runs once (not on every resize) so it doesn't fight a manual toggle.
+  const hasAutoCollapsedForTablet = React.useRef(false);
+  React.useEffect(() => {
+    if (
+      isTabletOrNarrower &&
+      !hasAutoCollapsedForTablet.current &&
+      openProp === undefined
+    ) {
+      hasAutoCollapsedForTablet.current = true;
+      _setOpen(false);
+    }
+  }, [isTabletOrNarrower, openProp]);
 
   // Helper to toggle the sidebar.
   const toggleSidebar = React.useCallback(() => {

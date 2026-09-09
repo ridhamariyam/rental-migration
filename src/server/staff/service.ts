@@ -1,6 +1,6 @@
 import "server-only";
 
-import { and, count, desc, eq, ilike, inArray, or } from "drizzle-orm";
+import { and, count, desc, eq, ilike, inArray, or, sql } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { destroyAllSessionsForUser } from "@/lib/auth/session";
 import { hashPassword } from "@/lib/auth/password";
@@ -289,7 +289,12 @@ export async function createStaff(
   const [existing] = await db
     .select({ id: users.id })
     .from(users)
-    .where(and(eq(users.shopId, actor.shopId), eq(users.email, input.email)))
+    .where(
+      and(
+        eq(users.shopId, actor.shopId),
+        eq(sql`lower(${users.email})`, input.email.toLowerCase()),
+      ),
+    )
     .limit(1);
 
   if (existing) {

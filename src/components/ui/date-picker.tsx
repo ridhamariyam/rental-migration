@@ -57,7 +57,7 @@ export function DatePicker({
             disabled={disabled}
             aria-invalid={invalid}
             className={cn(
-              "h-10 border-input bg-transparent hover:bg-accent/50 dark:bg-input/30 dark:hover:bg-input/50 flex w-full items-center justify-start gap-2 rounded-lg border px-3 py-2 text-sm transition-colors outline-none select-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20",
+              "h-10 border-input bg-transparent hover:bg-accent/50 dark:bg-input/30 dark:hover:bg-input/50 flex w-full min-w-0 items-center justify-start gap-2 rounded-lg border px-3 py-2 text-sm transition-colors outline-none select-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20",
               !selected ? "text-muted-foreground font-normal" : "text-foreground font-medium",
               className,
             )}
@@ -65,7 +65,7 @@ export function DatePicker({
         }
       >
         <CalendarIcon className="text-muted-foreground size-4 shrink-0" />
-        <span className="truncate">
+        <span className="min-w-0 truncate">
           {selected ? formatDate(selected, "long") : placeholder}
         </span>
       </PopoverTrigger>

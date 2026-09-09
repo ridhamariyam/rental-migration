@@ -1,6 +1,6 @@
 import "server-only";
 
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { shops, users } from "@/lib/db/schema";
 import { hashPassword, verifyPassword } from "@/lib/auth/password";
@@ -38,7 +38,9 @@ export async function loginTenantUser(
     })
     .from(users)
     .innerJoin(shops, eq(users.shopId, shops.id))
-    .where(eq(users.email, email));
+    // Case-insensitive: matches regardless of the casing stored on the row
+    // or typed at the login form (emails aren't case-sensitive in practice).
+    .where(eq(sql`lower(${users.email})`, email.toLowerCase()));
 
   let matched: (typeof candidates)[number] | null = null;
   for (const candidate of candidates) {

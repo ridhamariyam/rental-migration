@@ -41,6 +41,11 @@ export async function PATCH(
     if (!hasPermission(user.role, Permission.PRODUCT_COST_VIEW)) {
       body.buyingPrice = undefined;
     }
+    // Same guarantee for outlet scope — an outlet-scoped actor's picker
+    // never offers another outlet, but a hand-crafted request could.
+    if (user.outletId && body.outletId !== user.outletId) {
+      throw AppError.forbidden("You can only move items to your own outlet");
+    }
     const variation = await updateVariation(user.shopId, id, body);
 
     return apiSuccess(variation, "Item updated");

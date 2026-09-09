@@ -12,6 +12,7 @@ import {
 export const emailSchema = z
   .email("Enter a valid email address")
   .trim()
+  .toLowerCase()
   .min(1, "Email is required")
   .max(255, "Email must be at most 255 characters");
 

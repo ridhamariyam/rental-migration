@@ -92,13 +92,18 @@ export enum Permission {
 
 const ALL_PERMISSIONS = new Set(Object.values(Permission));
 
-/** Runs day-to-day counter operations for their outlet: can see the roster
- * and the catalogue, but never create/edit either. Customers are the
- * exception — the legacy backend's `staff` permission set already included
+/** Runs day-to-day counter operations for their outlet: can see the roster,
+ * but never create/edit it. Customers are the exception — the legacy
+ * backend's `staff` permission set already included
  * `CUSTOMER_VIEW`/`CUSTOMER_MANAGE`, since staff are the ones registering a
- * walk-in customer at the counter. */
+ * walk-in customer at the counter. `PRODUCT_MANAGE` is also granted here
+ * (deviating from the legacy backend) so a counter agent can add new
+ * categories/products/physical items on the fly — `PRODUCT_COST_VIEW`
+ * stays owner-only, so the buying price field never appears for them; the
+ * owner fills it in later. */
 const STAFF_PERMISSIONS: ReadonlySet<Permission> = new Set([
   Permission.PRODUCT_VIEW,
+  Permission.PRODUCT_MANAGE,
   Permission.CUSTOMER_VIEW,
   Permission.CUSTOMER_MANAGE,
   Permission.BOOKING_VIEW,

@@ -30,7 +30,7 @@ export default async function NewBookingPage() {
     user.role === "admin" ? await listActiveStaffForSelect(user.shopId) : [];
 
   return (
-    <main className="flex flex-1 flex-col gap-6 p-6">
+    <main className="flex flex-1 flex-col gap-6 p-6 pb-28 lg:pb-6">
       <div className="flex flex-col gap-3">
         <Link
           href={tenantPaths.bookings}
