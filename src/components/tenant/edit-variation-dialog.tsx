@@ -51,11 +51,16 @@ export function EditVariationDialog({
   onOpenChange,
   variation,
   outlets,
+  canViewCost,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   variation?: VariationRow;
   outlets: { id: string; name: string; code: string }[];
+  /** Gates the "Buying price" field — admin-only
+   * (`Permission.PRODUCT_COST_VIEW`), unlike selling/rental price which
+   * any `PRODUCT_MANAGE` role can see and set. */
+  canViewCost: boolean;
 }) {
   const router = useRouter();
   const [formError, setFormError] = useState<string | null>(null);
@@ -67,7 +72,8 @@ export function EditVariationDialog({
       color: variation?.color ?? "",
       size: variation?.size ?? "",
       rentPrice: variation?.rentPrice ?? "",
-      securityDeposit: variation?.securityDeposit ?? "0",
+      buyingPrice: variation?.buyingPrice ?? "",
+      sellingPrice: variation?.sellingPrice ?? "",
       quantity: variation ? String(variation.quantity) : "1",
       outletId: variation?.outletId ?? outlets[0]?.id ?? "",
       image: variation?.image ?? "",
@@ -75,7 +81,7 @@ export function EditVariationDialog({
       ownerName: variation?.ownerName ?? "",
       ownerPhone: variation?.ownerPhone ?? "",
       ownerCustomerId: variation?.ownerCustomerId ?? "",
-      ownerSharePercentage: variation?.ownerSharePercentage ?? "",
+      ownerShareAmount: variation?.ownerShareAmount ?? "",
       ownerNotes: variation?.ownerNotes ?? "",
     },
     mode: "onTouched",
@@ -90,7 +96,8 @@ export function EditVariationDialog({
         color: variation.color ?? "",
         size: variation.size ?? "",
         rentPrice: variation.rentPrice,
-        securityDeposit: variation.securityDeposit,
+        buyingPrice: variation.buyingPrice ?? "",
+        sellingPrice: variation.sellingPrice ?? "",
         quantity: String(variation.quantity),
         outletId: variation.outletId ?? outlets[0]?.id ?? "",
         image: variation.image ?? "",
@@ -98,7 +105,7 @@ export function EditVariationDialog({
         ownerName: variation.ownerName ?? "",
         ownerPhone: variation.ownerPhone ?? "",
         ownerCustomerId: variation.ownerCustomerId ?? "",
-        ownerSharePercentage: variation.ownerSharePercentage,
+        ownerShareAmount: variation.ownerShareAmount,
         ownerNotes: variation.ownerNotes ?? "",
       });
     }
@@ -123,10 +130,10 @@ export function EditVariationDialog({
           if (
             fieldError.field === "outletId" ||
             fieldError.field === "ownerName" ||
-            fieldError.field === "ownerSharePercentage"
+            fieldError.field === "ownerShareAmount"
           ) {
             form.setError(
-              fieldError.field as "outletId" | "ownerName" | "ownerSharePercentage",
+              fieldError.field as "outletId" | "ownerName" | "ownerShareAmount",
               { message: fieldError.message },
             );
             mappedToField = true;
@@ -228,19 +235,36 @@ export function EditVariationDialog({
                   <FieldError errors={[form.formState.errors.rentPrice]} />
                 </Field>
 
-                <Field data-invalid={!!form.formState.errors.securityDeposit}>
-                  <FieldLabel htmlFor="edit-securityDeposit">
-                    Security deposit
+                <Field data-invalid={!!form.formState.errors.sellingPrice}>
+                  <FieldLabel htmlFor="edit-sellingPrice">
+                    Selling price (optional)
                   </FieldLabel>
                   <Input
-                    id="edit-securityDeposit"
+                    id="edit-sellingPrice"
                     inputMode="decimal"
                     disabled={isSubmitting}
-                    {...form.register("securityDeposit")}
+                    {...form.register("sellingPrice")}
                   />
-                  <FieldError errors={[form.formState.errors.securityDeposit]} />
+                  <FieldError errors={[form.formState.errors.sellingPrice]} />
                 </Field>
               </div>
+
+              {canViewCost ? (
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  <Field data-invalid={!!form.formState.errors.buyingPrice}>
+                    <FieldLabel htmlFor="edit-buyingPrice">
+                      Buying price (optional)
+                    </FieldLabel>
+                    <Input
+                      id="edit-buyingPrice"
+                      inputMode="decimal"
+                      disabled={isSubmitting}
+                      {...form.register("buyingPrice")}
+                    />
+                    <FieldError errors={[form.formState.errors.buyingPrice]} />
+                  </Field>
+                </div>
+              ) : null}
 
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <Field data-invalid={!!form.formState.errors.quantity}>
@@ -368,19 +392,19 @@ export function EditVariationDialog({
                       </Field>
                     </div>
 
-                    <Field data-invalid={!!form.formState.errors.ownerSharePercentage}>
-                      <FieldLabel htmlFor="edit-ownerSharePercentage">
-                        Owner&rsquo;s revenue share (%)
+                    <Field data-invalid={!!form.formState.errors.ownerShareAmount}>
+                      <FieldLabel htmlFor="edit-ownerShareAmount">
+                        Owner&rsquo;s revenue share
                       </FieldLabel>
                       <Input
-                        id="edit-ownerSharePercentage"
+                        id="edit-ownerShareAmount"
                         inputMode="decimal"
-                        placeholder="e.g. 60"
+                        placeholder="e.g. 500.00"
                         disabled={isSubmitting}
-                        {...form.register("ownerSharePercentage")}
+                        {...form.register("ownerShareAmount")}
                       />
                       <FieldError
-                        errors={[form.formState.errors.ownerSharePercentage]}
+                        errors={[form.formState.errors.ownerShareAmount]}
                       />
                     </Field>
 

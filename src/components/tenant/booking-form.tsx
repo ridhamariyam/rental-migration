@@ -6,9 +6,11 @@ import { Controller, useFieldArray, useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import {
   AlertCircleIcon,
+  PackageIcon,
   PlusIcon,
   ReceiptTextIcon,
   ShieldCheckIcon,
+  SlidersHorizontalIcon,
   TagIcon,
 } from "lucide-react";
 
@@ -24,6 +26,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import {
   Field,
@@ -47,9 +50,10 @@ import {
   MAX_TOTAL_BOOKING_UNITS,
   type CreateBookingInput,
 } from "@/lib/validation/bookings";
+import { PAYMENT_METHOD_VALUES } from "@/lib/validation/payments";
 import { tenantPaths } from "@/lib/tenant-paths";
 import { ApiClientError, apiRequest } from "@/lib/api-client";
-import { addMoney, ZERO_MONEY } from "@/lib/money";
+import { addMoney, subtractMoneyNonNegative, ZERO_MONEY } from "@/lib/money";
 import { formatMoney, toDateString } from "@/lib/format";
 import { avatarGradient, initialsFor, resolveAvatarSrc } from "@/lib/tenant-avatar";
 import type { VariationSearchResult } from "@/server/variations/service";
@@ -66,14 +70,11 @@ function todayIso(): string {
   return toDateString(new Date());
 }
 
-function emptyItem(canDiscount: boolean) {
+function emptyItem(defaultFromDate?: string, defaultToDate?: string) {
   return {
     variationId: "",
-    fromDate: todayIso(),
-    toDate: todayIso(),
-    discountAmount: canDiscount ? "0.00" : undefined,
-    additionalCost: "",
-    additionalCostReason: "",
+    fromDate: defaultFromDate ?? todayIso(),
+    toDate: defaultToDate ?? todayIso(),
     securityDeposit: "",
     quantity: "1",
   };
@@ -81,10 +82,11 @@ function emptyItem(canDiscount: boolean) {
 
 /**
  * Booking creation — one customer, any number of *different* items (each
- * with its own dates, quantity, discount, extra charge and deposit) and a
- * live availability + price check per line. Submitting posts every line at
- * once (`createBookingGroup`), which returns one `bookings` row per line
- * sharing a `bookingGroupId`.
+ * with its own dates, quantity and deposit) and a live availability +
+ * price check per line, plus one shared discount/additional cost/advance
+ * for the whole order (not per line — see `BookingItemRow`'s doc comment).
+ * Submitting posts every line at once (`createBookingGroup`), which
+ * returns one `bookings` row per line sharing a `bookingGroupId`.
  *
  * Per-line state that isn't a form field — the picked item and its latest
  * quote — is keyed by the field array's own stable row id, not by index,
@@ -115,7 +117,13 @@ export function BookingForm({
     resolver: zodResolver(createBookingSchema),
     defaultValues: {
       customerId: "",
-      items: [emptyItem(canDiscount)],
+      items: [emptyItem()],
+      discountAmount: canDiscount ? "0.00" : undefined,
+      securityDeposit: "",
+      additionalCost: "",
+      additionalCostReason: "",
+      advanceAmount: "",
+      advancePaymentMethod: "cash",
       notes: "",
       documents: [],
       handledById: "",
@@ -155,7 +163,8 @@ export function BookingForm({
   }
 
   function handleAddItem() {
-    append(emptyItem(canDiscount));
+    const lastItem = watchedItems?.[watchedItems.length - 1];
+    append(emptyItem(lastItem?.fromDate, lastItem?.toDate));
     setFormError(null);
   }
 
@@ -191,35 +200,66 @@ export function BookingForm({
   const everyLineReady = lines.every(
     (line) => line.item && line.quote?.available === true,
   );
+
+  // Every line's own rent/deposit is added straight off the server's own
+  // per-line quotes — the summary never re-derives a *price* of its own.
+  // The discount/additional cost/advance below are this order's own shared
+  // adjustment (see `BookingItemRow`'s doc comment for why they moved off
+  // each line), applied here only for a live preview; `createBookingGroup`
+  // re-validates and re-applies all of this server-side before anything
+  // is frozen onto a booking.
+  const priced = lines.filter((line) => line.quote?.available);
+  const watchedDiscount = useWatch({ control: form.control, name: "discountAmount" });
+  const watchedDeposit = useWatch({ control: form.control, name: "securityDeposit" });
+  const watchedAdditionalCost = useWatch({ control: form.control, name: "additionalCost" });
+  const watchedAdvance = useWatch({ control: form.control, name: "advanceAmount" });
+  const extraCharged = Number(watchedAdditionalCost || "0") > 0;
+
+  const grossRentTotal = priced.reduce(
+    (sum, line) => addMoney(sum, line.quote!.grossRent),
+    ZERO_MONEY,
+  );
+  // A line's own quote already carries its item's default deposit — an
+  // order-level override replaces that summed default entirely, rather
+  // than adding to it.
+  const defaultDepositTotal = priced.reduce(
+    (sum, line) => addMoney(sum, line.quote!.securityDeposit),
+    ZERO_MONEY,
+  );
+  const depositTotal = watchedDeposit || defaultDepositTotal;
+  const discount = watchedDiscount || ZERO_MONEY;
+  const additionalCost = watchedAdditionalCost || ZERO_MONEY;
+  const netRentTotal = addMoney(
+    subtractMoneyNonNegative(grossRentTotal, discount),
+    additionalCost,
+  );
+  const grandTotal = addMoney(netRentTotal, depositTotal);
+  const advance = watchedAdvance || ZERO_MONEY;
+  const dueAtPickup = subtractMoneyNonNegative(grandTotal, advance);
+
+  const totals = {
+    grossRent: grossRentTotal,
+    discount,
+    additionalCost,
+    netRent: netRentTotal,
+    deposit: depositTotal,
+    grandTotal,
+    advance,
+    dueAtPickup,
+  };
+
+  const discountExceedsGross =
+    Number(discount) > 0 && Number(discount) > Number(grossRentTotal);
+  const advanceExceedsTotal =
+    Number(advance) > 0 && Number(advance) > Number(grandTotal);
+
   const canSubmit =
     Boolean(selectedCustomer) &&
     lines.length > 0 &&
     everyLineReady &&
-    !overUnitCap;
-
-  // Every figure below is added straight off the server's own quotes (which
-  // already account for quantity, discount, extras and the deposit) — the
-  // summary never re-derives a price of its own, so what staff review here
-  // is exactly what gets frozen onto the booking.
-  const priced = lines.filter((line) => line.quote?.available);
-  const totals = priced.reduce(
-    (acc, line) => ({
-      grossRent: addMoney(acc.grossRent, line.quote!.grossRent),
-      discount: addMoney(acc.discount, line.quote!.discountAmount),
-      additionalCost: addMoney(acc.additionalCost, line.quote!.additionalCost),
-      netRent: addMoney(acc.netRent, line.quote!.totalAmount),
-      deposit: addMoney(acc.deposit, line.quote!.securityDeposit),
-      grandTotal: addMoney(acc.grandTotal, line.quote!.totalReceivable),
-    }),
-    {
-      grossRent: ZERO_MONEY,
-      discount: ZERO_MONEY,
-      additionalCost: ZERO_MONEY,
-      netRent: ZERO_MONEY,
-      deposit: ZERO_MONEY,
-      grandTotal: ZERO_MONEY,
-    },
-  );
+    !overUnitCap &&
+    !discountExceedsGross &&
+    !advanceExceedsTotal;
 
   const onSubmit = form.handleSubmit(async (values) => {
     setFormError(null);
@@ -235,13 +275,18 @@ export function BookingForm({
     }
 
     try {
-      const created = await apiRequest<{ id: string }[]>("/api/bookings", {
+      const created = await apiRequest<{
+        booking: { id: string };
+        items: { id: string }[];
+      }>("/api/bookings", {
         method: "POST",
         body: JSON.stringify(values),
       });
       const query =
-        created.length > 1 ? `?created=1&count=${created.length}` : "?created=1";
-      router.push(`${tenantPaths.bookings}/${created[0].id}${query}`);
+        created.items.length > 1
+          ? `?created=1&count=${created.items.length}`
+          : "?created=1";
+      router.push(`${tenantPaths.bookings}/${created.booking.id}${query}`);
       router.refresh();
     } catch (error) {
       if (error instanceof ApiClientError && error.fieldErrors.length > 0) {
@@ -253,6 +298,31 @@ export function BookingForm({
           form.setError("customerId", {
             message: error.fieldErrors[0].message,
           });
+          return;
+        }
+
+        let mappedToField = false;
+        for (const fieldError of error.fieldErrors) {
+          if (
+            fieldError.field === "discountAmount" ||
+            fieldError.field === "securityDeposit" ||
+            fieldError.field === "additionalCost" ||
+            fieldError.field === "additionalCostReason" ||
+            fieldError.field === "advanceAmount"
+          ) {
+            form.setError(
+              fieldError.field as
+                | "discountAmount"
+                | "securityDeposit"
+                | "additionalCost"
+                | "additionalCostReason"
+                | "advanceAmount",
+              { message: fieldError.message },
+            );
+            mappedToField = true;
+          }
+        }
+        if (mappedToField) {
           return;
         }
       }
@@ -303,30 +373,20 @@ export function BookingForm({
                 <FieldError errors={[form.formState.errors.customerId]} />
               </Field>
 
-              <div className="flex flex-col gap-3">
-                <div className="flex items-center justify-between gap-3">
-                  <FieldLabel>
+              <div className="flex flex-col gap-3 rounded-xl border border-border/70 bg-card overflow-hidden">
+                <div className="flex items-center justify-between gap-3 border-b border-border/60 bg-muted/30 px-4 py-3">
+                  <FieldLabel className="text-foreground/90 flex items-center gap-2 text-xs font-semibold tracking-wide uppercase">
+                    <PackageIcon className="size-3.5 text-primary" aria-hidden="true" />
                     Items
                     {lines.length > 1 ? (
-                      <span className="text-muted-foreground ml-1 font-normal">
+                      <span className="text-muted-foreground font-normal normal-case tracking-normal">
                         ({lines.length} lines · {totalUnits} units)
                       </span>
                     ) : null}
                   </FieldLabel>
-                  {lines.length < MAX_ITEM_LINES ? (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      disabled={isSubmitting}
-                      onClick={handleAddItem}
-                    >
-                      <PlusIcon />
-                      Add another item
-                    </Button>
-                  ) : null}
                 </div>
 
+                <div className="flex flex-col gap-3 px-4 pb-4">
                 {lines.map((line) => (
                   <BookingItemRow
                     key={line.key}
@@ -341,7 +401,6 @@ export function BookingForm({
                     onSelectItem={(item) =>
                       handleSelectItem(line.index, line.key, item)
                     }
-                    canDiscount={canDiscount}
                     canRemove={lines.length > 1}
                     onRemove={() => handleRemoveItem(line.index, line.key)}
                     disabled={isSubmitting}
@@ -361,6 +420,153 @@ export function BookingForm({
                     </AlertDescription>
                   </Alert>
                 ) : null}
+
+                {lines.length < MAX_ITEM_LINES ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={isSubmitting}
+                    onClick={handleAddItem}
+                    className="self-end"
+                  >
+                    <PlusIcon />
+                    Add another item
+                  </Button>
+                ) : null}
+                </div>
+              </div>
+
+              <div className="flex flex-col gap-4 rounded-xl border border-dashed border-border/70 bg-muted/20 p-4">
+                <FieldLabel className="text-foreground/90 flex items-center gap-2 text-xs font-semibold tracking-wide uppercase">
+                  <SlidersHorizontalIcon className="size-3.5 text-primary" aria-hidden="true" />
+                  Order adjustments
+                </FieldLabel>
+
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  {canDiscount ? (
+                    <Field data-invalid={!!form.formState.errors.discountAmount}>
+                      <FieldLabel htmlFor="order-discount">
+                        Discount (optional)
+                      </FieldLabel>
+                      <Input
+                        id="order-discount"
+                        inputMode="decimal"
+                        placeholder="0.00"
+                        disabled={isSubmitting}
+                        aria-invalid={!!form.formState.errors.discountAmount}
+                        {...form.register("discountAmount")}
+                      />
+                      <FieldError errors={[form.formState.errors.discountAmount]} />
+                      {discountExceedsGross ? (
+                        <p className="text-destructive text-xs">
+                          Discount cannot exceed the {formatMoney(grossRentTotal)}{" "}
+                          rental amount.
+                        </p>
+                      ) : null}
+                    </Field>
+                  ) : null}
+
+                  <Field data-invalid={!!form.formState.errors.additionalCost}>
+                    <FieldLabel htmlFor="order-additional-cost">
+                      Additional cost (optional)
+                    </FieldLabel>
+                    <Input
+                      id="order-additional-cost"
+                      inputMode="decimal"
+                      placeholder="0.00"
+                      disabled={isSubmitting}
+                      aria-invalid={!!form.formState.errors.additionalCost}
+                      {...form.register("additionalCost")}
+                    />
+                    <FieldError errors={[form.formState.errors.additionalCost]} />
+                  </Field>
+                </div>
+
+                <Field data-invalid={!!form.formState.errors.securityDeposit}>
+                  <FieldLabel htmlFor="order-deposit">
+                    Security deposit (optional)
+                  </FieldLabel>
+                  <Input
+                    id="order-deposit"
+                    inputMode="decimal"
+                    placeholder={`${formatMoney(defaultDepositTotal)} by default`}
+                    disabled={isSubmitting}
+                    aria-invalid={!!form.formState.errors.securityDeposit}
+                    {...form.register("securityDeposit")}
+                  />
+                  <FieldError errors={[form.formState.errors.securityDeposit]} />
+                  <p className="text-muted-foreground text-xs">
+                    For the whole order. Leave blank to hold each
+                    item&rsquo;s usual deposit.
+                  </p>
+                </Field>
+
+                <Field data-invalid={!!form.formState.errors.additionalCostReason}>
+                  <FieldLabel htmlFor="order-additional-reason">
+                    Reason{extraCharged ? "" : " (optional)"}
+                  </FieldLabel>
+                  <Input
+                    id="order-additional-reason"
+                    placeholder="Alteration, delivery, late fee…"
+                    disabled={isSubmitting}
+                    aria-invalid={!!form.formState.errors.additionalCostReason}
+                    {...form.register("additionalCostReason")}
+                  />
+                  <FieldError errors={[form.formState.errors.additionalCostReason]} />
+                </Field>
+
+                <Separator />
+
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  <Field data-invalid={!!form.formState.errors.advanceAmount}>
+                    <FieldLabel htmlFor="order-advance">
+                      Advance payment (optional)
+                    </FieldLabel>
+                    <Input
+                      id="order-advance"
+                      inputMode="decimal"
+                      placeholder="0.00"
+                      disabled={isSubmitting}
+                      aria-invalid={!!form.formState.errors.advanceAmount}
+                      {...form.register("advanceAmount")}
+                    />
+                    <FieldError errors={[form.formState.errors.advanceAmount]} />
+                    {advanceExceedsTotal ? (
+                      <p className="text-destructive text-xs">
+                        Advance cannot exceed the {formatMoney(grandTotal)} due.
+                      </p>
+                    ) : null}
+                  </Field>
+
+                  <Field>
+                    <FieldLabel htmlFor="order-advance-method">
+                      Payment method
+                    </FieldLabel>
+                    <Controller
+                      control={form.control}
+                      name="advancePaymentMethod"
+                      render={({ field }) => (
+                        <Select
+                          value={field.value ?? "cash"}
+                          onValueChange={field.onChange}
+                          disabled={isSubmitting || Number(watchedAdvance || "0") <= 0}
+                        >
+                          <SelectTrigger id="order-advance-method" className="w-full">
+                            <SelectValue placeholder="Cash" />
+                          </SelectTrigger>
+                          <SelectContent alignItemWithTrigger={false}>
+                            {PAYMENT_METHOD_VALUES.map((method) => (
+                              <SelectItem key={method} value={method}>
+                                {method.replace("_", " ")}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      )}
+                    />
+                  </Field>
+                </div>
               </div>
 
               <Field>
@@ -616,13 +822,24 @@ export function BookingForm({
 
           <div className="flex items-center justify-between rounded-xl bg-primary/5 p-3.5 border border-primary/20">
             <div className="flex flex-col">
-              <span className="text-sm font-bold text-foreground">Total Due at Pickup</span>
+              <span className="text-sm font-bold text-foreground">
+                {Number(totals.advance) > 0 ? "Due at Pickup" : "Total Due at Pickup"}
+              </span>
               <span className="text-[11px] text-muted-foreground">Rent + Security Deposit</span>
             </div>
             <span className="text-xl font-bold text-primary">
-              {formatMoney(totals.grandTotal)}
+              {formatMoney(totals.dueAtPickup)}
             </span>
           </div>
+
+          {Number(totals.advance) > 0 ? (
+            <div className="flex items-center justify-between text-muted-foreground text-sm">
+              <span>Advance ({formatMoney(totals.grandTotal)} total)</span>
+              <span className="font-medium text-foreground">
+                -{formatMoney(totals.advance)}
+              </span>
+            </div>
+          ) : null}
 
           {Number(totals.deposit) > 0 ? (
             <div className="flex items-center gap-2 rounded-lg bg-emerald-500/10 border border-emerald-500/20 p-2.5 text-xs text-emerald-700 dark:text-emerald-400">

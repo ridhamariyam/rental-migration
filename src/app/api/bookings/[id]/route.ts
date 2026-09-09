@@ -2,8 +2,8 @@ import { requireTenantUser } from "@/server/auth/guard";
 import { Permission } from "@/lib/auth/permissions";
 import { AppError } from "@/lib/errors/app-error";
 import { apiError, apiSuccess } from "@/lib/errors/api-response";
-import { updateBookingSchema } from "@/lib/validation/bookings";
-import { getBookingById, updateBooking } from "@/server/bookings/service";
+import { updateBookingOrderSchema } from "@/lib/validation/bookings";
+import { getBookingById, updateBookingOrder } from "@/server/bookings/service";
 
 export async function GET(
   request: Request,
@@ -32,8 +32,8 @@ export async function PATCH(
     const user = await requireTenantUser(Permission.BOOKING_MANAGE);
 
     const { id } = await params;
-    const body = updateBookingSchema.parse(await request.json());
-    const booking = await updateBooking(user, id, body);
+    const body = updateBookingOrderSchema.parse(await request.json());
+    const booking = await updateBookingOrder(user, id, body);
 
     return apiSuccess(booking, "Booking updated");
   } catch (error) {

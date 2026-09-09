@@ -21,7 +21,19 @@ import { Textarea } from "@/components/ui/textarea";
 import { Spinner } from "@/components/ui/spinner";
 import { ApiClientError, apiRequest } from "@/lib/api-client";
 
-export function BookingCancelAction({ bookingId }: { bookingId: string }) {
+export function BookingCancelAction({
+  bookingId,
+  endpoint,
+  title = "Cancel this booking?",
+  description = "The item is released back to the availability calendar for these dates. This cannot be undone.",
+}: {
+  bookingId: string;
+  /** Defaults to the whole-order cancel endpoint; pass an item's own
+   * `/api/bookings/{id}/items/{itemId}/cancel` to cancel just that item. */
+  endpoint?: string;
+  title?: string;
+  description?: string;
+}) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [reason, setReason] = useState("");
@@ -33,7 +45,7 @@ export function BookingCancelAction({ bookingId }: { bookingId: string }) {
     setError(null);
 
     try {
-      await apiRequest(`/api/bookings/${bookingId}/cancel`, {
+      await apiRequest(endpoint ?? `/api/bookings/${bookingId}/cancel`, {
         method: "POST",
         body: JSON.stringify({ reason: reason.trim() || undefined }),
       });
@@ -62,19 +74,22 @@ export function BookingCancelAction({ bookingId }: { bookingId: string }) {
       }}
     >
       <DialogTrigger
-        render={<Button variant="destructive" size="sm" className="w-full" />}
+        render={
+          <Button
+            variant="outline"
+            size="sm"
+            className="text-destructive hover:text-destructive border-destructive/30 hover:bg-destructive/5"
+          />
+        }
       >
         <XCircleIcon />
-        Cancel booking
+        Cancel
       </DialogTrigger>
 
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Cancel this booking?</DialogTitle>
-          <DialogDescription>
-            The item is released back to the availability calendar for these
-            dates. This cannot be undone.
-          </DialogDescription>
+          <DialogTitle>{title}</DialogTitle>
+          <DialogDescription>{description}</DialogDescription>
         </DialogHeader>
 
         <DialogBody>

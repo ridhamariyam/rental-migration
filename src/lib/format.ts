@@ -44,6 +44,22 @@ export function formatMinutes(totalMinutes: number): string {
   return `${hours}h ${minutes}m`;
 }
 
+const WEEKDAY_NAMES = [
+  "Sunday",
+  "Monday",
+  "Tuesday",
+  "Wednesday",
+  "Thursday",
+  "Friday",
+  "Saturday",
+];
+
+/** "Sunday"…"Saturday" for a salary config's `weeklyOffDay` (`0`–`6`), or
+ * "None" when there isn't one. */
+export function formatWeeklyOffDay(weeklyOffDay: number | null): string {
+  return weeklyOffDay === null ? "None" : WEEKDAY_NAMES[weeklyOffDay];
+}
+
 /**
  * Total hours worked between a check-in and check-out, e.g. "7h 45m" —
  * `null` (rendered as "—") while still checked in, since there's no

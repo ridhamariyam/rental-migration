@@ -1,9 +1,20 @@
 import "server-only";
 
-import { and, desc, eq } from "drizzle-orm";
+import { and, asc, desc, eq } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { AppError } from "@/lib/errors/app-error";
-import { bookings, customers, payments, products, productVariations, shops, users, type Booking, type Payment } from "@/lib/db/schema";
+import {
+  bookingItems,
+  bookings,
+  customers,
+  payments,
+  products,
+  productVariations,
+  shops,
+  users,
+  type Booking,
+  type Payment,
+} from "@/lib/db/schema";
 import { assertTransition } from "@/lib/booking-state";
 import { formatMoney } from "@/lib/format";
 import { Permission, hasPermission } from "@/lib/auth/permissions";
@@ -23,14 +34,16 @@ import type { RecordPaymentInput } from "@/lib/validation/payments";
 export type PaymentRow = Payment;
 
 /**
- * Everything the counter needs to know about one booking's money, always
- * *derived* by summing the immutable `payments` ledger — never a single
- * mutable field (CLAUDE.md's rule, ported exactly from the legacy
- * `PaymentService.summarise`). `rentPayable` folds in `booking.damageCharge`
- * (Phase 13's return workflow) — `damage_charge` payments are how that
- * charge is actually recovered (from the deposit first, then owed as a
- * balance), so it has to count as part of what's payable, exactly like the
- * legacy `rent_payable = total_amount + damage_charge`.
+ * Everything the counter needs to know about one **order's** money,
+ * always *derived* by summing the immutable `payments` ledger — never a
+ * single mutable field (CLAUDE.md's rule, ported exactly from the legacy
+ * `PaymentService.summarise`). `rentPayable` folds in the sum of every
+ * one of the order's items' own `damageCharge` (Phase 13's return
+ * workflow — damage is now recorded per item, but it's payable as part
+ * of the order's one combined ledger) — `damage_charge` payments are how
+ * that charge is actually recovered (from the deposit first, then owed
+ * as a balance), so it has to count as part of what's payable, exactly
+ * like the legacy `rent_payable = total_amount + damage_charge`.
  */
 export type PaymentSummary = {
   rentPayable: string;
@@ -46,6 +59,12 @@ export type PaymentSummary = {
   depositBalance: string;
   depositHeld: string;
   outstanding: string;
+  /** The flip side of `outstanding`: money already collected that now
+   * exceeds what's payable (e.g. an item was cancelled after its rent was
+   * already paid) — a refund the shop owes the customer. Zero in the
+   * common case; `outstanding` and `creditBalance` are never both
+   * positive at once (one side of the ledger nets to zero first). */
+  creditBalance: string;
   status: Booking["paymentStatus"];
 };
 
@@ -59,7 +78,8 @@ export function sumByType(
 }
 
 export function computePaymentSummary(
-  booking: Pick<Booking, "totalAmount" | "securityDeposit" | "damageCharge">,
+  booking: Pick<Booking, "totalAmount" | "securityDeposit">,
+  totalDamageCharge: string,
   paymentRows: { paymentType: Payment["paymentType"]; amount: string }[],
 ): PaymentSummary {
   const advance = sumByType(paymentRows, "advance");
@@ -68,7 +88,7 @@ export function computePaymentSummary(
   const refunded = sumByType(paymentRows, "refund");
   const depositOut = sumByType(paymentRows, "deposit_release");
 
-  const rentPayable = addMoney(booking.totalAmount, booking.damageCharge);
+  const rentPayable = addMoney(booking.totalAmount, totalDamageCharge);
   const depositDue = booking.securityDeposit;
 
   // Refunds first offset over-collected rent, then the deposit (matches
@@ -81,6 +101,15 @@ export function computePaymentSummary(
   const outstanding = addMoney(
     nonNegativeMoney(rentBalance),
     nonNegativeMoney(depositBalance),
+  );
+
+  // A negative balance means more was collected than is now payable (most
+  // often: an already-paid item got cancelled, shrinking rentPayable) —
+  // surface it as a credit owed back to the customer instead of silently
+  // clamping it away like `outstanding` does.
+  const creditBalance = addMoney(
+    nonNegativeMoney(subtractMoney(ZERO_MONEY, rentBalance)),
+    nonNegativeMoney(subtractMoney(ZERO_MONEY, depositBalance)),
   );
 
   let status: Booking["paymentStatus"];
@@ -117,6 +146,7 @@ export function computePaymentSummary(
     depositBalance,
     depositHeld,
     outstanding,
+    creditBalance,
     status,
   };
 }
@@ -136,6 +166,40 @@ async function loadBookingForTenant(
   }
 
   return booking;
+}
+
+/** Sum of `damageCharge` across every item in this order — damage is
+ * recorded per item at return time, but it's payable as part of the
+ * order's one combined ledger. Exported for `bookings/lifecycle.ts`'s
+ * return workflow, which needs this same figure mid-transaction. */
+export async function sumOrderDamageCharge(
+  executor: PaymentTx | typeof db,
+  bookingId: string,
+): Promise<string> {
+  const rows = await executor
+    .select({ damageCharge: bookingItems.damageCharge })
+    .from(bookingItems)
+    .where(eq(bookingItems.bookingId, bookingId));
+
+  return rows.reduce((sum, row) => addMoney(sum, row.damageCharge), ZERO_MONEY);
+}
+
+/** The order's own outlet, for snapshotting onto a payment row — taken
+ * from whichever item was created first, since the order itself no
+ * longer has one fixed outlet (an order's items usually share one, but
+ * nothing enforces that). */
+async function resolveOrderOutletId(bookingId: string): Promise<string | null> {
+  const [row] = await db
+    .select({ outletId: bookingItems.outletId })
+    .from(bookingItems)
+    .where(eq(bookingItems.bookingId, bookingId))
+    // Items created together in one order share the exact same
+    // `createdAt` (one INSERT statement) — `id` breaks the tie so this
+    // stays deterministic across calls instead of picking a random row.
+    .orderBy(asc(bookingItems.createdAt), asc(bookingItems.id))
+    .limit(1);
+
+  return row?.outletId ?? null;
 }
 
 /** Any function running inside a `db.transaction()` callback receives this
@@ -201,8 +265,14 @@ export async function listPaymentsForBooking(
   bookingId: string,
 ): Promise<{ payments: PaymentRow[]; summary: PaymentSummary }> {
   const booking = await loadBookingForTenant(shopId, bookingId);
-  const rows = await getPaymentsForBooking(booking.id);
-  return { payments: rows, summary: computePaymentSummary(booking, rows) };
+  const [rows, totalDamageCharge] = await Promise.all([
+    getPaymentsForBooking(booking.id),
+    sumOrderDamageCharge(db, booking.id),
+  ]);
+  return {
+    payments: rows,
+    summary: computePaymentSummary(booking, totalDamageCharge, rows),
+  };
 }
 
 const REFUND_TYPES: Payment["paymentType"][] = ["refund", "deposit_release"];
@@ -223,12 +293,11 @@ function isRefundType(type: RecordPaymentInput["paymentType"]): boolean {
 type LedgerMovement = { amount: string; paymentType: Payment["paymentType"] };
 
 /**
- * Appends one or more money movements to a booking's ledger. Recording a
- * qualifying (non-refund) payment against a still-`draft` booking also
+ * Appends one or more money movements to an order's ledger. Recording a
+ * qualifying (non-refund) payment against a still-`draft` order also
  * confirms it (`draft -> confirmed`) — matches the client requirements
- * doc's own "Booking Created → Payment Recorded → Booking Confirmed" flow,
- * and is the reason `bookingStatusEnum`'s doc comment calls out "once a
- * qualifying payment lands" as this phase's job.
+ * doc's own "Booking Created → Payment Recorded → Booking Confirmed"
+ * flow.
  *
  * Returns every row written: a `full_payment` settles rent *and* deposit
  * in one action and so produces two of them.
@@ -252,6 +321,9 @@ export async function recordPayment(
     throw new AppError("Cannot record a payment against a cancelled booking", 409);
   }
 
+  const totalDamageCharge = await sumOrderDamageCharge(db, booking.id);
+  const orderOutletId = await resolveOrderOutletId(booking.id);
+
   const { payments: inserted, summary } = await db.transaction(async (tx) => {
     // Read the ledger *before* inserting the new row, so an outflow
     // (refund/deposit release) can be checked against what's actually been
@@ -266,25 +338,28 @@ export async function recordPayment(
     const movements: LedgerMovement[] = [];
 
     if (isRefundType(input.paymentType)) {
-      const collectedTotal = addMoney(
-        addMoney(
-          sumByType(existingRows, "advance"),
-          sumByType(existingRows, "balance"),
-        ),
-        sumByType(existingRows, "security_deposit"),
-      );
-      const alreadyReturned = addMoney(
-        sumByType(existingRows, "refund"),
-        sumByType(existingRows, "deposit_release"),
-      );
-      const refundable = subtractMoneyNonNegative(
-        collectedTotal,
-        alreadyReturned,
-      );
+      // Rent and deposit money are kept in separate pools for INflows
+      // (see the `isDepositPayment` branch below) — outflows have to
+      // honour that same separation, or a "deposit refund" can silently
+      // hand back money that was actually collected as rent (and vice
+      // versa for a plain rent "refund"), which is exactly the kind of
+      // cross-bucket leak the separate pools exist to prevent.
+      const isDepositRefund = input.paymentType === "deposit_release";
+      const collected = isDepositRefund
+        ? sumByType(existingRows, "security_deposit")
+        : addMoney(
+            sumByType(existingRows, "advance"),
+            sumByType(existingRows, "balance"),
+          );
+      const alreadyReturned = isDepositRefund
+        ? sumByType(existingRows, "deposit_release")
+        : sumByType(existingRows, "refund");
+      const refundable = subtractMoneyNonNegative(collected, alreadyReturned);
 
       if (compareMoney(input.amount, refundable) > 0) {
+        const bucket = isDepositRefund ? "deposit" : "rent";
         throw new AppError(
-          `Cannot refund more than the ${formatMoney(refundable)} already collected for this booking`,
+          `Cannot refund more than the ${formatMoney(refundable)} ${bucket} already collected for this booking`,
           400,
           [
             {
@@ -303,7 +378,11 @@ export async function recordPayment(
       // "They paid everything" — settle the rent balance first, then put
       // whatever is left toward the deposit, so the two buckets the rest
       // of this service keeps separate stay separate in the ledger too.
-      const existingSummary = computePaymentSummary(booking, existingRows);
+      const existingSummary = computePaymentSummary(
+        booking,
+        totalDamageCharge,
+        existingRows,
+      );
       const rentDue = nonNegativeMoney(existingSummary.rentBalance);
       const depositDue = nonNegativeMoney(existingSummary.depositBalance);
       const outstanding = addMoney(rentDue, depositDue);
@@ -346,7 +425,11 @@ export async function recordPayment(
       // "overpaid" with no way to reconcile it. Rent and deposit are kept
       // separate on purpose (a rent overpayment can't silently cover the
       // deposit or vice versa).
-      const existingSummary = computePaymentSummary(booking, existingRows);
+      const existingSummary = computePaymentSummary(
+        booking,
+        totalDamageCharge,
+        existingRows,
+      );
       const isDepositPayment = input.paymentType === "security_deposit";
       const remaining = nonNegativeMoney(
         isDepositPayment
@@ -385,7 +468,7 @@ export async function recordPayment(
         .insert(payments)
         .values({
           shopId: actor.shopId,
-          outletId: booking.outletId,
+          outletId: orderOutletId,
           bookingId: booking.id,
           amount: movement.amount,
           paymentType: movement.paymentType,
@@ -400,7 +483,7 @@ export async function recordPayment(
 
     const rows = [...existingRows, ...insertedRows];
 
-    const paymentSummary = computePaymentSummary(booking, rows);
+    const paymentSummary = computePaymentSummary(booking, totalDamageCharge, rows);
 
     const nextStatus =
       booking.status === "draft" && !isRefundType(input.paymentType)
@@ -419,12 +502,28 @@ export async function recordPayment(
       })
       .where(eq(bookings.id, booking.id));
 
+    // Bring any still-`draft` items along the same time the order itself
+    // leaves `draft` — a `draft` item can be picked up directly too, but
+    // once a qualifying payment lands the item and its order shouldn't
+    // keep disagreeing about being past `draft`.
+    if (nextStatus !== booking.status) {
+      await tx
+        .update(bookingItems)
+        .set({ status: "confirmed", updatedAt: new Date() })
+        .where(
+          and(
+            eq(bookingItems.bookingId, booking.id),
+            eq(bookingItems.status, "draft"),
+          ),
+        );
+    }
+
     // One audit entry per row actually written, so a `full_payment`'s two
     // halves are each traceable to the payment they created.
     for (const payment of insertedRows) {
       await recordAudit(tx, {
         shopId: actor.shopId,
-        outletId: booking.outletId,
+        outletId: orderOutletId,
         userId: actor.id,
         action: isRefundType(input.paymentType)
           ? AuditAction.PAYMENT_REFUNDED
@@ -443,16 +542,20 @@ export async function recordPayment(
     }
 
     // The customer sees one payment, not the split — notify once, for the
-    // amount they actually handed over.
+    // amount they actually handed over. `allowRepeat` because
+    // `payment_received` deliberately isn't a one-per-booking event: an
+    // advance and a later balance payment on the same booking each
+    // deserve their own WhatsApp.
     if (!isRefundType(input.paymentType)) {
       await queueBookingNotification(tx, booking, "payment_received", {
         extraContext: { payment_amount: formatMoney(input.amount) },
+        allowRepeat: true,
       });
     }
 
-    if (booking.status === "draft" && !isRefundType(input.paymentType)) {
-      await queueBookingNotification(tx, booking, "booking_confirmed");
-    }
+    // `booking_confirmed` is queued once, at booking creation (see
+    // `createBookingGroup`) — its dedupe already covers a booking created
+    // with zero advance and confirmed later by this same payment.
 
     return { payments: insertedRows, summary: paymentSummary };
   });
@@ -464,29 +567,33 @@ export type BookingReceipt = {
   booking: {
     id: string;
     bookingNumber: string;
-    fromDate: string;
-    toDate: string;
-    totalDays: number;
     status: Booking["status"];
+    createdAt: Date;
   };
   shop: { id: string; name: string; address: string | null; phone: string | null };
   customer: { id: string; name: string; phone: string };
-  item: {
+  items: {
+    id: string;
     productName: string;
     sku: string;
     color: string | null;
     size: string | null;
-  };
-  charges: {
-    rentAmount: string;
+    fromDate: string;
+    toDate: string;
     totalDays: number;
     quantity: number;
+    rentAmount: string;
     grossRent: string;
+    status: string;
+    damageCharge: string;
+  }[];
+  charges: {
+    grossRentTotal: string;
     discountAmount: string;
     additionalCost: string;
     additionalCostReason: string | null;
     totalAmount: string;
-    damageCharge: string;
+    damageChargeTotal: string;
     securityDeposit: string;
   };
   summary: PaymentSummary;
@@ -501,10 +608,12 @@ export type BookingReceipt = {
   }[];
 };
 
+/** One combined receipt for the whole order — every item, one payment
+ * ledger, one total. */
 export async function getReceipt(
   shopId: string,
   bookingId: string,
-  actor: Pick<TenantSessionUser, "id" | "role">,
+  _actor: Pick<TenantSessionUser, "id" | "role">,
 ): Promise<BookingReceipt | null> {
   const [row] = await db
     .select({
@@ -515,63 +624,79 @@ export async function getReceipt(
       customerFirstName: customers.firstName,
       customerLastName: customers.lastName,
       customerPhone: customers.phone,
-      productName: products.name,
-      variationSku: productVariations.sku,
-      variationColor: productVariations.color,
-      variationSize: productVariations.size,
     })
     .from(bookings)
     .innerJoin(shops, eq(bookings.shopId, shops.id))
     .innerJoin(customers, eq(bookings.customerId, customers.id))
-    .innerJoin(products, eq(bookings.productId, products.id))
-    .innerJoin(
-      productVariations,
-      eq(bookings.variationId, productVariations.id),
-    )
-    .where(
-      and(
-        eq(bookings.id, bookingId),
-        eq(bookings.shopId, shopId),
-        // Same "staff only sees their own bookings" rule as
-        // `bookings/service.ts`'s `staffScopeCondition` — kept as a local
-        // inline check rather than importing that helper, since this is
-        // the one place outside `bookings/service.ts` that reads a full
-        // booking row directly.
-        actor.role === "staff" ? eq(bookings.handledById, actor.id) : undefined,
-      ),
-    )
+    .where(and(eq(bookings.id, bookingId), eq(bookings.shopId, shopId)))
     .limit(1);
 
   if (!row) {
     return null;
   }
 
-  const paymentRows = await db
-    .select({
-      id: payments.id,
-      amount: payments.amount,
-      paymentType: payments.paymentType,
-      paymentMethod: payments.paymentMethod,
-      referenceNumber: payments.referenceNumber,
-      createdAt: payments.createdAt,
-      recordedByFirstName: users.firstName,
-      recordedByLastName: users.lastName,
-    })
-    .from(payments)
-    .leftJoin(users, eq(payments.recordedById, users.id))
-    .where(eq(payments.bookingId, bookingId))
-    .orderBy(desc(payments.createdAt));
+  const [itemRows, paymentRows] = await Promise.all([
+    db
+      .select({
+        id: bookingItems.id,
+        productName: products.name,
+        variationSku: productVariations.sku,
+        variationColor: productVariations.color,
+        variationSize: productVariations.size,
+        fromDate: bookingItems.fromDate,
+        toDate: bookingItems.toDate,
+        totalDays: bookingItems.totalDays,
+        quantity: bookingItems.quantity,
+        rentAmount: bookingItems.rentAmount,
+        grossRent: bookingItems.grossRent,
+        status: bookingItems.status,
+        damageCharge: bookingItems.damageCharge,
+      })
+      .from(bookingItems)
+      .innerJoin(products, eq(bookingItems.productId, products.id))
+      .innerJoin(
+        productVariations,
+        eq(bookingItems.variationId, productVariations.id),
+      )
+      .where(eq(bookingItems.bookingId, bookingId))
+      .orderBy(asc(bookingItems.createdAt), asc(bookingItems.id)),
+    db
+      .select({
+        id: payments.id,
+        amount: payments.amount,
+        paymentType: payments.paymentType,
+        paymentMethod: payments.paymentMethod,
+        referenceNumber: payments.referenceNumber,
+        createdAt: payments.createdAt,
+        recordedByFirstName: users.firstName,
+        recordedByLastName: users.lastName,
+      })
+      .from(payments)
+      .leftJoin(users, eq(payments.recordedById, users.id))
+      .where(eq(payments.bookingId, bookingId))
+      .orderBy(desc(payments.createdAt)),
+  ]);
 
-  const summary = computePaymentSummary(row.booking, paymentRows);
+  // Only active (non-cancelled) items feed the order's rent total (see
+  // recomputeOrderTotal in bookings/service.ts) — mirror that here so the
+  // receipt's "Rent (all items)" line reconciles with "Rent payable"
+  // (grossRentTotal - discount + additionalCost === totalAmount).
+  const grossRentTotal = itemRows
+    .filter((item) => item.status !== "cancelled")
+    .reduce((sum, item) => addMoney(sum, item.grossRent), ZERO_MONEY);
+  const damageChargeTotal = itemRows.reduce(
+    (sum, item) => addMoney(sum, item.damageCharge),
+    ZERO_MONEY,
+  );
+
+  const summary = computePaymentSummary(row.booking, damageChargeTotal, paymentRows);
 
   return {
     booking: {
       id: row.booking.id,
       bookingNumber: row.booking.bookingNumber,
-      fromDate: row.booking.fromDate,
-      toDate: row.booking.toDate,
-      totalDays: row.booking.totalDays,
       status: row.booking.status,
+      createdAt: row.booking.createdAt,
     },
     shop: {
       id: row.booking.shopId,
@@ -584,22 +709,28 @@ export async function getReceipt(
       name: `${row.customerFirstName} ${row.customerLastName}`,
       phone: row.customerPhone,
     },
-    item: {
-      productName: row.productName,
-      sku: row.variationSku,
-      color: row.variationColor,
-      size: row.variationSize,
-    },
+    items: itemRows.map((item) => ({
+      id: item.id,
+      productName: item.productName,
+      sku: item.variationSku,
+      color: item.variationColor,
+      size: item.variationSize,
+      fromDate: item.fromDate,
+      toDate: item.toDate,
+      totalDays: item.totalDays,
+      quantity: item.quantity,
+      rentAmount: item.rentAmount,
+      grossRent: item.grossRent,
+      status: item.status,
+      damageCharge: item.damageCharge,
+    })),
     charges: {
-      rentAmount: row.booking.rentAmount,
-      totalDays: row.booking.totalDays,
-      quantity: row.booking.quantity,
-      grossRent: row.booking.grossRent,
+      grossRentTotal,
       discountAmount: row.booking.discountAmount,
       additionalCost: row.booking.additionalCost,
       additionalCostReason: row.booking.additionalCostReason,
       totalAmount: row.booking.totalAmount,
-      damageCharge: row.booking.damageCharge,
+      damageChargeTotal,
       securityDeposit: row.booking.securityDeposit,
     },
     summary,

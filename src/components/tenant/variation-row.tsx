@@ -41,10 +41,12 @@ export function VariationRow({
   variation,
   productName,
   outlets,
+  canViewCost,
 }: {
   variation: VariationListItem;
   productName: string;
   outlets: { id: string; name: string; code: string }[];
+  canViewCost: boolean;
 }) {
   const router = useRouter();
   const [editOpen, setEditOpen] = useState(false);
@@ -126,8 +128,16 @@ export function VariationRow({
         <TableCell className="text-muted-foreground px-6 py-3.5 text-sm">
           <div className="flex flex-col gap-0.5">
             <span className="font-medium text-foreground">{formatMoney(variation.rentPrice)} rent</span>
-            <span className="text-xs text-muted-foreground/80">{formatMoney(variation.securityDeposit)} deposit</span>
+            {variation.sellingPrice ? (
+              <span className="text-xs text-muted-foreground/80">{formatMoney(variation.sellingPrice)} selling</span>
+            ) : null}
+            {canViewCost && variation.buyingPrice ? (
+              <span className="text-xs text-muted-foreground/80">{formatMoney(variation.buyingPrice)} buying</span>
+            ) : null}
           </div>
+        </TableCell>
+        <TableCell className="text-muted-foreground px-6 py-3.5 text-sm font-medium">
+          {variation.quantity}
         </TableCell>
         <TableCell className="text-muted-foreground px-6 py-3.5 text-sm font-medium">
           {variation.outletName ?? "Unassigned"}
@@ -140,7 +150,7 @@ export function VariationRow({
                 Customer-owned
               </Badge>
               <span className="text-muted-foreground/80 text-xs font-medium">
-                {variation.ownerName || "Unnamed owner"} · {variation.ownerSharePercentage}%
+                {variation.ownerName || "Unnamed owner"} · {formatMoney(variation.ownerShareAmount)}
               </span>
             </div>
           ) : (
@@ -235,6 +245,7 @@ export function VariationRow({
         onOpenChange={setEditOpen}
         variation={variation}
         outlets={outlets}
+        canViewCost={canViewCost}
       />
       <BarcodeDisplay
         open={barcodeOpen}

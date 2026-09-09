@@ -5,7 +5,7 @@ import {
   bookingListQuerySchema,
   createBookingSchema,
 } from "@/lib/validation/bookings";
-import { createBookingGroup, listBookings } from "@/server/bookings/service";
+import { createBooking, listBookings } from "@/server/bookings/service";
 import { dispatchAfterResponse } from "@/server/notifications/dispatch-after-response";
 
 export async function GET(request: Request) {
@@ -33,16 +33,15 @@ export async function POST(request: Request) {
     const user = await requireTenantUser(Permission.BOOKING_CREATE);
 
     const body = createBookingSchema.parse(await request.json());
-    const created = await createBookingGroup(user, body);
+    const { booking, items } = await createBooking(user, body);
 
-    dispatchAfterResponse(created.map((booking) => booking.id));
+    dispatchAfterResponse(items.map((item) => item.id));
 
-    const message =
-      created.length > 1
-        ? `${created.length} bookings created`
-        : "Booking created";
-
-    return apiSuccess(created, message, 201);
+    return apiSuccess(
+      { booking, items },
+      items.length > 1 ? `Order created with ${items.length} items` : "Booking created",
+      201,
+    );
   } catch (error) {
     return apiError(error);
   }

@@ -26,11 +26,17 @@ export function ItemPicker({
   onSelect,
   disabled,
   invalid,
+  autoFocus,
 }: {
   value: VariationSearchResult | null;
   onSelect: (variation: VariationSearchResult | null) => void;
   disabled?: boolean;
   invalid?: boolean;
+  /** Focuses the search input as soon as it mounts — opt-in per call site
+   * since not every picker is the first field in its form (e.g. an inline
+   * swap-item action shouldn't steal focus the way a fresh dialog's first
+   * field should). */
+  autoFocus?: boolean;
 }) {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<VariationSearchResult[]>([]);
@@ -131,6 +137,7 @@ export function ItemPicker({
           value={query}
           disabled={disabled}
           aria-invalid={invalid}
+          autoFocus={autoFocus}
           onChange={(event) => search(event.target.value)}
           onFocus={() => setOpen(true)}
           placeholder="Scan a barcode, or search by SKU/product name…"

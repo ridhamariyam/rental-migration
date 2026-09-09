@@ -3,7 +3,7 @@ import { maintenanceStatusEnum, maintenanceTypeEnum } from "@/lib/db/schema/enum
 import { shops } from "@/lib/db/schema/shops";
 import { outlets } from "@/lib/db/schema/outlets";
 import { productVariations } from "@/lib/db/schema/product-variations";
-import { bookings } from "@/lib/db/schema/bookings";
+import { bookingItems } from "@/lib/db/schema/booking-items";
 import { users } from "@/lib/db/schema/users";
 
 /**
@@ -29,7 +29,7 @@ export const maintenanceTasks = pgTable(
     variationId: uuid("variation_id")
       .notNull()
       .references(() => productVariations.id, { onDelete: "cascade" }),
-    bookingId: uuid("booking_id").references(() => bookings.id, {
+    bookingId: uuid("booking_id").references(() => bookingItems.id, {
       onDelete: "set null",
     }),
     taskType: maintenanceTypeEnum("task_type").notNull(),

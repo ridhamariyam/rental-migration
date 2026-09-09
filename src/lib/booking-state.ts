@@ -16,7 +16,11 @@ import { AppError } from "@/lib/errors/app-error";
 export type BookingStatus = Booking["status"];
 
 const ALLOWED_TRANSITIONS: Record<BookingStatus, readonly BookingStatus[]> = {
-  draft: ["confirmed", "cancelled"],
+  // `rented` is allowed straight from `draft` too — pickup itself always
+  // re-checks the outstanding balance (with the counter's own "let them
+  // take it anyway" override), so an item shouldn't have to wait on a
+  // payment landing first just to be handed over.
+  draft: ["confirmed", "rented", "cancelled"],
   confirmed: ["pickup_pending", "rented", "cancelled"],
   pickup_pending: ["rented", "confirmed", "cancelled"],
   rented: ["return_pending", "returned", "overdue"],

@@ -24,10 +24,10 @@ export const customerListQuerySchema = z.object({
 
 export type CustomerListQuery = z.infer<typeof customerListQuerySchema>;
 
-const preferredSizeSchema = z
+const locationSchema = z
   .string()
   .trim()
-  .max(50, "Must be at most 50 characters")
+  .max(100, "Must be at most 100 characters")
   .optional();
 
 const notesSchema = z
@@ -41,7 +41,7 @@ export const customerFormSchema = z.object({
   lastName: nameSchema,
   phone: phoneSchema,
   email: optionalEmailSchema,
-  preferredSize: preferredSizeSchema,
+  location: locationSchema,
   notes: notesSchema,
 });
 

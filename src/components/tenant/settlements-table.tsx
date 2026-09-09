@@ -120,7 +120,7 @@ export async function SettlementsTable({
               </TableCell>
               <TableCell className="text-muted-foreground px-4 py-3 text-sm">
                 {formatMoney(settlement.grossRentalAmount)} ·{" "}
-                {settlement.sharePercentage}%
+                {formatMoney(settlement.shareAmount)} share
               </TableCell>
               <TableCell className="px-4 py-3 text-sm font-medium">
                 {formatMoney(settlement.ownerAmount)}

@@ -127,6 +127,62 @@
       "when": 1788711028067,
       "tag": "0017_blushing_susan_delgado",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1788781282522,
+      "tag": "0018_loving_slapstick",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1788782158226,
+      "tag": "0019_nasty_the_professor",
+      "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1788790567448,
+      "tag": "0020_organic_lake",
+      "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1788791454411,
+      "tag": "0021_sparkling_gateway",
+      "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1788791913608,
+      "tag": "0022_bright_starjammers",
+      "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1788798035978,
+      "tag": "0023_bookings_orders_and_items",
+      "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1788799550698,
+      "tag": "0024_notification_logs_order_scoped",
+      "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1788933778993,
+      "tag": "0025_naive_maximus",
+      "breakpoints": true
     }
   ]
 }

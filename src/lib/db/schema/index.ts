@@ -8,6 +8,7 @@ export * from "@/lib/db/schema/products";
 export * from "@/lib/db/schema/product-variations";
 export * from "@/lib/db/schema/customers";
 export * from "@/lib/db/schema/bookings";
+export * from "@/lib/db/schema/booking-items";
 export * from "@/lib/db/schema/payments";
 export * from "@/lib/db/schema/maintenance-tasks";
 export * from "@/lib/db/schema/attendance";

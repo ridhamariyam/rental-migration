@@ -3,7 +3,7 @@ import "server-only";
 import { and, eq, gte, inArray, lte, ne } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { AppError } from "@/lib/errors/app-error";
-import { bookings, type Booking } from "@/lib/db/schema";
+import { bookingItems, bookings, type BookingItem } from "@/lib/db/schema";
 import { BLOCKING_STATUSES } from "@/lib/booking-state";
 import { getMaintenanceBlockedQuantity } from "@/server/variations/capacity";
 
@@ -74,25 +74,29 @@ async function overlappingBookings(
   variationId: string,
   fromDate: string,
   toDate: string,
-  excludeBookingId?: string,
+  excludeItemId?: string,
 ): Promise<{ bookingNumber: string; quantity: number }[]> {
   const conditions = [
-    eq(bookings.variationId, variationId),
+    eq(bookingItems.variationId, variationId),
     inArray(
-      bookings.status,
-      BLOCKING_STATUSES as unknown as Booking["status"][],
+      bookingItems.status,
+      BLOCKING_STATUSES as unknown as BookingItem["status"][],
     ),
-    lte(bookings.fromDate, toDate),
-    gte(bookings.toDate, fromDate),
+    lte(bookingItems.fromDate, toDate),
+    gte(bookingItems.toDate, fromDate),
   ];
 
-  if (excludeBookingId) {
-    conditions.push(ne(bookings.id, excludeBookingId));
+  if (excludeItemId) {
+    conditions.push(ne(bookingItems.id, excludeItemId));
   }
 
   return db
-    .select({ bookingNumber: bookings.bookingNumber, quantity: bookings.quantity })
-    .from(bookings)
+    .select({
+      bookingNumber: bookings.bookingNumber,
+      quantity: bookingItems.quantity,
+    })
+    .from(bookingItems)
+    .innerJoin(bookings, eq(bookingItems.bookingId, bookings.id))
     .where(and(...conditions));
 }
 
@@ -100,7 +104,7 @@ export async function checkAvailability(
   variation: VariationForAvailability,
   fromDate: string,
   toDate: string,
-  excludeBookingId?: string,
+  excludeItemId?: string,
   requestedQuantity: number = 1,
 ): Promise<AvailabilityResult> {
   validateDateRange(fromDate, toDate);
@@ -125,7 +129,7 @@ export async function checkAvailability(
     variation.id,
     fromDate,
     toDate,
-    excludeBookingId,
+    excludeItemId,
   );
 
   const { maintenanceQty, cleaningQty } =
@@ -167,14 +171,14 @@ export async function assertAvailable(
   variation: VariationForAvailability,
   fromDate: string,
   toDate: string,
-  excludeBookingId?: string,
+  excludeItemId?: string,
   requestedQuantity: number = 1,
 ): Promise<void> {
   const result = await checkAvailability(
     variation,
     fromDate,
     toDate,
-    excludeBookingId,
+    excludeItemId,
     requestedQuantity,
   );
 
@@ -218,7 +222,7 @@ function* eachDate(fromDate: string, toDate: string): Generator<string> {
 export async function assertCapacityAvailable(
   variation: VariationForAvailability,
   requests: CapacityRequest[],
-  excludeBookingId?: string,
+  excludeItemId?: string,
 ): Promise<void> {
   if (requests.length === 0) return;
 
@@ -254,26 +258,26 @@ export async function assertCapacityAvailable(
   );
 
   const conditions = [
-    eq(bookings.variationId, variation.id),
+    eq(bookingItems.variationId, variation.id),
     inArray(
-      bookings.status,
-      BLOCKING_STATUSES as unknown as Booking["status"][],
+      bookingItems.status,
+      BLOCKING_STATUSES as unknown as BookingItem["status"][],
     ),
-    lte(bookings.fromDate, overallTo),
-    gte(bookings.toDate, overallFrom),
+    lte(bookingItems.fromDate, overallTo),
+    gte(bookingItems.toDate, overallFrom),
   ];
 
-  if (excludeBookingId) {
-    conditions.push(ne(bookings.id, excludeBookingId));
+  if (excludeItemId) {
+    conditions.push(ne(bookingItems.id, excludeItemId));
   }
 
   const persisted = await db
     .select({
-      fromDate: bookings.fromDate,
-      toDate: bookings.toDate,
-      quantity: bookings.quantity,
+      fromDate: bookingItems.fromDate,
+      toDate: bookingItems.toDate,
+      quantity: bookingItems.quantity,
     })
-    .from(bookings)
+    .from(bookingItems)
     .where(and(...conditions));
 
   const usageByDay = new Map<string, number>();
