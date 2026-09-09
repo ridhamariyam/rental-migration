@@ -254,7 +254,7 @@ export async function confirmPickup(
       after: { status: updatedBookingItem.status, paymentStatus: paymentSummary.status },
     });
 
-    await queueBookingNotification(tx, order, "pickup_confirmed");
+    await queueBookingNotification(tx, order, "pickup_confirmed", { itemId: item.id });
 
     return { item: updatedBookingItem, summary: paymentSummary };
   });
@@ -447,6 +447,8 @@ export async function confirmPickupOrder(
         before: { status: item.status },
         after: { status: updatedBookingItem.status, paymentStatus: paymentSummary.status },
       });
+
+      await queueBookingNotification(tx, order, "pickup_confirmed", { itemId: item.id });
     }
 
     await tx
@@ -457,8 +459,6 @@ export async function confirmPickupOrder(
     for (const variationId of requestedQtyByVariation.keys()) {
       await applyVariationLifecycleStatus(tx, variationId);
     }
-
-    await queueBookingNotification(tx, order, "pickup_confirmed");
 
     return { items: updated, summary: paymentSummary };
   });
@@ -682,11 +682,22 @@ export async function returnBooking(
     });
 
     await queueBookingNotification(tx, order, "booking_returned", {
+      itemId: item.id,
       extraContext: {
         damage_charge: formatMoney(updatedBookingItem.damageCharge),
         deposit_refunded: formatMoney(updatedBookingItem.depositRefunded),
       },
     });
+
+    // Once every item in the order has come back, schedule the one
+    // booking-level "how was your experience" WhatsApp for ~2 days later
+    // — not per item, so a multi-item order only ever gets one.
+    if (isLastItemToSettle) {
+      const feedbackDate = new Date(Date.now() + 2 * 24 * 60 * 60 * 1000);
+      await queueBookingNotification(tx, order, "feedback_request", {
+        scheduledFor: feedbackDate,
+      });
+    }
 
     return { item: updatedBookingItem, summary: paymentSummary };
   });

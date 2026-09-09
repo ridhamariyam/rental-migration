@@ -542,16 +542,20 @@ export async function recordPayment(
     }
 
     // The customer sees one payment, not the split — notify once, for the
-    // amount they actually handed over.
+    // amount they actually handed over. `allowRepeat` because
+    // `payment_received` deliberately isn't a one-per-booking event: an
+    // advance and a later balance payment on the same booking each
+    // deserve their own WhatsApp.
     if (!isRefundType(input.paymentType)) {
       await queueBookingNotification(tx, booking, "payment_received", {
         extraContext: { payment_amount: formatMoney(input.amount) },
+        allowRepeat: true,
       });
     }
 
-    if (booking.status === "draft" && !isRefundType(input.paymentType)) {
-      await queueBookingNotification(tx, booking, "booking_confirmed");
-    }
+    // `booking_confirmed` is queued once, at booking creation (see
+    // `createBookingGroup`) — its dedupe already covers a booking created
+    // with zero advance and confirmed later by this same payment.
 
     return { payments: insertedRows, summary: paymentSummary };
   });
