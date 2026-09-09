@@ -50,12 +50,13 @@ export type BookingItemQuote = {
 const QUOTE_DEBOUNCE_MS = 400;
 
 /**
- * One \"cart line\" in the booking form — its own item, dates, quantity,
- * discount, extra charge and deposit, with a live availability/price
- * preview. Quote state is reported up to `BookingForm` (via
- * `onQuoteChange`, keyed by the field-array row's own stable id) so the
- * order summary panel can add every line into one reviewable total
- * instead of showing a separate price card per row.
+ * One \"cart line\" in the booking form — its own item, dates, quantity
+ * and deposit, with a live availability/price preview. Discount/additional
+ * cost/advance are order-level now (see `BookingForm`), not per line.
+ * Quote state is reported up to `BookingForm` (via `onQuoteChange`, keyed
+ * by the field-array row's own stable id) so the order summary panel can
+ * add every line into one reviewable total instead of showing a separate
+ * price card per row.
  */
 export function BookingItemRow({
   index,
@@ -67,7 +68,6 @@ export function BookingItemRow({
   errors,
   selectedItem,
   onSelectItem,
-  canDiscount,
   canRemove,
   onRemove,
   disabled,
@@ -83,15 +83,10 @@ export function BookingItemRow({
     barcode?: { message?: string };
     fromDate?: { message?: string };
     toDate?: { message?: string };
-    discountAmount?: { message?: string };
-    additionalCost?: { message?: string };
-    additionalCostReason?: { message?: string };
-    securityDeposit?: { message?: string };
     quantity?: { message?: string };
   };
   selectedItem: VariationSearchResult | null;
   onSelectItem: (item: VariationSearchResult | null) => void;
-  canDiscount: boolean;
   canRemove: boolean;
   onRemove: () => void;
   disabled?: boolean;
@@ -104,14 +99,7 @@ export function BookingItemRow({
   const fromDate = useWatch({ control, name: `items.${index}.fromDate` });
   const toDate = useWatch({ control, name: `items.${index}.toDate` });
   const quantity = useWatch({ control, name: `items.${index}.quantity` });
-  const discountAmount = useWatch({ control, name: `items.${index}.discountAmount` });
-  const additionalCost = useWatch({ control, name: `items.${index}.additionalCost` });
-  const securityDeposit = useWatch({ control, name: `items.${index}.securityDeposit` });
   const selectedItemId = selectedItem?.id;
-  // Drives the "Reason" label: it stops reading "(optional)" the moment an
-  // amount is typed, which is also when `additionalCostRefinement` starts
-  // requiring it.
-  const extraCharged = Number(additionalCost ?? "0") > 0;
 
   useEffect(() => {
     const timeout = setTimeout(async () => {
@@ -143,12 +131,6 @@ export function BookingItemRow({
               fromDate,
               toDate,
               quantity: quantity || "1",
-              discountAmount: discountAmount || "0",
-              additionalCost: additionalCost || "0",
-              // Blank is meaningful here: it means \"keep the item's own
-              // deposit\", which is what the server does with an absent
-              // value — so it is deliberately not defaulted to \"0\".
-              securityDeposit: securityDeposit || undefined,
             }),
           },
         );
@@ -175,9 +157,6 @@ export function BookingItemRow({
     fromDate,
     toDate,
     quantity,
-    discountAmount,
-    additionalCost,
-    securityDeposit,
     itemKey,
   ]);
 
@@ -291,78 +270,6 @@ export function BookingItemRow({
         </Field>
       </div>
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        {canDiscount ? (
-          <Field data-invalid={!!errors?.discountAmount}>
-            <FieldLabel htmlFor={`discount-item-${index}`}>
-              Discount (optional)
-            </FieldLabel>
-            <Input
-              id={`discount-item-${index}`}
-              inputMode="decimal"
-              placeholder="0.00"
-              disabled={disabled}
-              aria-invalid={!!errors?.discountAmount}
-              {...register(`items.${index}.discountAmount`)}
-            />
-            <FieldError errors={[errors?.discountAmount]} />
-          </Field>
-        ) : null}
-
-        <Field data-invalid={!!errors?.securityDeposit}>
-          <FieldLabel htmlFor={`deposit-item-${index}`}>
-            Security deposit (optional)
-          </FieldLabel>
-          <Input
-            id={`deposit-item-${index}`}
-            inputMode="decimal"
-            placeholder={
-              selectedItem
-                ? `${selectedItem.securityDeposit} per unit`
-                : "Item default"
-            }
-            disabled={disabled}
-            aria-invalid={!!errors?.securityDeposit}
-            {...register(`items.${index}.securityDeposit`)}
-          />
-          <FieldError errors={[errors?.securityDeposit]} />
-          <p className="text-muted-foreground text-xs">
-            Per unit. Leave blank to hold the item&rsquo;s usual deposit.
-          </p>
-        </Field>
-      </div>
-
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <Field data-invalid={!!errors?.additionalCost}>
-          <FieldLabel htmlFor={`additional-cost-item-${index}`}>
-            Additional cost (optional)
-          </FieldLabel>
-          <Input
-            id={`additional-cost-item-${index}`}
-            inputMode="decimal"
-            placeholder="0.00"
-            disabled={disabled}
-            aria-invalid={!!errors?.additionalCost}
-            {...register(`items.${index}.additionalCost`)}
-          />
-          <FieldError errors={[errors?.additionalCost]} />
-        </Field>
-
-        <Field data-invalid={!!errors?.additionalCostReason}>
-          <FieldLabel htmlFor={`additional-reason-item-${index}`}>
-            Reason{extraCharged ? "" : " (optional)"}
-          </FieldLabel>
-          <Input
-            id={`additional-reason-item-${index}`}
-            placeholder="Alteration, delivery, late fee…"
-            disabled={disabled}
-            aria-invalid={!!errors?.additionalCostReason}
-            {...register(`items.${index}.additionalCostReason`)}
-          />
-          <FieldError errors={[errors?.additionalCostReason]} />
-        </Field>
-      </div>
-
       {selectedItem ? (
         <>
           <Separator />
@@ -398,9 +305,6 @@ export function BookingItemRow({
                 </div>
                 <p className="text-muted-foreground text-xs">
                   Rent {formatMoney(quote.totalAmount)}
-                  {Number(quote.additionalCost) > 0
-                    ? ` (incl. ${formatMoney(quote.additionalCost)} extra)`
-                    : ""}
                   {Number(quote.securityDeposit) > 0
                     ? ` + ${formatMoney(quote.securityDeposit)} deposit`
                     : ""}

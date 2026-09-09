@@ -1,7 +1,7 @@
 import { Badge } from "@/components/ui/badge";
-import type { Booking } from "@/lib/db/schema";
+import type { BookingItem } from "@/lib/db/schema";
 
-type ReturnCondition = NonNullable<Booking["returnCondition"]>;
+type ReturnCondition = NonNullable<BookingItem["returnCondition"]>;
 
 const CONDITION_META: Record<ReturnCondition, { label: string; className: string }> = {
   good: { label: "Good", className: "bg-primary/10 text-primary" },

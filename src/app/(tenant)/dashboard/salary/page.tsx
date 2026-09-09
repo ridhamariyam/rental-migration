@@ -124,7 +124,7 @@ export default async function SalaryPage({
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
           <div className="flex flex-col gap-4 lg:col-span-1">
             <SalaryConfigCard actor={actor} staffId={staffId} canManage />
-            <CalculatePayslipCard staffId={staffId} canGenerate />
+            <CalculatePayslipCard key={staffId} staffId={staffId} canGenerate />
           </div>
           <div className="bg-card ring-foreground/10 overflow-hidden rounded-xl shadow-xs ring-1 lg:col-span-2">
             <div className="border-b p-4">

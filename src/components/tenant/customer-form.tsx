@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Controller, useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { AlertCircleIcon, RulerIcon, UserIcon } from "lucide-react";
+import { AlertCircleIcon, MapPinIcon, UserIcon } from "lucide-react";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -38,7 +38,7 @@ export function CustomerForm({ customer }: { customer?: CustomerListItem }) {
       lastName: customer?.lastName ?? "",
       phone: customer?.phone ?? "",
       email: customer?.email ?? "",
-      preferredSize: customer?.preferredSize ?? "",
+      location: customer?.location ?? "",
       notes: customer?.notes ?? "",
     },
     mode: "onTouched",
@@ -177,24 +177,24 @@ export function CustomerForm({ customer }: { customer?: CustomerListItem }) {
           <FieldError errors={[form.formState.errors.email]} />
         </Field>
 
-        <Field data-invalid={!!form.formState.errors.preferredSize}>
-          <FieldLabel htmlFor="preferredSize">
-            Preferred size (optional)
+        <Field data-invalid={!!form.formState.errors.location}>
+          <FieldLabel htmlFor="location">
+            Location (optional)
           </FieldLabel>
           <div className="relative">
-            <RulerIcon className="text-muted-foreground pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2" />
+            <MapPinIcon className="text-muted-foreground pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2" />
             <Input
-              id="preferredSize"
-              placeholder="e.g. M, UK 10, custom fit"
-              aria-invalid={!!form.formState.errors.preferredSize}
+              id="location"
+              placeholder="e.g. Andheri, Mumbai"
+              aria-invalid={!!form.formState.errors.location}
               disabled={isSubmitting}
               className="pl-8"
-              {...form.register("preferredSize", {
+              {...form.register("location", {
                 onChange: () => setFormError(null),
               })}
             />
           </div>
-          <FieldError errors={[form.formState.errors.preferredSize]} />
+          <FieldError errors={[form.formState.errors.location]} />
         </Field>
 
         <Field data-invalid={!!form.formState.errors.notes}>

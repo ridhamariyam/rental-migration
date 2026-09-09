@@ -5,7 +5,9 @@ import type { AnyPgColumn } from "drizzle-orm/pg-core";
 import { db } from "@/lib/db/client";
 import { AppError } from "@/lib/errors/app-error";
 import {
+  bookingItems,
   bookings,
+  categories,
   customers,
   maintenanceTasks,
   outlets,
@@ -24,6 +26,7 @@ import type {
   DashboardQuery,
   MonthlyIncomeQuery,
   MostRentedQuery,
+  NotRentedQuery,
   ReportDateRangeQuery,
 } from "@/lib/validation/reports";
 
@@ -131,8 +134,18 @@ export async function getDashboardStats(
   );
   const outletId = query.outletId;
 
-  const bookingScope = [eq(bookings.shopId, actor.shopId)];
-  if (outletId) bookingScope.push(eq(bookings.outletId, outletId));
+  const orderScope = [eq(bookings.shopId, actor.shopId)];
+  const itemScope = [eq(bookingItems.shopId, actor.shopId)];
+  if (outletId) itemScope.push(eq(bookingItems.outletId, outletId));
+  // "Today's bookings" counts orders, but the outlet only lives on items
+  // now — narrow to orders that have at least one item at that outlet.
+  const ordersAtOutlet = outletId
+    ? db
+        .select({ id: bookingItems.bookingId })
+        .from(bookingItems)
+        .where(eq(bookingItems.outletId, outletId))
+    : null;
+  if (ordersAtOutlet) orderScope.push(inArray(bookings.id, ordersAtOutlet));
 
   const [
     todaysBookingsRow,
@@ -149,19 +162,19 @@ export async function getDashboardStats(
     db
       .select({ value: count() })
       .from(bookings)
-      .where(and(...bookingScope, sql`${bookings.createdAt}::date = ${today}::date`)),
+      .where(and(...orderScope, sql`${bookings.createdAt}::date = ${today}::date`)),
     db
       .select({ value: count() })
-      .from(bookings)
-      .where(and(...bookingScope, eq(bookings.toDate, today))),
+      .from(bookingItems)
+      .where(and(...itemScope, eq(bookingItems.toDate, today))),
     sumPayments(actor.shopId, outletId, today, today),
     sumPayments(actor.shopId, outletId, yesterday, yesterday),
     sumPayments(actor.shopId, outletId, monthStart, today),
     sumPayments(actor.shopId, outletId, lastMonthStart, lastMonthSamePoint),
     db
-      .select({ value: sql<string>`coalesce(sum(${bookings.quantity}), 0)` })
-      .from(bookings)
-      .where(and(...bookingScope, inArray(bookings.status, ACTIVE_STATUSES))),
+      .select({ value: sql<string>`coalesce(sum(${bookingItems.quantity}), 0)` })
+      .from(bookingItems)
+      .where(and(...itemScope, inArray(bookingItems.status, ACTIVE_STATUSES))),
     db
       .select({ value: count() })
       .from(productVariations)
@@ -174,13 +187,13 @@ export async function getDashboardStats(
         ),
       ),
     db
-      .select({ value: sql<string>`coalesce(sum(${bookings.quantity}), 0)` })
-      .from(bookings)
+      .select({ value: sql<string>`coalesce(sum(${bookingItems.quantity}), 0)` })
+      .from(bookingItems)
       .where(
         and(
-          ...bookingScope,
-          inArray(bookings.status, ACTIVE_STATUSES),
-          sql`${bookings.pickedUpAt} is not null`,
+          ...itemScope,
+          inArray(bookingItems.status, ACTIVE_STATUSES),
+          sql`${bookingItems.pickedUpAt} is not null`,
         ),
       ),
     db
@@ -244,7 +257,17 @@ export async function getDailyIncome(
     eq(bookings.shopId, actor.shopId),
     dateRange(bookings.createdAt, fromDate, toDate),
   ];
-  if (query.outletId) bookingConditions.push(eq(bookings.outletId, query.outletId));
+  if (query.outletId) {
+    bookingConditions.push(
+      inArray(
+        bookings.id,
+        db
+          .select({ id: bookingItems.bookingId })
+          .from(bookingItems)
+          .where(eq(bookingItems.outletId, query.outletId)),
+      ),
+    );
+  }
 
   const paymentDayExpr = sql<string>`to_char(${payments.createdAt}, 'YYYY-MM-DD')`;
   const bookingDayExpr = sql<string>`to_char(${bookings.createdAt}, 'YYYY-MM-DD')`;
@@ -349,23 +372,23 @@ export async function getMostRentedProducts(
 ): Promise<MostRentedRow[]> {
   requireReportAccess(actor);
 
-  const conditions = [eq(bookings.shopId, actor.shopId)];
-  if (query.outletId) conditions.push(eq(bookings.outletId, query.outletId));
-  if (query.fromDate) conditions.push(sql`${bookings.fromDate} >= ${query.fromDate}`);
-  if (query.toDate) conditions.push(sql`${bookings.toDate} <= ${query.toDate}`);
+  const conditions = [eq(bookingItems.shopId, actor.shopId)];
+  if (query.outletId) conditions.push(eq(bookingItems.outletId, query.outletId));
+  if (query.fromDate) conditions.push(sql`${bookingItems.fromDate} >= ${query.fromDate}`);
+  if (query.toDate) conditions.push(sql`${bookingItems.toDate} <= ${query.toDate}`);
 
   const rows = await db
     .select({
       productId: products.id,
       productName: products.name,
-      rentalCount: count(bookings.id),
-      revenue: sql<string>`coalesce(sum(${bookings.totalAmount}), 0)`,
+      rentalCount: count(bookingItems.id),
+      revenue: sql<string>`coalesce(sum(${bookingItems.grossRent}), 0)`,
     })
-    .from(bookings)
-    .innerJoin(products, eq(bookings.productId, products.id))
+    .from(bookingItems)
+    .innerJoin(products, eq(bookingItems.productId, products.id))
     .where(and(...conditions))
     .groupBy(products.id, products.name)
-    .orderBy(desc(count(bookings.id)))
+    .orderBy(desc(count(bookingItems.id)))
     .limit(query.limit);
 
   return rows.map((row) => ({
@@ -376,6 +399,96 @@ export async function getMostRentedProducts(
   }));
 }
 
+export type NotRentedRow = {
+  productId: string;
+  productName: string;
+  categoryName: string | null;
+  variationCount: number;
+};
+
+/**
+ * The inverse of `getMostRentedProducts` — active catalogue products with
+ * zero booking items in the window (or ever, when no range is given), i.e.
+ * idle stock a shop owner might want to discount, promote, or stop
+ * restocking. A left join keeps a product with zero matches instead of
+ * dropping it (same pattern as `getRevenueByOutlet`); the date/outlet
+ * filters have to live in the join's `ON` clause, not a `WHERE`, or they'd
+ * undo the left join for exactly the products meant to survive it.
+ *
+ * Variation counts are fetched in a second, batched query keyed off the
+ * surviving product ids rather than joined into the same query — joining
+ * `productVariations` here too would fan out against `bookingItems` and
+ * corrupt the very count this query is filtering on.
+ */
+export async function getNotRentedProducts(
+  actor: TenantSessionUser,
+  query: NotRentedQuery,
+): Promise<NotRentedRow[]> {
+  requireReportAccess(actor);
+
+  const productConditions = [
+    eq(products.shopId, actor.shopId),
+    eq(products.isActive, true),
+  ];
+  if (query.outletId) {
+    productConditions.push(
+      inArray(
+        products.id,
+        db
+          .select({ id: productVariations.productId })
+          .from(productVariations)
+          .where(eq(productVariations.outletId, query.outletId)),
+      ),
+    );
+  }
+
+  const joinConditions = [eq(bookingItems.productId, products.id)];
+  if (query.outletId) joinConditions.push(eq(bookingItems.outletId, query.outletId));
+  if (query.fromDate) joinConditions.push(sql`${bookingItems.fromDate} >= ${query.fromDate}`);
+  if (query.toDate) joinConditions.push(sql`${bookingItems.toDate} <= ${query.toDate}`);
+
+  const rows = await db
+    .select({
+      productId: products.id,
+      productName: products.name,
+      categoryName: categories.name,
+    })
+    .from(products)
+    .leftJoin(categories, eq(products.categoryId, categories.id))
+    .leftJoin(bookingItems, and(...joinConditions))
+    .where(and(...productConditions))
+    .groupBy(products.id, products.name, categories.name)
+    .having(sql`count(${bookingItems.id}) = 0`)
+    .orderBy(products.name)
+    .limit(query.limit);
+
+  if (rows.length === 0) return [];
+
+  const productIds = rows.map((row) => row.productId);
+  const variationConditions = [inArray(productVariations.productId, productIds)];
+  if (query.outletId) variationConditions.push(eq(productVariations.outletId, query.outletId));
+
+  const variationRows = await db
+    .select({
+      productId: productVariations.productId,
+      variationCount: count(productVariations.id),
+    })
+    .from(productVariations)
+    .where(and(...variationConditions))
+    .groupBy(productVariations.productId);
+
+  const variationCountByProduct = new Map(
+    variationRows.map((row) => [row.productId, row.variationCount]),
+  );
+
+  return rows.map((row) => ({
+    productId: row.productId,
+    productName: row.productName,
+    categoryName: row.categoryName,
+    variationCount: variationCountByProduct.get(row.productId) ?? 0,
+  }));
+}
+
 export type OutletRevenueRow = {
   outletId: string;
   outletName: string;
@@ -383,29 +496,32 @@ export type OutletRevenueRow = {
   revenue: string;
 };
 
-/** Left join so an outlet with zero bookings in the window still shows a
+/** Left join so an outlet with zero items in the window still shows a
  * zero row, not being silently dropped — the date filter has to live in
  * the join's `ON` clause, not a `WHERE`, or it would undo the left join
- * for exactly the outlets it's meant to keep. */
+ * for exactly the outlets it's meant to keep. Revenue here is the sum of
+ * each item's own `grossRent` (not the order's `totalAmount`, which is
+ * order-wide and would double-count when more than one item at the same
+ * outlet shares an order). */
 export async function getRevenueByOutlet(
   actor: TenantSessionUser,
   query: ReportDateRangeQuery,
 ): Promise<OutletRevenueRow[]> {
   requireReportAccess(actor);
 
-  const joinConditions = [eq(bookings.outletId, outlets.id)];
-  if (query.fromDate) joinConditions.push(sql`${bookings.fromDate} >= ${query.fromDate}`);
-  if (query.toDate) joinConditions.push(sql`${bookings.toDate} <= ${query.toDate}`);
+  const joinConditions = [eq(bookingItems.outletId, outlets.id)];
+  if (query.fromDate) joinConditions.push(sql`${bookingItems.fromDate} >= ${query.fromDate}`);
+  if (query.toDate) joinConditions.push(sql`${bookingItems.toDate} <= ${query.toDate}`);
 
   const rows = await db
     .select({
       outletId: outlets.id,
       outletName: outlets.name,
-      bookingCount: count(bookings.id),
-      revenue: sql<string>`coalesce(sum(${bookings.totalAmount}), 0)`,
+      bookingCount: count(bookingItems.id),
+      revenue: sql<string>`coalesce(sum(${bookingItems.grossRent}), 0)`,
     })
     .from(outlets)
-    .leftJoin(bookings, and(...joinConditions))
+    .leftJoin(bookingItems, and(...joinConditions))
     .where(eq(outlets.shopId, actor.shopId))
     .groupBy(outlets.id, outlets.name)
     .orderBy(outlets.name);
@@ -425,9 +541,9 @@ export type StaffPerformanceRow = {
   revenue: string;
 };
 
-/** Attributed by `handledById`, frozen at booking creation (doc §21's
+/** Attributed by `handledById`, frozen at order creation (doc §21's
  * "Staff performance") — an inner join, unlike outlets: a staff member who
- * has never handled a booking has nothing to report, not a zero row worth
+ * has never handled an order has nothing to report, not a zero row worth
  * showing. */
 export async function getStaffPerformance(
   actor: TenantSessionUser,
@@ -436,7 +552,17 @@ export async function getStaffPerformance(
   requireReportAccess(actor);
 
   const conditions = [eq(bookings.shopId, actor.shopId)];
-  if (query.outletId) conditions.push(eq(bookings.outletId, query.outletId));
+  if (query.outletId) {
+    conditions.push(
+      inArray(
+        bookings.id,
+        db
+          .select({ id: bookingItems.bookingId })
+          .from(bookingItems)
+          .where(eq(bookingItems.outletId, query.outletId)),
+      ),
+    );
+  }
   if (query.fromDate) conditions.push(sql`${bookings.createdAt}::date >= ${query.fromDate}::date`);
   if (query.toDate) conditions.push(sql`${bookings.createdAt}::date <= ${query.toDate}::date`);
 
@@ -464,6 +590,7 @@ export async function getStaffPerformance(
 
 export type ActiveBookingItem = {
   id: string;
+  bookingId: string;
   bookingNumber: string;
   customerName: string;
   customerPhone: string;
@@ -506,26 +633,38 @@ export async function listActiveBookings(
   requireReportAccess(actor);
 
   const conditions = [
-    eq(bookings.shopId, actor.shopId),
-    inArray(bookings.status, ACTIVE_STATUSES),
-    sql`${bookings.pickedUpAt} is not null`,
+    eq(bookingItems.shopId, actor.shopId),
+    inArray(bookingItems.status, ACTIVE_STATUSES),
+    sql`${bookingItems.pickedUpAt} is not null`,
   ];
-  if (query.outletId) conditions.push(eq(bookings.outletId, query.outletId));
+  if (query.outletId) conditions.push(eq(bookingItems.outletId, query.outletId));
   if (query.kind === "deposits") {
-    conditions.push(sql`${bookings.securityDeposit} > 0`);
+    // Deposit is order-level now (shared across every item in the order).
+    conditions.push(
+      inArray(
+        bookingItems.bookingId,
+        db
+          .select({ id: bookings.id })
+          .from(bookings)
+          .where(sql`${bookings.securityDeposit} > 0`),
+      ),
+    );
   }
 
   const where = and(...conditions);
   const orderBy =
-    query.kind === "deposits"
-      ? desc(bookings.securityDeposit)
-      : bookings.toDate;
+    query.kind === "deposits" ? desc(bookings.securityDeposit) : bookingItems.toDate;
 
   const [totalRow, rows] = await Promise.all([
-    db.select({ value: count() }).from(bookings).where(where),
+    db
+      .select({ value: count() })
+      .from(bookingItems)
+      .innerJoin(bookings, eq(bookingItems.bookingId, bookings.id))
+      .where(where),
     db
       .select({
-        id: bookings.id,
+        id: bookingItems.id,
+        bookingId: bookingItems.bookingId,
         bookingNumber: bookings.bookingNumber,
         customerFirstName: customers.firstName,
         customerLastName: customers.lastName,
@@ -533,16 +672,17 @@ export async function listActiveBookings(
         productName: products.name,
         sku: productVariations.sku,
         outletName: outlets.name,
-        fromDate: bookings.fromDate,
-        toDate: bookings.toDate,
+        fromDate: bookingItems.fromDate,
+        toDate: bookingItems.toDate,
         securityDeposit: bookings.securityDeposit,
-        status: bookings.status,
+        status: bookingItems.status,
       })
-      .from(bookings)
+      .from(bookingItems)
+      .innerJoin(bookings, eq(bookingItems.bookingId, bookings.id))
       .innerJoin(customers, eq(bookings.customerId, customers.id))
-      .innerJoin(products, eq(bookings.productId, products.id))
-      .innerJoin(productVariations, eq(bookings.variationId, productVariations.id))
-      .leftJoin(outlets, eq(bookings.outletId, outlets.id))
+      .innerJoin(products, eq(bookingItems.productId, products.id))
+      .innerJoin(productVariations, eq(bookingItems.variationId, productVariations.id))
+      .leftJoin(outlets, eq(bookingItems.outletId, outlets.id))
       .where(where)
       .orderBy(orderBy)
       .limit(query.pageSize)
@@ -555,6 +695,7 @@ export async function listActiveBookings(
   return {
     items: rows.map((row) => ({
       id: row.id,
+      bookingId: row.bookingId,
       bookingNumber: row.bookingNumber,
       customerName: `${row.customerFirstName} ${row.customerLastName}`.trim(),
       customerPhone: row.customerPhone,

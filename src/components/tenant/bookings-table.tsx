@@ -63,11 +63,6 @@ export async function BookingsTable({
     viewer,
   );
   const hasFilters = Boolean(query.q) || query.status !== "all";
-  // Only a non-staff viewer (admin/manager/super_admin) sees who handled
-  // each booking — a plain staff account already only ever sees their own
-  // bookings (`listBookings`' own scoping), so the column would be a
-  // no-op repeat of their own name on every row.
-  const showHandledBy = viewer.role !== "staff";
 
   if (items.length === 0) {
     return (
@@ -109,11 +104,9 @@ export async function BookingsTable({
             <TableHead className="text-muted-foreground h-11 px-4 text-xs font-medium tracking-wide uppercase">
               Amount
             </TableHead>
-            {showHandledBy ? (
-              <TableHead className="text-muted-foreground h-11 px-4 text-xs font-medium tracking-wide uppercase">
-                Handled by
-              </TableHead>
-            ) : null}
+            <TableHead className="text-muted-foreground h-11 px-4 text-xs font-medium tracking-wide uppercase">
+              Handled by
+            </TableHead>
             <TableHead className="text-muted-foreground h-11 px-4 text-xs font-medium tracking-wide uppercase">
               Status
             </TableHead>
@@ -128,48 +121,12 @@ export async function BookingsTable({
               <TableRow key={booking.id}>
                 <TableCell className="px-4 py-3 font-medium">
                   <div className="flex items-center gap-3">
-                    {groupItems.length > 1 ? (
-                      <div className="flex items-center -space-x-2.5 shrink-0 overflow-hidden">
-                        {groupItems.slice(0, 3).map((item, index) => {
-                          const zClass =
-                            index === 0 ? "z-30" : index === 1 ? "z-20" : "z-10";
-                          return (
-                            <Avatar
-                              key={index}
-                              className={`size-8 shrink-0 ring-2 ring-background ${zClass} shadow-xs`}
-                            >
-                              {item.productImage ? (
-                                <AvatarImage
-                                  src={item.productImage}
-                                  alt={item.productName}
-                                  className="object-cover"
-                                />
-                              ) : null}
-                              <AvatarFallback
-                                className="text-white text-[10px] font-semibold uppercase"
-                                style={{
-                                  backgroundImage: productAvatarGradient(
-                                    item.productName,
-                                  ),
-                                }}
-                              >
-                                {item.productName.slice(0, 2)}
-                              </AvatarFallback>
-                            </Avatar>
-                          );
-                        })}
-                        {groupItems.length > 3 ? (
-                          <div className="size-8 shrink-0 ring-2 ring-background z-0 flex items-center justify-center rounded-full bg-muted text-xs font-semibold text-muted-foreground shadow-xs">
-                            +{groupItems.length - 3}
-                          </div>
-                        ) : null}
-                      </div>
-                    ) : (
+                    <div className="relative shrink-0">
                       <Avatar className="size-8 shrink-0 shadow-xs">
-                        {booking.productImage ? (
+                        {groupItems[0]?.productImage ? (
                           <AvatarImage
-                            src={booking.productImage}
-                            alt={booking.productName}
+                            src={groupItems[0].productImage}
+                            alt={groupItems[0].productName}
                             className="object-cover"
                           />
                         ) : null}
@@ -177,14 +134,19 @@ export async function BookingsTable({
                           className="text-white text-[10px] font-semibold uppercase"
                           style={{
                             backgroundImage: productAvatarGradient(
-                              booking.productName,
+                              groupItems[0]?.productName ?? "",
                             ),
                           }}
                         >
-                          {booking.productName.slice(0, 2)}
+                          {(groupItems[0]?.productName ?? "").slice(0, 2)}
                         </AvatarFallback>
                       </Avatar>
-                    )}
+                      {groupItems.length > 1 ? (
+                        <div className="ring-background bg-muted text-muted-foreground absolute -right-1 -bottom-1 flex size-4.5 items-center justify-center rounded-full text-[9px] font-semibold ring-2">
+                          +{groupItems.length - 1}
+                        </div>
+                      ) : null}
+                    </div>
 
                     <Link
                       href={`${tenantPaths.bookings}/${booking.id}`}
@@ -200,57 +162,60 @@ export async function BookingsTable({
                 </TableCell>
 
                 <TableCell className="text-muted-foreground px-4 py-3 text-sm">
-                  {booking.productName}
-                  {booking.variationColor || booking.variationSize
-                    ? ` (${[booking.variationColor, booking.variationSize].filter(Boolean).join(", ")})`
+                  {groupItems[0]?.productName ?? "—"}
+                  {groupItems[0]?.variationColor || groupItems[0]?.variationSize
+                    ? ` (${[groupItems[0]?.variationColor, groupItems[0]?.variationSize].filter(Boolean).join(", ")})`
                     : ""}
-                  {booking.quantity > 1 ? ` × ${booking.quantity}` : ""}
+                  {groupItems[0] && groupItems[0].quantity > 1
+                    ? ` × ${groupItems[0].quantity}`
+                    : ""}
                   {groupItems.length > 1
                     ? ` (+${groupItems.length - 1} more)`
                     : ""}
                 </TableCell>
 
                 <TableCell className="text-muted-foreground px-4 py-3 text-sm whitespace-nowrap">
-                  {formatDate(booking.fromDate)} – {formatDate(booking.toDate)}
+                  {groupItems[0]
+                    ? `${formatDate(groupItems[0].fromDate)} – ${formatDate(groupItems[0].toDate)}`
+                    : "—"}
                 </TableCell>
 
                 <TableCell className="px-4 py-3 text-sm font-medium">
                   {formatMoney(booking.totalAmount)}
                 </TableCell>
 
-                {showHandledBy ? (
-                  <TableCell className="px-4 py-3 text-sm">
-                    {booking.handledByFirstName ? (
-                      (() => {
-                        const handledByName =
-                          `${booking.handledByFirstName} ${booking.handledByLastName ?? ""}`.trim();
-                        return (
-                          <div className="flex items-center gap-2">
-                            <Avatar className="size-6 shrink-0">
-                              <AvatarImage
-                                src={staffAvatarSrc(handledByName)}
-                                alt={handledByName}
-                              />
-                              <AvatarFallback
-                                className="!text-white text-[9px] font-semibold"
-                                style={{
-                                  backgroundImage: avatarGradient(handledByName),
-                                }}
-                              >
-                                {initialsFor(handledByName)}
-                              </AvatarFallback>
-                            </Avatar>
-                            <span className="text-foreground font-medium">
-                              {handledByName}
-                            </span>
-                          </div>
-                        );
-                      })()
-                    ) : (
-                      <span className="text-muted-foreground">—</span>
-                    )}
-                  </TableCell>
-                ) : null}
+                <TableCell className="px-4 py-3 text-sm">
+                  {booking.handledByFirstName ? (
+                    (() => {
+                      const handledByName =
+                        `${booking.handledByFirstName} ${booking.handledByLastName ?? ""}`.trim();
+                      return (
+                        <div className="flex items-center gap-2">
+                          <Avatar className="size-6 shrink-0">
+                            <AvatarImage
+                              src={staffAvatarSrc(handledByName)}
+                              alt={handledByName}
+                            />
+                            <AvatarFallback
+                              className="!text-white text-[9px] font-semibold"
+                              style={{
+                                backgroundImage: avatarGradient(handledByName),
+                              }}
+                            >
+                              {initialsFor(handledByName)}
+                            </AvatarFallback>
+                          </Avatar>
+                          <span className="text-foreground font-medium">
+                            {handledByName}
+                          </span>
+                        </div>
+                      );
+                    })()
+                  ) : (
+                    <span className="text-muted-foreground">—</span>
+                  )}
+                </TableCell>
+
 
                 <TableCell className="px-4 py-3">
                   <BookingStatusBadge status={booking.status} />

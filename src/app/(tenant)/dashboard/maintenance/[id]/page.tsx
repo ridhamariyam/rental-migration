@@ -182,11 +182,11 @@ export default async function MaintenanceTaskDetailPage({
               ))}
             </div>
 
-            {task.bookingId ? (
+            {task.orderId ? (
               <>
                 <Separator className="my-2" />
                 <Link
-                  href={`${tenantPaths.bookings}/${task.bookingId}`}
+                  href={`${tenantPaths.bookings}/${task.orderId}`}
                   className="hover:bg-muted/50 -mx-2 flex items-center gap-4 rounded-lg px-2 py-3 transition-colors"
                 >
                   <span className="bg-primary/10 text-primary flex size-9 shrink-0 items-center justify-center rounded-lg">

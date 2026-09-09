@@ -1,7 +1,7 @@
 import { z } from "zod";
 import {
   moneySchema,
-  optionalPercentageSchema,
+  optionalMoneySchema,
   optionalUuidSchema,
 } from "@/lib/validation/common";
 
@@ -57,14 +57,22 @@ const optionalBarcodeSchema = z
  * to `customer_owned` requires *some* way to identify the owner (a linked
  * `ownerCustomerId` or a free-text `ownerName`) and a share above 0 — the
  * same two rules the legacy backend's `check_owner_details` validator
- * enforced, ported here rather than left to the database to reject.
+ * enforced, ported here rather than left to the database to reject. The
+ * share itself is a fixed amount (`ownerShareAmount`), not a percentage —
+ * see `src/server/settlements/service.ts`.
  */
 export const createVariationSchema = z
   .object({
     color: z.string().trim().max(50, "Must be at most 50 characters").optional(),
     size: z.string().trim().max(50, "Must be at most 50 characters").optional(),
     rentPrice: moneySchema,
-    securityDeposit: moneySchema,
+    // What the shop paid for this item — kept separate from `sellingPrice`
+    // and admin-only end to end (`Permission.PRODUCT_COST_VIEW`), see
+    // `add-variation-dialog.tsx`'s doc comment. No per-item security
+    // deposit here anymore — a booking's own deposit is entered fresh at
+    // booking time instead (see `bookings.securityDeposit`).
+    buyingPrice: optionalMoneySchema,
+    sellingPrice: optionalMoneySchema,
     quantity: quantitySchema,
     // One or more outlets this same item is stocked at — each selected
     // outlet becomes its own physical, separately-barcoded copy (see
@@ -93,7 +101,7 @@ export const createVariationSchema = z
       .max(30, "Must be at most 30 characters")
       .optional(),
     ownerCustomerId: optionalUuidSchema,
-    ownerSharePercentage: optionalPercentageSchema,
+    ownerShareAmount: optionalMoneySchema,
     ownerNotes: z
       .string()
       .trim()
@@ -131,10 +139,10 @@ export const createVariationSchema = z
         message: "A customer-owned item needs an owner name or a linked customer",
       });
     }
-    if (!data.ownerSharePercentage || Number(data.ownerSharePercentage) <= 0) {
+    if (!data.ownerShareAmount || Number(data.ownerShareAmount) <= 0) {
       ctx.addIssue({
         code: "custom",
-        path: ["ownerSharePercentage"],
+        path: ["ownerShareAmount"],
         message: "A customer-owned item needs a revenue share above 0",
       });
     }
@@ -153,7 +161,8 @@ export const updateVariationSchema = z
     color: z.string().trim().max(50, "Must be at most 50 characters").optional(),
     size: z.string().trim().max(50, "Must be at most 50 characters").optional(),
     rentPrice: moneySchema,
-    securityDeposit: moneySchema,
+    buyingPrice: optionalMoneySchema,
+    sellingPrice: optionalMoneySchema,
     quantity: quantitySchema,
     outletId: z.uuid("Choose an outlet"),
     image: z.string().trim().optional(),
@@ -169,7 +178,7 @@ export const updateVariationSchema = z
       .max(30, "Must be at most 30 characters")
       .optional(),
     ownerCustomerId: optionalUuidSchema,
-    ownerSharePercentage: optionalPercentageSchema,
+    ownerShareAmount: optionalMoneySchema,
     ownerNotes: z
       .string()
       .trim()
@@ -187,10 +196,10 @@ export const updateVariationSchema = z
         message: "A customer-owned item needs an owner name or a linked customer",
       });
     }
-    if (!data.ownerSharePercentage || Number(data.ownerSharePercentage) <= 0) {
+    if (!data.ownerShareAmount || Number(data.ownerShareAmount) <= 0) {
       ctx.addIssue({
         code: "custom",
-        path: ["ownerSharePercentage"],
+        path: ["ownerShareAmount"],
         message: "A customer-owned item needs a revenue share above 0",
       });
     }

@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import {
   AlertCircleIcon,
   LogInIcon,
@@ -11,14 +10,22 @@ import {
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Spinner } from "@/components/ui/spinner";
-import { ApiClientError, apiRequest } from "@/lib/api-client";
 import { formatTime } from "@/lib/format";
 import type { Attendance } from "@/lib/db/schema";
 import {
   AttendanceGeofenceMap,
   type AttendanceOutletGeofence,
 } from "@/components/tenant/attendance-geofence-map";
+import { useAttendanceCheckInOut } from "@/hooks/use-attendance-check-in-out";
 
 /**
  * Geofenced check-in/out (doc §17) — the browser's own `Geolocation` API
@@ -35,69 +42,21 @@ export function CheckInOutCard({
   initialToday: Attendance | null;
   outlet: AttendanceOutletGeofence | null;
 }) {
-  const router = useRouter();
-  const [today, setToday] = useState(initialToday);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const {
+    today,
+    isSubmitting,
+    error,
+    checkIn,
+    checkOut,
+    hasCheckedIn,
+    hasCheckedOut,
+  } = useAttendanceCheckInOut(initialToday);
+  const [confirmOpen, setConfirmOpen] = useState(false);
 
-  function getPosition(): Promise<GeolocationPosition> {
-    return new Promise((resolve, reject) => {
-      if (!("geolocation" in navigator)) {
-        reject(new Error("Your browser doesn't support location access"));
-        return;
-      }
-      navigator.geolocation.getCurrentPosition(resolve, reject, {
-        enableHighAccuracy: true,
-        timeout: 15_000,
-      });
-    });
+  async function handleConfirmedCheckOut() {
+    await checkOut();
+    setConfirmOpen(false);
   }
-
-  function isGeolocationError(error: unknown): error is GeolocationPositionError {
-    return (
-      typeof error === "object" &&
-      error !== null &&
-      "code" in error &&
-      typeof (error as { code: unknown }).code === "number"
-    );
-  }
-
-  async function handleAction(action: "check-in" | "check-out") {
-    setError(null);
-    setIsSubmitting(true);
-
-    try {
-      const position = await getPosition();
-      const result = await apiRequest<Attendance>(`/api/attendance/${action}`, {
-        method: "POST",
-        body: JSON.stringify({
-          latitude: position.coords.latitude,
-          longitude: position.coords.longitude,
-        }),
-      });
-      setToday(result);
-      router.refresh();
-    } catch (submitError) {
-      if (isGeolocationError(submitError)) {
-        setError(
-          submitError.code === submitError.PERMISSION_DENIED
-            ? "Location access was denied — allow it for this site and try again."
-            : "Couldn't get your location. Please try again.",
-        );
-      } else {
-        setError(
-          submitError instanceof ApiClientError
-            ? submitError.message
-            : "Something went wrong. Please try again.",
-        );
-      }
-    } finally {
-      setIsSubmitting(false);
-    }
-  }
-
-  const hasCheckedIn = Boolean(today);
-  const hasCheckedOut = Boolean(today?.checkOutTime);
 
   return (
     <Card>
@@ -148,17 +107,14 @@ export function CheckInOutCard({
         </div>
 
         {!hasCheckedIn ? (
-          <Button
-            onClick={() => handleAction("check-in")}
-            disabled={isSubmitting}
-          >
+          <Button onClick={checkIn} disabled={isSubmitting}>
             {isSubmitting ? <Spinner /> : <LogInIcon />}
             Check in
           </Button>
         ) : !hasCheckedOut ? (
           <Button
             variant="accent"
-            onClick={() => handleAction("check-out")}
+            onClick={() => setConfirmOpen(true)}
             disabled={isSubmitting}
           >
             {isSubmitting ? <Spinner /> : <LogOutIcon />}
@@ -170,6 +126,38 @@ export function CheckInOutCard({
           </p>
         )}
       </CardContent>
+
+      <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Check out for the day?</DialogTitle>
+            <DialogDescription>
+              This ends today&rsquo;s attendance record and you can&rsquo;t
+              check in again until tomorrow. Make sure you&rsquo;re actually
+              done for the day.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={isSubmitting}
+              onClick={() => setConfirmOpen(false)}
+            >
+              Not yet
+            </Button>
+            <Button
+              type="button"
+              variant="accent"
+              disabled={isSubmitting}
+              onClick={handleConfirmedCheckOut}
+              className="min-w-28"
+            >
+              {isSubmitting ? <Spinner /> : "Check out"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </Card>
   );
 }

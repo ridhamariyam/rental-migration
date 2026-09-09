@@ -107,6 +107,13 @@ export const optionalUuidSchema = z
  * timezone a pickup/return date shouldn't have. */
 export const dateStringSchema = z.iso.date("Enter a valid date");
 
+/** Shared by `moneySchema`/`optionalMoneySchema` and by any refinement
+ * chained after them (e.g. `positiveMoneySchema` in `validation/payments.ts`)
+ * that needs to check "is this actually a valid money string" before calling
+ * into `@/lib/money`'s `BigInt`-based arithmetic, which throws on anything
+ * that doesn't match this shape instead of failing gracefully. */
+export const MONEY_PATTERN = /^\d{1,10}(\.\d{1,2})?$/;
+
 /**
  * Money, kept as a string end-to-end (see CLAUDE.md's rule that money is a
  * `Decimal`/`Numeric(12,2)` in Postgres and crosses the API as a string —
@@ -119,7 +126,7 @@ export const moneySchema = z
   .string()
   .trim()
   .min(1, "Required")
-  .regex(/^\d{1,10}(\.\d{1,2})?$/, "Enter a valid amount");
+  .regex(MONEY_PATTERN, "Enter a valid amount");
 
 /**
  * Same amount format as `moneySchema`, but the field itself may be left
@@ -138,16 +145,16 @@ export const optionalMoneySchema = z
   .trim()
   .optional()
   .refine(
-    (value) => !value || /^\d{1,10}(\.\d{1,2})?$/.test(value),
+    (value) => !value || MONEY_PATTERN.test(value),
     { message: "Enter a valid amount" },
   );
 
 /**
- * A revenue-share percentage (0–100, up to two decimal places, matching
- * the `Numeric(5,2)` `ownerSharePercentage` column) — used by
- * `variations.ts`'s ownership fields. Kept as a string end-to-end for the
- * same reason `moneySchema` is: `src/lib/money.ts`'s `percentageOfMoney`
- * works on the raw decimal string, never a JS `number`.
+ * A revenue-share percentage (0–100, up to two decimal places) — kept
+ * here as a shared primitive even though `variations.ts`'s ownership
+ * fields now use `optionalMoneySchema` (`ownerShareAmount`) instead; no
+ * current call site uses this, but it's a reasonable percentage input to
+ * reach for again later.
  */
 export const percentageSchema = z
   .string()

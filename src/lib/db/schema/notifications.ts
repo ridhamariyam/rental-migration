@@ -14,6 +14,7 @@ import {
   notificationLogStatusEnum,
 } from "@/lib/db/schema/enums";
 import { bookings } from "@/lib/db/schema/bookings";
+import { bookingItems } from "@/lib/db/schema/booking-items";
 import { shops } from "@/lib/db/schema/shops";
 
 export type JsonRecord = Record<string, unknown>;
@@ -132,7 +133,20 @@ export const notificationLogs = pgTable(
     shopId: uuid("shop_id")
       .notNull()
       .references(() => shops.id, { onDelete: "cascade" }),
+    //: The order this notification belongs to — set for every event,
+    //: booking-scoped or item-scoped alike.
     bookingId: uuid("booking_id").references(() => bookings.id, {
+      onDelete: "cascade",
+    }),
+    //: Set only for item-scoped events (pickup/return reminders,
+    //: handover/return confirmations, owner notices) — `NULL` for
+    //: booking-scoped events (booking confirmed, payment received,
+    //: feedback request). Dedup/repeat logic keys on
+    //: `(bookingId, event, bookingItemId)`, not just `(bookingId, event)`,
+    //: so a multi-item order gets its own reminder per item instead of
+    //: only ever sending for whichever item happened to queue first (see
+    //: `NOTIFICATION_EVENT_SCOPE` in `src/lib/notifications.ts`).
+    bookingItemId: uuid("booking_item_id").references(() => bookingItems.id, {
       onDelete: "cascade",
     }),
     recipientPhone: text("recipient_phone").notNull(),
@@ -175,6 +189,7 @@ export const notificationLogs = pgTable(
       table.scheduledFor,
     ),
     index("ix_notification_logs_booking_id").on(table.bookingId),
+    index("ix_notification_logs_booking_item_id").on(table.bookingItemId),
     uniqueIndex("uq_notification_logs_crqid").on(table.crqid),
   ],
 );

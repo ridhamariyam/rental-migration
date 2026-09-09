@@ -10,7 +10,7 @@ import {
 import { settlementStatusEnum } from "@/lib/db/schema/enums";
 import { shops } from "@/lib/db/schema/shops";
 import { outlets } from "@/lib/db/schema/outlets";
-import { bookings } from "@/lib/db/schema/bookings";
+import { bookingItems } from "@/lib/db/schema/booking-items";
 import { productVariations } from "@/lib/db/schema/product-variations";
 import { customers } from "@/lib/db/schema/customers";
 import { users } from "@/lib/db/schema/users";
@@ -25,16 +25,16 @@ import { users } from "@/lib/db/schema/users";
  * the fly inside a report, same "settlements are persisted transactions"
  * rule `payments` already follows.
  *
- * `ownerName`/`ownerPhone`/`sharePercentage` are **snapshotted** from the
+ * `ownerName`/`ownerPhone`/`shareAmount` are **snapshotted** from the
  * variation at the moment of return, not read live from it later — an
  * owner's share or contact details changing next month must never rewrite
  * what was actually owed for a rental that already happened.
  *
- * One booking is exactly one physical item in this schema (see
- * `bookings.ts`'s doc comment), so a unique constraint on `bookingId` alone
+ * One `booking_items` row is exactly one physical item's rental (see
+ * `booking-items.ts`'s doc comment), so a unique constraint on `bookingId`
+ * (which references `booking_items.id` here, despite the column name) alone
  * is enough to make `recordSettlementForBooking` idempotent — no separate
- * `variationId` component needed the way the legacy schema's (theoretically
- * multi-item) booking required.
+ * `variationId` component needed.
  */
 export const ownerSettlements = pgTable(
   "owner_settlements",
@@ -48,7 +48,7 @@ export const ownerSettlements = pgTable(
     }),
     bookingId: uuid("booking_id")
       .notNull()
-      .references(() => bookings.id, { onDelete: "cascade" }),
+      .references(() => bookingItems.id, { onDelete: "cascade" }),
     variationId: uuid("variation_id")
       .notNull()
       .references(() => productVariations.id, { onDelete: "cascade" }),
@@ -61,8 +61,8 @@ export const ownerSettlements = pgTable(
       precision: 12,
       scale: 2,
     }).notNull(),
-    sharePercentage: numeric("share_percentage", {
-      precision: 5,
+    shareAmount: numeric("share_amount", {
+      precision: 12,
       scale: 2,
     }).notNull(),
     ownerAmount: numeric("owner_amount", { precision: 12, scale: 2 }).notNull(),

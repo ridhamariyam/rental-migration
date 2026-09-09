@@ -32,11 +32,27 @@ export const salaries = pgTable(
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
     amount: numeric("amount", { precision: 12, scale: 2 }).notNull(),
-    // Days the monthly amount is spread across when deriving a per-day
-    // rate (e.g. 26, not the calendar month's actual day count).
-    workingDaysPerMonth: integer("working_days_per_month")
+    // 0=Sunday…6=Saturday, the day that's never a working day when
+    // deriving how many working days fall in a given calendar month
+    // (naturally 26 or 27 depending on the month's length) — null means no
+    // weekly off (every calendar day is a working day).
+    weeklyOffDay: integer("weekly_off_day"),
+    // Hours a full working day is worth — the divisor for turning `amount`
+    // into a per-minute rate (see `calculateSalary`), not just a per-day
+    // one. Numeric so a shop can configure e.g. 8.5.
+    standardHoursPerDay: numeric("standard_hours_per_day", {
+      precision: 4,
+      scale: 2,
+    })
       .notNull()
-      .default(26),
+      .default("8.00"),
+    // Flat amount paid per hour worked beyond `standardHoursPerDay` on a
+    // given day. Null/0 disables overtime pay entirely (extra hours are
+    // simply not compensated, but not penalised either).
+    overtimeRatePerHour: numeric("overtime_rate_per_hour", {
+      precision: 12,
+      scale: 2,
+    }),
     effectiveDate: date("effective_date").notNull(),
     note: text("note"),
     createdAt: timestamp("created_at", { withTimezone: true })
@@ -74,21 +90,49 @@ export const salaryPayslips = pgTable(
     periodYear: integer("period_year").notNull(),
     periodMonth: integer("period_month").notNull(),
     baseSalary: numeric("base_salary", { precision: 12, scale: 2 }).notNull(),
+    // Working days actually computed for this specific period (weekly-off
+    // days excluded), not a static config number — see `calculateSalary`.
     workingDays: integer("working_days").notNull(),
     presentDays: integer("present_days").notNull().default(0),
     absentDays: integer("absent_days").notNull().default(0),
     approvedLeaveDays: integer("approved_leave_days").notNull().default(0),
-    perDayAmount: numeric("per_day_amount", {
+    // Checked in but never checked out for that day — counted as 0 payable
+    // minutes until an owner correction fixes it (see `calculateSalary`).
+    incompleteDays: integer("incomplete_days").notNull().default(0),
+    weeklyOffDay: integer("weekly_off_day"),
+    standardHoursPerDay: numeric("standard_hours_per_day", {
+      precision: 4,
+      scale: 2,
+    })
+      .notNull()
+      .default("8.00"),
+    overtimeRatePerHour: numeric("overtime_rate_per_hour", {
       precision: 12,
       scale: 2,
-    }).notNull(),
+    }),
+    // `baseSalary / totalStandardMinutes * 60` — display-only reference
+    // rate, not itself used to derive `basePay` (that's one BigInt
+    // division over the whole period, not this rate times hours, to avoid
+    // compounding rounding — see `proRateMoney`).
+    hourlyRate: numeric("hourly_rate", { precision: 12, scale: 2 })
+      .notNull()
+      .default("0.00"),
+    basePay: numeric("base_pay", { precision: 12, scale: 2 })
+      .notNull()
+      .default("0.00"),
+    overtimePay: numeric("overtime_pay", { precision: 12, scale: 2 })
+      .notNull()
+      .default("0.00"),
+    overtimeMinutes: integer("overtime_minutes").notNull().default(0),
+    shortfallMinutes: integer("shortfall_minutes").notNull().default(0),
     netAmount: numeric("net_amount", { precision: 12, scale: 2 }).notNull(),
     // Sum of actual check-in→check-out durations across the period, in
     // whole minutes — frozen at generation time alongside the day counts
     // above (same "payslip is a stable snapshot" rule from this table's
     // own doc comment), never recomputed live from `attendances` later.
-    // Purely informational (net pay is still day-count-based, not hours-
-    // based) — shown on the payslip history as "total hours"/"avg per day".
+    // Purely informational (`basePay`/`overtimePay` are what drive
+    // `netAmount`) — shown on the payslip history as "total hours"/"avg
+    // per day".
     totalWorkedMinutes: integer("total_worked_minutes").notNull().default(0),
     note: text("note"),
     generatedById: uuid("generated_by_id").references(() => users.id, {

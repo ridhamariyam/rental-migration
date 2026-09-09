@@ -15,6 +15,11 @@ export enum Permission {
   STAFF_MANAGE = "staff:manage",
   PRODUCT_VIEW = "product:view",
   PRODUCT_MANAGE = "product:manage",
+  // An item's buying/cost price is sensitive financial data — unlike the
+  // rental/selling price, which any `PRODUCT_MANAGE` role can see and set,
+  // this stays owner-only (never added to `MANAGER_PERMISSIONS`/
+  // `STAFF_PERMISSIONS`), same reasoning as `SHOP_MANAGE`.
+  PRODUCT_COST_VIEW = "product:cost_view",
   CUSTOMER_VIEW = "customer:view",
   CUSTOMER_MANAGE = "customer:manage",
   BOOKING_VIEW = "booking:view",
@@ -108,7 +113,6 @@ const STAFF_PERMISSIONS: ReadonlySet<Permission> = new Set([
   Permission.ATTENDANCE_SELF,
   Permission.LEAVE_VIEW,
   Permission.SALARY_VIEW,
-  Permission.NOTIFICATION_VIEW,
 ]);
 
 /** Outlet-scoped: manages their own outlet's roster *and* catalogue — the

@@ -45,6 +45,18 @@ export const productVariations = pgTable("product_variations", {
   color: text("color"),
   size: text("size"),
   rentPrice: numeric("rent_price", { precision: 12, scale: 2 }).notNull(),
+  //: What the shop can sell this exact item for, if it ever stops renting
+  //: it out — distinct from `rentPrice`, both visible to any
+  //: `PRODUCT_MANAGE` role (unlike `buyingPrice`, below).
+  sellingPrice: numeric("selling_price", { precision: 12, scale: 2 }),
+  //: What the shop paid for this item — sensitive cost data, gated behind
+  //: `Permission.PRODUCT_COST_VIEW` (owner-only) everywhere it's read or
+  //: written, never exposed to a `manager`/`staff` actor.
+  buyingPrice: numeric("buying_price", { precision: 12, scale: 2 }),
+  //: No longer collected per item — a booking's own deposit (see
+  //: `bookings.security_deposit`) is entered fresh at booking time
+  //: instead. Column kept (default `0`) only so existing rows and
+  //: `src/server/bookings/pricing.ts`'s deposit fallback keep working.
   securityDeposit: numeric("security_deposit", { precision: 12, scale: 2 })
     .notNull()
     .default("0"),
@@ -72,16 +84,17 @@ export const productVariations = pgTable("product_variations", {
   ownerCustomerId: uuid("owner_customer_id").references(() => customers.id, {
     onDelete: "set null",
   }),
-  //: Percentage of the rent (0–100) that goes to the owner rather than the
-  //: shop — see `src/lib/money.ts`'s `percentageOfMoney` and
+  //: Fixed amount (not a percentage) that goes to the owner rather than
+  //: the shop for each rental of this item — see
   //: `src/server/settlements/service.ts`.
-  ownerSharePercentage: numeric("owner_share_percentage", {
-    precision: 5,
+  ownerShareAmount: numeric("owner_share_amount", {
+    precision: 12,
     scale: 2,
   })
     .notNull()
     .default("0"),
   ownerNotes: text("owner_notes"),
+
 
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()

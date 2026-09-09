@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { ArrowLeftIcon, InfoIcon, ShieldAlertIcon } from "lucide-react";
-import { BookingEditForm } from "@/components/tenant/booking-edit-form";
+import { AddBookingItemButton } from "@/components/tenant/add-booking-item-dialog";
+import { BookingOrderEditForm } from "@/components/tenant/booking-edit-form";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { getCurrentUser } from "@/lib/auth/session";
 import { hasPermission, Permission } from "@/lib/auth/permissions";
@@ -18,15 +19,15 @@ export const metadata = {
 const aboutEditing = [
   {
     icon: InfoIcon,
-    title: "Dates only",
+    title: "Customer, discount and items are fixed here",
     description:
-      "The customer, item and discount are all fixed once a booking is created — cancel and create a new one to change those.",
+      "Only the additional cost and notes can be changed on this page — each item's own dates and quantity are edited from its own \"Edit\" button on the order page.",
   },
   {
     icon: ShieldAlertIcon,
-    title: "Only while in draft",
+    title: "Only while the order isn't cancelled",
     description:
-      "Once the item is picked up, dates and pricing can no longer be changed here.",
+      "Once the order is cancelled, it can no longer be edited here.",
   },
 ];
 
@@ -63,20 +64,27 @@ export default async function EditBookingPage({ params }: { params: Params }) {
         </Link>
 
         <div className="flex flex-col gap-1">
-          <h1 className="text-xl font-semibold tracking-tight">Edit booking</h1>
+          <h1 className="text-xl font-semibold tracking-tight">Edit order</h1>
           <p className="text-muted-foreground text-sm">
-            Update this booking&rsquo;s pickup and return dates.
+            Update this order&rsquo;s additional cost and notes.
           </p>
         </div>
+      </div>
+
+      <div className="flex justify-end">
+        <AddBookingItemButton
+          bookingId={booking.id}
+          bookingNumber={booking.bookingNumber}
+        />
       </div>
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
         <Card className="lg:col-span-2">
           <CardHeader>
-            <CardTitle className="text-base">Booking details</CardTitle>
+            <CardTitle className="text-base">Order details</CardTitle>
           </CardHeader>
           <CardContent>
-            <BookingEditForm booking={booking} />
+            <BookingOrderEditForm booking={booking} />
           </CardContent>
         </Card>
 

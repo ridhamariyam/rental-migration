@@ -55,6 +55,7 @@ export default async function ProductDetailPage({
   }
 
   const canManage = hasPermission(user.role, Permission.PRODUCT_MANAGE);
+  const canViewCost = hasPermission(user.role, Permission.PRODUCT_COST_VIEW);
   const { id } = await params;
   const { created } = await searchParams;
   const product = await getProductById(user.shopId, id);
@@ -63,10 +64,16 @@ export default async function ProductDetailPage({
     notFound();
   }
 
-  const [variations, outlets] = await Promise.all([
+  const [rawVariations, outlets] = await Promise.all([
     listVariationsForProduct(user.shopId, product.id),
     listActiveOutletsForSelect(user.shopId),
   ]);
+
+  // Defense in depth on top of the form-level gate — a non-admin actor
+  // never receives the buying price in the rendered payload at all.
+  const variations = canViewCost
+    ? rawVariations
+    : rawVariations.map((variation) => ({ ...variation, buyingPrice: null }));
 
   const fields = [
     { label: "Category", value: product.categoryName, icon: TagIcon },
@@ -233,6 +240,7 @@ export default async function ProductDetailPage({
         variations={variations}
         outlets={outlets}
         canManage={canManage}
+        canViewCost={canViewCost}
       />
     </main>
   );

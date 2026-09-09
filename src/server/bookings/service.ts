@@ -1,32 +1,42 @@
 import "server-only";
 
-import { randomUUID } from "node:crypto";
-import { and, count, desc, eq, ilike, inArray, ne, or, sql } from "drizzle-orm";
+import { and, asc, count, desc, eq, ilike, inArray, or, sql } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { AppError } from "@/lib/errors/app-error";
 import {
+  bookingItems,
   bookings,
   customers,
   products,
   productVariations,
   users,
   type Booking,
+  type BookingItem,
 } from "@/lib/db/schema";
-import { assertTransition, isEditable } from "@/lib/booking-state";
+import {
+  assertTransition,
+  canTransition,
+  isEditable,
+} from "@/lib/booking-state";
 import { generateBookingNumberCandidate } from "@/lib/booking-number";
 import {
   compareMoney,
   addMoney,
-  divideMoneyByInteger,
+  isNegativeMoney,
+  multiplyMoneyByQuantity,
+  subtractMoneyNonNegative,
   ZERO_MONEY,
 } from "@/lib/money";
+import { formatMoney } from "@/lib/format";
 import { Permission, hasPermission } from "@/lib/auth/permissions";
 import type { TenantSessionUser } from "@/server/auth/guard";
 import { AuditAction, recordAudit } from "@/server/audit/service";
 import {
   queueBookingLifecycleNotifications,
   queueBookingNotification,
+  queueOwnerBookingNotification,
 } from "@/server/notifications/service";
+import { computePaymentSummary, insertPaymentRow } from "@/server/payments/service";
 import {
   assertAvailable,
   assertCapacityAvailable,
@@ -40,35 +50,35 @@ import {
   type VariationSearchResult,
 } from "@/server/variations/service";
 import type {
+  BookingItemInput,
   BookingListQuery,
   CreateBookingInput,
   QuoteRequestInput,
-  UpdateBookingInput,
+  UpdateBookingItemInput,
+  UpdateBookingOrderInput,
 } from "@/lib/validation/bookings";
 import { bookingIdParamSchema } from "@/lib/validation/bookings";
 
 export type BookingRow = Booking;
+export type BookingItemRow = BookingItem;
 
 export type BookingGroupItemInfo = {
   productName: string;
   productImage: string | null;
   variationColor: string | null;
   variationSize: string | null;
+  quantity: number;
+  fromDate: string;
+  toDate: string;
 };
 
 export type BookingListItem = BookingRow & {
   customerFirstName: string;
   customerLastName: string;
   customerPhone: string;
-  productName: string;
-  productImage: string | null;
-  variationSku: string;
-  variationBarcode: string;
-  variationColor: string | null;
-  variationSize: string | null;
-  outletName: string | null;
   handledByFirstName: string | null;
   handledByLastName: string | null;
+  itemCount: number;
   groupItems: BookingGroupItemInfo[];
 };
 
@@ -89,19 +99,20 @@ function isUniqueViolation(error: unknown): error is { code: string } {
   );
 }
 
-/** A plain `staff` account only ever sees bookings attributed to them —
- * one staff member's customer relationships/handling shouldn't be visible
- * to another. `admin`/`super_admin`/`manager` see every booking in the
- * tenant, unrestricted (a manager supervises the whole outlet's staff).
- * Returns `undefined` (no extra restriction) for every other role. */
-function staffScopeCondition(actor: Pick<TenantSessionUser, "id" | "role">) {
-  return actor.role === "staff" ? eq(bookings.handledById, actor.id) : undefined;
+/** Every role sees every order in the tenant — staff included, so any
+ * agent can look up an order regardless of who created/handled it.
+ * Kept as a function (returning `undefined`, i.e. no extra restriction)
+ * so per-role scoping can be reintroduced later without touching every
+ * call site. */
+function staffScopeCondition(_actor: Pick<TenantSessionUser, "id" | "role">) {
+  return undefined;
 }
 
 /**
- * Booking reads, always scoped to the caller's own tenant — same
- * discipline as every other list in this app. Search matches the booking
- * number or the customer's name/phone.
+ * Order reads, always scoped to the caller's own tenant. Search matches
+ * the booking number or the customer's name/phone. One row per order —
+ * the old per-line dedup/group-total logic is gone entirely, since an
+ * order genuinely is one row now.
  */
 export async function listBookings(
   shopId: string,
@@ -144,19 +155,10 @@ export async function listBookings(
       id: bookings.id,
       bookingNumber: bookings.bookingNumber,
       shopId: bookings.shopId,
-      outletId: bookings.outletId,
-      bookingGroupId: bookings.bookingGroupId,
       customerId: bookings.customerId,
-      productId: bookings.productId,
-      variationId: bookings.variationId,
-      fromDate: bookings.fromDate,
-      toDate: bookings.toDate,
-      totalDays: bookings.totalDays,
-      quantity: bookings.quantity,
-      rentAmount: bookings.rentAmount,
-      grossRent: bookings.grossRent,
       discountAmount: bookings.discountAmount,
       securityDeposit: bookings.securityDeposit,
+      securityDepositOverridden: bookings.securityDepositOverridden,
       additionalCost: bookings.additionalCost,
       additionalCostReason: bookings.additionalCostReason,
       documents: bookings.documents,
@@ -166,16 +168,6 @@ export async function listBookings(
       cancelledAt: bookings.cancelledAt,
       cancellationReason: bookings.cancellationReason,
       notes: bookings.notes,
-      pickedUpAt: bookings.pickedUpAt,
-      pickedUpById: bookings.pickedUpById,
-      returnedAt: bookings.returnedAt,
-      returnCondition: bookings.returnCondition,
-      damageNotes: bookings.damageNotes,
-      damageCharge: bookings.damageCharge,
-      depositRefunded: bookings.depositRefunded,
-      cleaningRequired: bookings.cleaningRequired,
-      maintenanceRequired: bookings.maintenanceRequired,
-      collectedById: bookings.collectedById,
       createdById: bookings.createdById,
       handledById: bookings.handledById,
       createdAt: bookings.createdAt,
@@ -183,24 +175,11 @@ export async function listBookings(
       customerFirstName: customers.firstName,
       customerLastName: customers.lastName,
       customerPhone: customers.phone,
-      productName: products.name,
-      // The booked copy's own photo, falling back to the catalogue cover
-      // for items added before photos moved onto the item itself.
-      productImage: sql<string | null>`coalesce(${productVariations.image}, ${products.image})`,
-      variationSku: productVariations.sku,
-      variationBarcode: productVariations.barcode,
-      variationColor: productVariations.color,
-      variationSize: productVariations.size,
       handledByFirstName: users.firstName,
       handledByLastName: users.lastName,
     })
     .from(bookings)
     .innerJoin(customers, eq(bookings.customerId, customers.id))
-    .innerJoin(products, eq(bookings.productId, products.id))
-    .innerJoin(
-      productVariations,
-      eq(bookings.variationId, productVariations.id),
-    )
     .leftJoin(users, eq(bookings.handledById, users.id))
     .where(where);
 
@@ -218,100 +197,55 @@ export async function listBookings(
 
   const total = totalRow[0]?.value ?? 0;
 
-  const groupIds = [
-    ...new Set(
-      rows
-        .map((r) => r.bookingGroupId)
-        .filter((id): id is string => Boolean(id)),
-    ),
-  ];
+  const orderIds = rows.map((r) => r.id);
+  const itemRows =
+    orderIds.length > 0
+      ? await db
+          .select({
+            bookingId: bookingItems.bookingId,
+            productName: products.name,
+            // The booked copy's own photo, falling back to the catalogue
+            // cover for items added before photos moved onto the item
+            // itself.
+            productImage: sql<string | null>`coalesce(${productVariations.image}, ${products.image})`,
+            variationColor: productVariations.color,
+            variationSize: productVariations.size,
+            quantity: bookingItems.quantity,
+            fromDate: bookingItems.fromDate,
+            toDate: bookingItems.toDate,
+          })
+          .from(bookingItems)
+          .innerJoin(products, eq(bookingItems.productId, products.id))
+          .innerJoin(
+            productVariations,
+            eq(bookingItems.variationId, productVariations.id),
+          )
+          .where(inArray(bookingItems.bookingId, orderIds))
+          // Same tiebreaker as `getBookingItems` \u2014 without it, which item
+          // ends up first (and so which product/photo the list row shows)
+          // can flip between identical requests when items share one
+          // `createdAt`.
+          .orderBy(asc(bookingItems.createdAt), asc(bookingItems.id))
+      : [];
 
   const groupItemsMap: Record<string, BookingGroupItemInfo[]> = {};
-  const groupAmountMap: Record<string, string> = {};
-
-  if (groupIds.length > 0) {
-    const groupRows = await db
-      .select({
-        bookingGroupId: bookings.bookingGroupId,
-        totalAmount: bookings.totalAmount,
-        productName: products.name,
-        // The booked copy's own photo, falling back to the catalogue cover
-        // for items added before photos moved onto the item itself.
-        productImage: sql<string | null>`coalesce(${productVariations.image}, ${products.image})`,
-        variationColor: productVariations.color,
-        variationSize: productVariations.size,
-      })
-      .from(bookings)
-      .innerJoin(products, eq(bookings.productId, products.id))
-      .innerJoin(
-        productVariations,
-        eq(bookings.variationId, productVariations.id),
-      )
-      .where(
-        and(
-          eq(bookings.shopId, shopId),
-          inArray(bookings.bookingGroupId, groupIds),
-        ),
-      );
-
-    for (const item of groupRows) {
-      if (item.bookingGroupId) {
-        if (!groupItemsMap[item.bookingGroupId]) {
-          groupItemsMap[item.bookingGroupId] = [];
-          groupAmountMap[item.bookingGroupId] = ZERO_MONEY;
-        }
-        groupItemsMap[item.bookingGroupId].push({
-          productName: item.productName,
-          productImage: item.productImage,
-          variationColor: item.variationColor,
-          variationSize: item.variationSize,
-        });
-        groupAmountMap[item.bookingGroupId] = addMoney(
-          groupAmountMap[item.bookingGroupId],
-          item.totalAmount,
-        );
-      }
-    }
-  }
-
-  // One order can span several bookings (one per physical unit — see
-  // `createBooking`'s doc comment on why each unit gets its own pickup/
-  // return lifecycle). The list still only ever shows one row per order:
-  // the first booking encountered for a `bookingGroupId` stands in for
-  // the whole group, with its amount replaced by the group's combined
-  // total so it doesn't read as several near-duplicate ₹X charges.
-  const seenGroupIds = new Set<string>();
-  const items: BookingListItem[] = [];
-  for (const row of rows) {
-    if (row.bookingGroupId) {
-      if (seenGroupIds.has(row.bookingGroupId)) {
-        continue;
-      }
-      seenGroupIds.add(row.bookingGroupId);
-    }
-
-    const groupItems =
-      row.bookingGroupId && groupItemsMap[row.bookingGroupId]?.length
-        ? groupItemsMap[row.bookingGroupId]
-        : [
-            {
-              productName: row.productName,
-              productImage: row.productImage,
-              variationColor: row.variationColor,
-              variationSize: row.variationSize,
-            },
-          ];
-
-    items.push({
-      ...row,
-      outletName: null,
-      groupItems,
-      totalAmount:
-        row.bookingGroupId && groupItems.length > 1
-          ? groupAmountMap[row.bookingGroupId]
-          : row.totalAmount,
+  for (const item of itemRows) {
+    (groupItemsMap[item.bookingId] ??= []).push({
+      productName: item.productName,
+      productImage: item.productImage,
+      variationColor: item.variationColor,
+      variationSize: item.variationSize,
+      quantity: item.quantity,
+      fromDate: item.fromDate,
+      toDate: item.toDate,
     });
   }
+
+  const items: BookingListItem[] = rows.map((row) => ({
+    ...row,
+    groupItems: groupItemsMap[row.id] ?? [],
+    itemCount: groupItemsMap[row.id]?.length ?? 0,
+  }));
 
   return {
     items,
@@ -322,21 +256,12 @@ export async function listBookings(
   };
 }
 
-
 export type BookingStats = {
   total: number;
   draft: number;
   active: number;
   cancelled: number;
 };
-
-const ACTIVE_STATUSES: Booking["status"][] = [
-  "confirmed",
-  "pickup_pending",
-  "rented",
-  "return_pending",
-  "overdue",
-];
 
 export async function getBookingStats(
   shopId: string,
@@ -346,7 +271,7 @@ export async function getBookingStats(
   const scopedWhere = (...extra: (ReturnType<typeof eq> | undefined)[]) =>
     and(eq(bookings.shopId, shopId), scope, ...extra);
 
-  const [totalRow, draftRow, cancelledRow, activeRows] = await Promise.all([
+  const [totalRow, draftRow, cancelledRow, confirmedRow] = await Promise.all([
     db.select({ value: count() }).from(bookings).where(scopedWhere()),
     db
       .select({ value: count() })
@@ -357,96 +282,71 @@ export async function getBookingStats(
       .from(bookings)
       .where(scopedWhere(eq(bookings.status, "cancelled"))),
     db
-      .select({ status: bookings.status })
+      .select({ value: count() })
       .from(bookings)
-      .where(scopedWhere()),
+      .where(scopedWhere(eq(bookings.status, "confirmed"))),
   ]);
-
-  const active = activeRows.filter((row) =>
-    ACTIVE_STATUSES.includes(row.status),
-  ).length;
 
   return {
     total: totalRow[0]?.value ?? 0,
     draft: draftRow[0]?.value ?? 0,
-    active,
+    active: confirmedRow[0]?.value ?? 0,
     cancelled: cancelledRow[0]?.value ?? 0,
   };
 }
+
+/** Column set for one order's own detail (not its items). */
+const bookingOrderColumns = {
+  id: bookings.id,
+  bookingNumber: bookings.bookingNumber,
+  shopId: bookings.shopId,
+  customerId: bookings.customerId,
+  discountAmount: bookings.discountAmount,
+  securityDeposit: bookings.securityDeposit,
+  securityDepositOverridden: bookings.securityDepositOverridden,
+  additionalCost: bookings.additionalCost,
+  additionalCostReason: bookings.additionalCostReason,
+  documents: bookings.documents,
+  totalAmount: bookings.totalAmount,
+  paymentStatus: bookings.paymentStatus,
+  status: bookings.status,
+  cancelledAt: bookings.cancelledAt,
+  cancellationReason: bookings.cancellationReason,
+  notes: bookings.notes,
+  createdById: bookings.createdById,
+  handledById: bookings.handledById,
+  createdAt: bookings.createdAt,
+  updatedAt: bookings.updatedAt,
+  customerFirstName: customers.firstName,
+  customerLastName: customers.lastName,
+  customerPhone: customers.phone,
+  handledByFirstName: users.firstName,
+  handledByLastName: users.lastName,
+};
+
+function bookingOrderBaseQuery() {
+  return db
+    .select(bookingOrderColumns)
+    .from(bookings)
+    .innerJoin(customers, eq(bookings.customerId, customers.id))
+    .leftJoin(users, eq(bookings.handledById, users.id));
+}
+
+export type BookingOrderDetail = Awaited<
+  ReturnType<typeof bookingOrderBaseQuery>
+>[number];
 
 export async function getBookingById(
   shopId: string,
   id: string,
   actor: Pick<TenantSessionUser, "id" | "role">,
-): Promise<BookingListItem | null> {
+): Promise<BookingOrderDetail | null> {
   const parsedId = bookingIdParamSchema.safeParse({ id });
   if (!parsedId.success) {
     return null;
   }
 
-  const [row] = await db
-    .select({
-      id: bookings.id,
-      bookingNumber: bookings.bookingNumber,
-      shopId: bookings.shopId,
-      outletId: bookings.outletId,
-      bookingGroupId: bookings.bookingGroupId,
-      customerId: bookings.customerId,
-      productId: bookings.productId,
-      variationId: bookings.variationId,
-      fromDate: bookings.fromDate,
-      toDate: bookings.toDate,
-      totalDays: bookings.totalDays,
-      quantity: bookings.quantity,
-      rentAmount: bookings.rentAmount,
-      grossRent: bookings.grossRent,
-      discountAmount: bookings.discountAmount,
-      securityDeposit: bookings.securityDeposit,
-      additionalCost: bookings.additionalCost,
-      additionalCostReason: bookings.additionalCostReason,
-      documents: bookings.documents,
-      totalAmount: bookings.totalAmount,
-      paymentStatus: bookings.paymentStatus,
-      status: bookings.status,
-      cancelledAt: bookings.cancelledAt,
-      cancellationReason: bookings.cancellationReason,
-      notes: bookings.notes,
-      pickedUpAt: bookings.pickedUpAt,
-      pickedUpById: bookings.pickedUpById,
-      returnedAt: bookings.returnedAt,
-      returnCondition: bookings.returnCondition,
-      damageNotes: bookings.damageNotes,
-      damageCharge: bookings.damageCharge,
-      depositRefunded: bookings.depositRefunded,
-      cleaningRequired: bookings.cleaningRequired,
-      maintenanceRequired: bookings.maintenanceRequired,
-      collectedById: bookings.collectedById,
-      createdById: bookings.createdById,
-      handledById: bookings.handledById,
-      createdAt: bookings.createdAt,
-      updatedAt: bookings.updatedAt,
-      customerFirstName: customers.firstName,
-      customerLastName: customers.lastName,
-      customerPhone: customers.phone,
-      productName: products.name,
-      // The booked copy's own photo, falling back to the catalogue cover
-      // for items added before photos moved onto the item itself.
-      productImage: sql<string | null>`coalesce(${productVariations.image}, ${products.image})`,
-      variationSku: productVariations.sku,
-      variationBarcode: productVariations.barcode,
-      variationColor: productVariations.color,
-      variationSize: productVariations.size,
-      handledByFirstName: users.firstName,
-      handledByLastName: users.lastName,
-    })
-    .from(bookings)
-    .innerJoin(customers, eq(bookings.customerId, customers.id))
-    .innerJoin(products, eq(bookings.productId, products.id))
-    .innerJoin(
-      productVariations,
-      eq(bookings.variationId, productVariations.id),
-    )
-    .leftJoin(users, eq(bookings.handledById, users.id))
+  const [row] = await bookingOrderBaseQuery()
     .where(
       and(
         eq(bookings.id, parsedId.data.id),
@@ -456,68 +356,102 @@ export async function getBookingById(
     )
     .limit(1);
 
-  if (!row) return null;
-
-  return {
-    ...row,
-    outletName: null,
-    groupItems: [
-      {
-        productName: row.productName,
-        productImage: row.productImage,
-        variationColor: row.variationColor,
-        variationSize: row.variationSize,
-      },
-    ],
-  };
+  return row ?? null;
 }
 
-/** Sibling line items created in the same multi-item submission (see
- * `createBookingGroup`), for the detail page's "part of this order"
- * section — excludes the booking being viewed itself. */
-export async function getBookingsInGroup(
-  shopId: string,
-  groupId: string,
-  excludeId: string,
-  actor: Pick<TenantSessionUser, "id" | "role">,
-): Promise<
-  {
-    id: string;
-    bookingNumber: string;
-    productName: string;
-    variationColor: string | null;
-    variationSize: string | null;
-    status: Booking["status"];
-    totalAmount: string;
-    quantity: number;
-  }[]
-> {
+const bookingItemDetailColumns = {
+  id: bookingItems.id,
+  bookingId: bookingItems.bookingId,
+  shopId: bookingItems.shopId,
+  outletId: bookingItems.outletId,
+  productId: bookingItems.productId,
+  variationId: bookingItems.variationId,
+  fromDate: bookingItems.fromDate,
+  toDate: bookingItems.toDate,
+  totalDays: bookingItems.totalDays,
+  quantity: bookingItems.quantity,
+  rentAmount: bookingItems.rentAmount,
+  grossRent: bookingItems.grossRent,
+  status: bookingItems.status,
+  cancelledAt: bookingItems.cancelledAt,
+  cancellationReason: bookingItems.cancellationReason,
+  pickedUpAt: bookingItems.pickedUpAt,
+  pickedUpById: bookingItems.pickedUpById,
+  returnedAt: bookingItems.returnedAt,
+  returnCondition: bookingItems.returnCondition,
+  damageNotes: bookingItems.damageNotes,
+  damageCharge: bookingItems.damageCharge,
+  depositRefunded: bookingItems.depositRefunded,
+  cleaningRequired: bookingItems.cleaningRequired,
+  maintenanceRequired: bookingItems.maintenanceRequired,
+  collectedById: bookingItems.collectedById,
+  createdAt: bookingItems.createdAt,
+  updatedAt: bookingItems.updatedAt,
+  productName: products.name,
+  // The booked copy's own photo, falling back to the catalogue cover for
+  // items added before photos moved onto the item itself.
+  productImage: sql<string | null>`coalesce(${productVariations.image}, ${products.image})`,
+  variationSku: productVariations.sku,
+  variationBarcode: productVariations.barcode,
+  variationColor: productVariations.color,
+  variationSize: productVariations.size,
+};
+
+function bookingItemDetailBaseQuery() {
   return db
-    .select({
-      id: bookings.id,
-      bookingNumber: bookings.bookingNumber,
-      productName: products.name,
-      variationColor: productVariations.color,
-      variationSize: productVariations.size,
-      status: bookings.status,
-      totalAmount: bookings.totalAmount,
-      quantity: bookings.quantity,
-    })
-    .from(bookings)
-    .innerJoin(products, eq(bookings.productId, products.id))
+    .select(bookingItemDetailColumns)
+    .from(bookingItems)
+    .innerJoin(products, eq(bookingItems.productId, products.id))
     .innerJoin(
       productVariations,
-      eq(bookings.variationId, productVariations.id),
-    )
+      eq(bookingItems.variationId, productVariations.id),
+    );
+}
+
+export type BookingItemDetail = Awaited<
+  ReturnType<typeof bookingItemDetailBaseQuery>
+>[number];
+
+/** Every item belonging to one order, in creation order — the booking
+ * detail page renders all of these together as one order. */
+export async function getBookingItems(
+  shopId: string,
+  bookingId: string,
+  actor: Pick<TenantSessionUser, "id" | "role">,
+): Promise<BookingItemDetail[]> {
+  return bookingItemDetailBaseQuery()
     .where(
       and(
-        eq(bookings.shopId, shopId),
-        eq(bookings.bookingGroupId, groupId),
-        ne(bookings.id, excludeId),
+        eq(bookingItems.shopId, shopId),
+        eq(bookingItems.bookingId, bookingId),
         staffScopeCondition(actor),
       ),
     )
-    .orderBy(desc(bookings.createdAt));
+    // Items created together in one order share the exact same
+    // `createdAt` (one multi-row INSERT) — `id` breaks the tie so "Item 1"/
+    // "Item 2" numbering on the detail page stays stable across reloads
+    // instead of visually swapping at random.
+    .orderBy(asc(bookingItems.createdAt), asc(bookingItems.id));
+}
+
+export async function getBookingItemById(
+  shopId: string,
+  bookingId: string,
+  itemId: string,
+  actor: Pick<TenantSessionUser, "id" | "role">,
+): Promise<BookingItemDetail | null> {
+  const [row] = await bookingItemDetailBaseQuery()
+    .where(
+      and(
+        eq(bookingItems.shopId, shopId),
+        eq(bookingItems.bookingId, bookingId),
+        eq(bookingItems.id, itemId),
+        staffScopeCondition(actor),
+      ),
+    )
+    .limit(1);
+
+  return row ?? null;
 }
 
 async function resolveCustomer(shopId: string, customerId: string) {
@@ -537,12 +471,12 @@ async function resolveCustomer(shopId: string, customerId: string) {
 }
 
 /**
- * Who a new booking is attributed to (`bookings.handledById`, frozen at
- * creation per CLAUDE.md rule 11). Only an `admin` may hand a booking to
- * someone else — every other role's bookings are always attributed to
+ * Who a new order is attributed to (`bookings.handledById`, frozen at
+ * creation per CLAUDE.md rule 11). Only an `admin` may hand an order to
+ * someone else — every other role's orders are always attributed to
  * themselves, straight from their own session, regardless of what (if
  * anything) is submitted here. This is enforced here, not just hidden in
- * the UI, so a crafted request body can't reassign a booking either.
+ * the UI, so a crafted request body can't reassign an order either.
  */
 async function resolveHandledById(
   actor: TenantSessionUser,
@@ -615,8 +549,11 @@ async function generateBookingNumber(): Promise<string> {
 }
 
 /** Prices and checks availability for an item/date range without creating
- * a booking — backs the create form's live "check availability & price"
- * preview. */
+ * anything — backs the create form's live "check availability & price"
+ * preview. `excludeBookingId` (kept under its original field name for the
+ * validation schema/UI) is actually a `booking_items.id` now — it narrows
+ * the check when previewing an edit to an *existing* item so the item's
+ * own reservation never conflicts with itself. */
 export async function quoteBooking(
   shopId: string,
   input: QuoteRequestInput,
@@ -654,32 +591,28 @@ export async function quoteBooking(
     },
   );
 
-  // Narrows the check for an edit-in-progress: verify the excluded booking
-  // is actually this tenant's own before trusting it, same discipline as
-  // every other client-supplied id in this service.
-  let excludeBookingId: string | undefined;
+  let excludeItemId: string | undefined;
   if (input.excludeBookingId) {
     const [owned] = await db
-      .select({ id: bookings.id })
-      .from(bookings)
+      .select({ id: bookingItems.id })
+      .from(bookingItems)
       .where(
         and(
-          eq(bookings.id, input.excludeBookingId),
-          eq(bookings.shopId, shopId),
+          eq(bookingItems.id, input.excludeBookingId),
+          eq(bookingItems.shopId, shopId),
         ),
       )
       .limit(1);
-    excludeBookingId = owned?.id;
+    excludeItemId = owned?.id;
   }
 
   const availability = await checkAvailability(
     variation,
     input.fromDate,
     input.toDate,
-    excludeBookingId,
+    excludeItemId,
     requestedQuantity,
   );
-
 
   return {
     ...quote,
@@ -694,23 +627,30 @@ export async function quoteBooking(
 }
 
 /**
- * Creates every item *line* in a "cart" as one atomic batch — a customer
- * often rents several different items for the same event (an outfit plus
- * accessories), and each distinct line becomes its own `bookings` row
- * (its own dates/pricing/availability, since one item might come back
- * before another), linked by a shared `bookingGroupId`. Renting more than
- * one identical unit of the *same* line (e.g. 2 of the same necklace) is
- * a single row instead — `quantity` on that one booking, priced/paid/
- * picked-up/returned together as a batch, not one row per unit. Every
- * availability/pricing/permission check runs for every line *before*
- * anything is written, so a problem with item 3 of 5 never leaves items
- * 1-2 half-booked; the actual insert is one multi-row `INSERT` inside a
- * transaction, so it is all-or-nothing at the database level too.
+ * Creates one order with every item *line* as one atomic batch — a
+ * customer often rents several different items for the same event (an
+ * outfit plus accessories), and each distinct line becomes its own
+ * `booking_items` row (its own dates/pricing/availability, since one
+ * item might come back before another) sharing the one order this
+ * creates. Renting more than one identical unit of the *same* line (e.g.
+ * 2 of the same necklace) is a single row instead — `quantity` on that
+ * one item, priced/paid/picked-up/returned together as a batch, not one
+ * row per unit. Every availability/pricing/permission check runs for
+ * every line *before* anything is written, so a problem with item 3 of 5
+ * never leaves items 1-2 half-booked; the actual insert is one
+ * multi-row `INSERT` inside a transaction, so it is all-or-nothing at
+ * the database level too.
+ *
+ * Discount/security deposit/additional cost/advance are **order-level**
+ * — one shared adjustment the counter agrees for the whole cart,
+ * validated against the *combined* gross rent of every line, and stored
+ * directly on the order row (no more "attach to the first line"
+ * convention now that the order is its own row).
  */
-export async function createBookingGroup(
+export async function createBooking(
   actor: TenantSessionUser,
   input: CreateBookingInput,
-): Promise<BookingRow[]> {
+): Promise<{ booking: BookingRow; items: BookingItemRow[] }> {
   await resolveCustomer(actor.shopId, input.customerId);
   const handledById = await resolveHandledById(actor, input.handledById);
 
@@ -720,7 +660,6 @@ export async function createBookingGroup(
     fromDate: string;
     toDate: string;
     quantity: number;
-    additionalCostReason: string | null;
   }[] = [];
 
   for (const item of input.items) {
@@ -730,25 +669,17 @@ export async function createBookingGroup(
       item.barcode,
     );
 
-    const discount = item.discountAmount ?? ZERO_MONEY;
-    if (
-      compareMoney(discount, ZERO_MONEY) > 0 &&
-      !hasPermission(actor.role, Permission.BOOKING_DISCOUNT)
-    ) {
-      throw AppError.forbidden("You are not allowed to apply a discount");
-    }
-
     const quantity = Math.max(1, Math.trunc(Number(item.quantity ?? "1")));
+    // No per-line discount/deposit override/additional cost anymore —
+    // every line prices as its plain gross rent plus its item's own
+    // default deposit here; the order-level adjustments below are what
+    // actually reduce/add to/replace the total.
     const quote = quoteRental(
       variation,
       item.fromDate,
       item.toDate,
-      discount,
+      ZERO_MONEY,
       quantity,
-      {
-        additionalCost: item.additionalCost,
-        securityDepositPerUnit: item.securityDeposit,
-      },
     );
     prepared.push({
       variation,
@@ -756,13 +687,6 @@ export async function createBookingGroup(
       fromDate: item.fromDate,
       toDate: item.toDate,
       quantity,
-      // Only kept when something was actually charged — a leftover reason
-      // typed against an amount later cleared to zero would otherwise show
-      // up on the receipt as a charge that isn't there.
-      additionalCostReason:
-        compareMoney(quote.additionalCost, ZERO_MONEY) > 0
-          ? item.additionalCostReason?.trim() || null
-          : null,
     });
   }
 
@@ -791,58 +715,197 @@ export async function createBookingGroup(
     await assertCapacityAvailable(variation, requests);
   }
 
-  const bookingGroupId = randomUUID();
-  const usedNumbers = new Set<string>();
-  const rows: (typeof bookings.$inferInsert)[] = [];
+  // --- Order-level discount / additional cost / advance -----------------
+  const orderGrossRent = prepared.reduce(
+    (sum, item) => addMoney(sum, item.quote.grossRent),
+    ZERO_MONEY,
+  );
 
-  for (const item of prepared) {
-    let bookingNumber = await generateBookingNumber();
-    while (usedNumbers.has(bookingNumber)) {
-      bookingNumber = await generateBookingNumber();
-    }
-    usedNumbers.add(bookingNumber);
-
-    rows.push({
-      bookingNumber,
-      bookingGroupId,
-      shopId: actor.shopId,
-      outletId: item.variation.outletId,
-      customerId: input.customerId,
-      productId: item.variation.productId,
-      variationId: item.variation.id,
-      fromDate: item.fromDate,
-      toDate: item.toDate,
-      totalDays: item.quote.totalDays,
-      quantity: item.quantity,
-      rentAmount: item.quote.rentAmount,
-      grossRent: item.quote.grossRent,
-      discountAmount: item.quote.discountAmount,
-      securityDeposit: item.quote.securityDeposit,
-      additionalCost: item.quote.additionalCost,
-      additionalCostReason: item.additionalCostReason,
-      totalAmount: item.quote.totalAmount,
-      notes: input.notes || null,
-      documents: input.documents ?? [],
-      createdById: actor.id,
-      handledById,
-    });
+  const orderDiscount = input.discountAmount || ZERO_MONEY;
+  if (isNegativeMoney(orderDiscount)) {
+    throw new AppError("Discount cannot be negative", 400, [
+      { field: "discountAmount", message: "Discount cannot be negative" },
+    ]);
+  }
+  if (
+    compareMoney(orderDiscount, ZERO_MONEY) > 0 &&
+    !hasPermission(actor.role, Permission.BOOKING_DISCOUNT)
+  ) {
+    throw AppError.forbidden("You are not allowed to apply a discount");
+  }
+  if (compareMoney(orderDiscount, orderGrossRent) > 0) {
+    throw new AppError("Discount cannot exceed the rental amount", 400, [
+      {
+        field: "discountAmount",
+        message: "Discount cannot exceed the rental amount",
+      },
+    ]);
   }
 
+  const orderAdditionalCost = input.additionalCost || ZERO_MONEY;
+  if (isNegativeMoney(orderAdditionalCost)) {
+    throw new AppError("Additional cost cannot be negative", 400, [
+      { field: "additionalCost", message: "Additional cost cannot be negative" },
+    ]);
+  }
+  const orderAdditionalCostReason =
+    compareMoney(orderAdditionalCost, ZERO_MONEY) > 0
+      ? input.additionalCostReason?.trim() || null
+      : null;
+
+  // Blank keeps every line's own item default deposit (summed below); a
+  // value replaces that sum entirely.
+  const defaultDepositTotal = prepared.reduce(
+    (sum, item) => addMoney(sum, item.quote.securityDeposit),
+    ZERO_MONEY,
+  );
+  const orderDepositOverridden = Boolean(input.securityDeposit);
+  const orderDeposit = input.securityDeposit || defaultDepositTotal;
+  if (isNegativeMoney(orderDeposit)) {
+    throw new AppError("Security deposit cannot be negative", 400, [
+      { field: "securityDeposit", message: "Security deposit cannot be negative" },
+    ]);
+  }
+
+  const orderTotalAmount = addMoney(
+    subtractMoneyNonNegative(orderGrossRent, orderDiscount),
+    orderAdditionalCost,
+  );
+  const orderTotalReceivable = addMoney(orderTotalAmount, orderDeposit);
+
+  const orderAdvance = input.advanceAmount || ZERO_MONEY;
+  if (isNegativeMoney(orderAdvance)) {
+    throw new AppError("Advance cannot be negative", 400, [
+      { field: "advanceAmount", message: "Advance cannot be negative" },
+    ]);
+  }
+  if (compareMoney(orderAdvance, orderTotalReceivable) > 0) {
+    throw new AppError("Advance cannot exceed the amount due", 400, [
+      { field: "advanceAmount", message: "Advance cannot exceed the amount due" },
+    ]);
+  }
+
+  // Allocated before the transaction opens — same dev-pool-deadlock
+  // reasoning documented on `addBookingItem` below.
+  const bookingNumber = await generateBookingNumber();
 
   try {
     return await db.transaction(async (tx) => {
-      const created = await tx.insert(bookings).values(rows).returning();
-      for (const booking of created) {
-        await queueBookingLifecycleNotifications(tx, booking);
+      const [order] = await tx
+        .insert(bookings)
+        .values({
+          bookingNumber,
+          shopId: actor.shopId,
+          customerId: input.customerId,
+          discountAmount: orderDiscount,
+          securityDeposit: orderDeposit,
+          securityDepositOverridden: orderDepositOverridden,
+          additionalCost: orderAdditionalCost,
+          additionalCostReason: orderAdditionalCostReason,
+          totalAmount: orderTotalAmount,
+          notes: input.notes || null,
+          documents: input.documents ?? [],
+          createdById: actor.id,
+          handledById,
+        })
+        .returning();
+
+      const createdItems = await tx
+        .insert(bookingItems)
+        .values(
+          prepared.map((item) => ({
+            bookingId: order.id,
+            shopId: actor.shopId,
+            outletId: item.variation.outletId,
+            productId: item.variation.productId,
+            variationId: item.variation.id,
+            fromDate: item.fromDate,
+            toDate: item.toDate,
+            totalDays: item.quote.totalDays,
+            quantity: item.quantity,
+            rentAmount: item.quote.rentAmount,
+            grossRent: item.quote.grossRent,
+          })),
+        )
+        .returning();
+
+      for (const item of createdItems) {
+        await queueBookingLifecycleNotifications(tx, order, item);
+        await queueOwnerBookingNotification(tx, order, item.id, "owner_item_booked");
       }
-      return created;
+
+      // Order-level advance — recorded the moment the order is created,
+      // then the order is confirmed the same way a payment recorded
+      // through the usual "Record payment" dialog would (doc's own
+      // "Booking Created → Payment Recorded → Booking Confirmed" flow).
+      if (compareMoney(orderAdvance, ZERO_MONEY) > 0) {
+        const payment = await insertPaymentRow(tx, {
+          shopId: actor.shopId,
+          outletId: createdItems[0]?.outletId ?? null,
+          bookingId: order.id,
+          amount: orderAdvance,
+          paymentType: "advance",
+          paymentMethod: input.advancePaymentMethod ?? "cash",
+          recordedById: actor.id,
+        });
+        const summary = computePaymentSummary(order, ZERO_MONEY, [payment]);
+
+        const [updatedOrder] = await tx
+          .update(bookings)
+          .set({
+            status: assertTransition(order.status, "confirmed"),
+            paymentStatus: summary.status,
+            updatedAt: new Date(),
+          })
+          .where(eq(bookings.id, order.id))
+          .returning();
+
+        // The order just left `draft` — every item created with it is
+        // still sitting at its own default `draft` status (see the insert
+        // above). `confirmPickup` can pick up a `draft` item directly now,
+        // but bring them along to `confirmed` anyway so the order and its
+        // items never disagree about being past draft once a payment has
+        // actually landed.
+        const confirmedItems = await tx
+          .update(bookingItems)
+          .set({ status: "confirmed", updatedAt: new Date() })
+          .where(
+            and(
+              eq(bookingItems.bookingId, order.id),
+              eq(bookingItems.status, "draft"),
+            ),
+          )
+          .returning();
+
+        await recordAudit(tx, {
+          shopId: actor.shopId,
+          outletId: createdItems[0]?.outletId ?? null,
+          userId: actor.id,
+          action: AuditAction.PAYMENT_RECORDED,
+          entityType: "payment",
+          entityId: payment.id,
+          summary: `${formatMoney(orderAdvance)} advance on ${order.bookingNumber}`,
+          after: {
+            amount: payment.amount,
+            paymentType: payment.paymentType,
+            paymentMethod: payment.paymentMethod,
+          },
+        });
+
+        // One booking-level "Booking Confirmed" WhatsApp for the whole
+        // order — sent after the advance is recorded so
+        // advance_paid/balance_amount reflect it, not before.
+        await queueBookingNotification(tx, updatedOrder, "booking_confirmed");
+
+        return { booking: updatedOrder, items: confirmedItems };
+      }
+
+      await queueBookingNotification(tx, order, "booking_confirmed");
+
+      return { booking: order, items: createdItems };
     });
   } catch (error) {
     if (isUniqueViolation(error)) {
-      // A booking number collided with a row inserted by a fully
-      // concurrent request between the check above and this insert —
-      // vanishingly unlikely (a 6-digit random space checked per row), but
-      // surface it as a clean retry instead of a raw driver error.
       throw new AppError("Could not save this booking — please try again", 409);
     }
     throw error;
@@ -866,111 +929,436 @@ async function loadBookingForTenant(
   return booking;
 }
 
-/** Editing a still-`draft` booking's dates/discount/notes — reprices and
- * re-checks availability exactly like creation. */
-export async function updateBooking(
-  actor: TenantSessionUser,
-  id: string,
-  input: UpdateBookingInput,
-): Promise<BookingRow> {
-  const booking = await loadBookingForTenant(actor.shopId, id);
+async function loadItemForTenant(
+  shopId: string,
+  bookingId: string,
+  itemId: string,
+): Promise<BookingItemRow> {
+  const [item] = await db
+    .select()
+    .from(bookingItems)
+    .where(
+      and(
+        eq(bookingItems.id, itemId),
+        eq(bookingItems.bookingId, bookingId),
+        eq(bookingItems.shopId, shopId),
+      ),
+    )
+    .limit(1);
 
-  if (!isEditable(booking.status)) {
-    throw new AppError(
-      "Dates and pricing can only be changed before the item is picked up",
-      409,
+  if (!item) {
+    throw AppError.notFound("Item not found");
+  }
+
+  return item;
+}
+
+/** Recomputes an order's `totalAmount` (sum of every non-cancelled item's
+ * `grossRent`, minus the frozen discount — clamped down if a quantity
+ * decrease/cancellation left it bigger than the new smaller rent — plus
+ * `additionalCost`) and, when the deposit was never explicitly overridden,
+ * its `securityDeposit` (sum of every active item's own current default
+ * deposit). Called after anything that changes which items are active or
+ * how big they are: adding/editing/cancelling an item, or changing
+ * `additionalCost`. */
+async function recomputeOrderTotal(
+  tx: Parameters<Parameters<typeof db.transaction>[0]>[0],
+  bookingId: string,
+): Promise<BookingRow> {
+  const [order] = await tx
+    .select()
+    .from(bookings)
+    .where(eq(bookings.id, bookingId))
+    .limit(1);
+
+  if (!order) {
+    throw AppError.notFound("Booking not found");
+  }
+
+  const items = await tx
+    .select({
+      grossRent: bookingItems.grossRent,
+      status: bookingItems.status,
+      quantity: bookingItems.quantity,
+      variationId: bookingItems.variationId,
+    })
+    .from(bookingItems)
+    .where(eq(bookingItems.bookingId, bookingId));
+
+  const activeItems = items.filter((item) => item.status !== "cancelled");
+  const grossTotal = activeItems.reduce(
+    (sum, item) => addMoney(sum, item.grossRent),
+    ZERO_MONEY,
+  );
+
+  const discountAmount =
+    compareMoney(order.discountAmount, grossTotal) > 0
+      ? grossTotal
+      : order.discountAmount;
+
+  const totalAmount = addMoney(
+    subtractMoneyNonNegative(grossTotal, discountAmount),
+    order.additionalCost,
+  );
+
+  let securityDeposit = order.securityDeposit;
+  if (!order.securityDepositOverridden) {
+    const variationIds = [...new Set(activeItems.map((item) => item.variationId))];
+    const variationRows =
+      variationIds.length > 0
+        ? await tx
+            .select({
+              id: productVariations.id,
+              securityDeposit: productVariations.securityDeposit,
+            })
+            .from(productVariations)
+            .where(inArray(productVariations.id, variationIds))
+        : [];
+    const depositByVariation = new Map(
+      variationRows.map((row) => [row.id, row.securityDeposit]),
+    );
+    securityDeposit = activeItems.reduce(
+      (sum, item) =>
+        addMoney(
+          sum,
+          multiplyMoneyByQuantity(
+            depositByVariation.get(item.variationId) ?? ZERO_MONEY,
+            item.quantity,
+          ),
+        ),
+      ZERO_MONEY,
     );
   }
 
-  // The discount is frozen at creation (like `handledById`) and never
-  // editable afterward — only the pickup/return dates can change here.
-  const discount = booking.discountAmount;
-
-  const variation = await resolveVariation(
-    actor.shopId,
-    booking.variationId,
-    undefined,
-  );
-
-  await assertAvailable(
-    variation,
-    input.fromDate,
-    input.toDate,
-    booking.id,
-    booking.quantity,
-  );
-
-  // The extra charge and the agreed deposit are frozen at creation exactly
-  // like the discount is — re-quoting here is only about the new dates, so
-  // both are fed straight back in rather than re-derived from the item's
-  // current price list.
-  const quote = quoteRental(
-    variation,
-    input.fromDate,
-    input.toDate,
-    discount,
-    booking.quantity,
-    {
-      additionalCost: booking.additionalCost,
-      securityDepositPerUnit: divideMoneyByInteger(
-        booking.securityDeposit,
-        Math.max(1, booking.quantity),
-      ),
-    },
-  );
-
-  const [updated] = await db
+  const [updated] = await tx
     .update(bookings)
     .set({
-      fromDate: input.fromDate,
-      toDate: input.toDate,
-      totalDays: quote.totalDays,
-      rentAmount: quote.rentAmount,
-      grossRent: quote.grossRent,
-      discountAmount: quote.discountAmount,
-      totalAmount: quote.totalAmount,
-      notes: input.notes ?? booking.notes,
+      totalAmount,
+      discountAmount,
+      securityDeposit,
       updatedAt: new Date(),
     })
-    .where(and(eq(bookings.id, id), eq(bookings.shopId, actor.shopId)))
+    .where(eq(bookings.id, bookingId))
     .returning();
 
   return updated;
 }
 
-export async function cancelBooking(
+/** Editing the order itself — the additional-cost charge (e.g. an agreed
+ * late-return fee added after the fact) and notes. The customer, discount
+ * and security deposit are all still fixed once created. */
+export async function updateBookingOrder(
+  actor: TenantSessionUser,
+  id: string,
+  input: UpdateBookingOrderInput,
+): Promise<BookingRow> {
+  const booking = await loadBookingForTenant(actor.shopId, id);
+
+  if (!isEditable(booking.status)) {
+    throw new AppError("This order can no longer be edited", 409);
+  }
+
+  const additionalCost =
+    input.additionalCost !== undefined
+      ? input.additionalCost || ZERO_MONEY
+      : booking.additionalCost;
+  const additionalCostReason =
+    compareMoney(additionalCost, ZERO_MONEY) > 0
+      ? input.additionalCostReason?.trim() || booking.additionalCostReason
+      : null;
+
+  return db.transaction(async (tx) => {
+    await tx
+      .update(bookings)
+      .set({
+        additionalCost,
+        additionalCostReason,
+        notes: input.notes ?? booking.notes,
+        updatedAt: new Date(),
+      })
+      .where(and(eq(bookings.id, id), eq(bookings.shopId, actor.shopId)));
+
+    return recomputeOrderTotal(tx, id);
+  });
+}
+
+/** Editing one still-editable item's dates/quantity (decrease only —
+ * cancel the item instead to remove it entirely). */
+export async function updateBookingItem(
+  actor: TenantSessionUser,
+  bookingId: string,
+  itemId: string,
+  input: UpdateBookingItemInput,
+): Promise<BookingItemRow> {
+  await loadBookingForTenant(actor.shopId, bookingId);
+  const item = await loadItemForTenant(actor.shopId, bookingId, itemId);
+
+  if (!isEditable(item.status)) {
+    throw new AppError(
+      "Dates and quantity can only be changed before the item is picked up",
+      409,
+    );
+  }
+
+  // Quantity can only ever go *down* from here — increasing it would need
+  // a fresh availability check against additional units, which is what
+  // adding a new item is for. Omitted entirely keeps the current quantity.
+  const requestedQuantity = input.quantity
+    ? Math.max(1, Math.trunc(Number(input.quantity)))
+    : item.quantity;
+  if (requestedQuantity > item.quantity) {
+    throw new AppError(
+      "Quantity can only be reduced here — cancel this item and add a new one instead",
+      400,
+      [{ field: "quantity", message: "Cannot increase the quantity here" }],
+    );
+  }
+
+  const variation = await resolveVariation(actor.shopId, item.variationId, undefined);
+
+  await assertAvailable(
+    variation,
+    input.fromDate,
+    input.toDate,
+    item.id,
+    requestedQuantity,
+  );
+
+  const quote = quoteRental(
+    variation,
+    input.fromDate,
+    input.toDate,
+    ZERO_MONEY,
+    requestedQuantity,
+  );
+
+  return db.transaction(async (tx) => {
+    await tx
+      .update(bookingItems)
+      .set({
+        fromDate: input.fromDate,
+        toDate: input.toDate,
+        totalDays: quote.totalDays,
+        quantity: requestedQuantity,
+        rentAmount: quote.rentAmount,
+        grossRent: quote.grossRent,
+        updatedAt: new Date(),
+      })
+      .where(eq(bookingItems.id, itemId));
+
+    await recomputeOrderTotal(tx, bookingId);
+
+    const [updated] = await tx
+      .select()
+      .from(bookingItems)
+      .where(eq(bookingItems.id, itemId))
+      .limit(1);
+
+    return updated;
+  });
+}
+
+/**
+ * Adds one more item to an already-created order after the fact — e.g.
+ * the customer decides they also want jewelry to go with the outfit they
+ * already booked. No discount/additional-cost/deposit override of its
+ * own — those are the *order's* shared adjustment, already sitting on the
+ * order row (recomputed here to fold this item's rent in).
+ */
+export async function addBookingItem(
+  actor: TenantSessionUser,
+  bookingId: string,
+  input: BookingItemInput,
+): Promise<BookingItemRow> {
+  const order = await loadBookingForTenant(actor.shopId, bookingId);
+
+  if (order.status === "cancelled") {
+    throw new AppError("Cannot add an item to a cancelled order", 409);
+  }
+
+  const variation = await resolveVariation(
+    actor.shopId,
+    input.variationId,
+    input.barcode,
+  );
+
+  const quantity = Math.max(1, Math.trunc(Number(input.quantity ?? "1")));
+  const quote = quoteRental(
+    variation,
+    input.fromDate,
+    input.toDate,
+    ZERO_MONEY,
+    quantity,
+  );
+
+  await assertAvailable(variation, input.fromDate, input.toDate, undefined, quantity);
+
+  return db.transaction(async (tx) => {
+    const [created] = await tx
+      .insert(bookingItems)
+      .values({
+        bookingId,
+        shopId: actor.shopId,
+        outletId: variation.outletId,
+        productId: variation.productId,
+        variationId: variation.id,
+        fromDate: input.fromDate,
+        toDate: input.toDate,
+        totalDays: quote.totalDays,
+        quantity,
+        rentAmount: quote.rentAmount,
+        grossRent: quote.grossRent,
+        // A `draft` order's items all match it, but an order past `draft`
+        // (confirmed/pickup_pending/rented) already has settled payments —
+        // a new item should immediately match that, not sit at `draft`
+        // once its siblings are already past it (even though a `draft`
+        // item is itself pickable now — see `booking-state.ts`).
+        status: order.status === "draft" ? "draft" : "confirmed",
+      })
+      .returning();
+
+    await recomputeOrderTotal(tx, bookingId);
+
+    await queueBookingLifecycleNotifications(tx, order, created);
+    await queueOwnerBookingNotification(tx, order, created.id, "owner_item_booked");
+
+    return created;
+  });
+}
+
+/** Cancels one item within an order — the order itself, and every other
+ * item in it, are unaffected. */
+export async function cancelBookingItem(
+  actor: TenantSessionUser,
+  bookingId: string,
+  itemId: string,
+  reason: string | undefined,
+): Promise<BookingItemRow> {
+  const order = await loadBookingForTenant(actor.shopId, bookingId);
+  const item = await loadItemForTenant(actor.shopId, bookingId, itemId);
+
+  // `canTransition` treats same-state as a no-op-allowed transition (needed
+  // elsewhere), so it alone won't stop a *second* cancel from silently
+  // overwriting the first one's `cancelledAt`/`cancellationReason` and
+  // re-firing its audit entry/notification — guard the terminal state
+  // explicitly instead.
+  if (item.status === "cancelled") {
+    throw new AppError("This item is already cancelled", 409);
+  }
+  assertTransition(item.status, "cancelled");
+
+  return db.transaction(async (tx) => {
+    const [updated] = await tx
+      .update(bookingItems)
+      .set({
+        status: "cancelled",
+        cancelledAt: new Date(),
+        cancellationReason: reason || null,
+        updatedAt: new Date(),
+      })
+      .where(eq(bookingItems.id, itemId))
+      .returning();
+
+    await recomputeOrderTotal(tx, bookingId);
+
+    await recordAudit(tx, {
+      shopId: actor.shopId,
+      outletId: updated.outletId,
+      userId: actor.id,
+      action: AuditAction.BOOKING_CANCELLED,
+      entityType: "booking",
+      entityId: updated.id,
+      summary: `Item on ${order.bookingNumber} cancelled${reason ? `: ${reason}` : ""}`,
+      before: { status: item.status },
+      after: { status: "cancelled", cancellationReason: reason || null },
+    });
+
+    await queueOwnerBookingNotification(tx, order, itemId, "owner_item_cancelled");
+
+    return updated;
+  });
+}
+
+/** Cancels the whole order — cascades to every one of its items that
+ * isn't already in a terminal state, so the order and its items never
+ * disagree about being over. */
+export async function cancelBookingOrder(
   actor: TenantSessionUser,
   id: string,
   reason: string | undefined,
 ): Promise<BookingRow> {
   const booking = await loadBookingForTenant(actor.shopId, id);
 
+  // Same reasoning as `cancelBookingItem`: same-state is a no-op-allowed
+  // transition, so this has to be checked explicitly or a second cancel
+  // silently overwrites the first one's cancellation record.
+  if (booking.status === "cancelled") {
+    throw new AppError("This order is already cancelled", 409);
+  }
   assertTransition(booking.status, "cancelled");
 
-  const [updated] = await db
-    .update(bookings)
-    .set({
-      status: "cancelled",
-      cancelledAt: new Date(),
-      cancellationReason: reason || null,
-      updatedAt: new Date(),
-    })
-    .where(and(eq(bookings.id, id), eq(bookings.shopId, actor.shopId)))
-    .returning();
+  return db.transaction(async (tx) => {
+    const [updated] = await tx
+      .update(bookings)
+      .set({
+        status: "cancelled",
+        cancelledAt: new Date(),
+        cancellationReason: reason || null,
+        updatedAt: new Date(),
+      })
+      .where(and(eq(bookings.id, id), eq(bookings.shopId, actor.shopId)))
+      .returning();
 
-  await recordAudit(db, {
-    shopId: actor.shopId,
-    outletId: updated.outletId,
-    userId: actor.id,
-    action: AuditAction.BOOKING_CANCELLED,
-    entityType: "booking",
-    entityId: updated.id,
-    summary: `${updated.bookingNumber} cancelled${reason ? `: ${reason}` : ""}`,
-    before: { status: booking.status },
-    after: { status: "cancelled", cancellationReason: reason || null },
+    const items = await tx
+      .select({ id: bookingItems.id, status: bookingItems.status })
+      .from(bookingItems)
+      .where(eq(bookingItems.bookingId, id));
+
+    // Only items that can actually still transition to `cancelled` are
+    // touched — an item already `rented`/`return_pending`/`overdue` is
+    // physically out with the customer and can only ever come back
+    // through the normal Return flow, never a straight cancel (the state
+    // machine agrees: `canTransition` says no). Cancelling the order
+    // itself doesn't retroactively un-hand-over a physical item.
+    const cancelledItemIds: string[] = [];
+    for (const item of items) {
+      if (item.status !== "cancelled" && canTransition(item.status, "cancelled")) {
+        await tx
+          .update(bookingItems)
+          .set({
+            status: "cancelled",
+            cancelledAt: new Date(),
+            cancellationReason: reason || null,
+            updatedAt: new Date(),
+          })
+          .where(eq(bookingItems.id, item.id));
+        cancelledItemIds.push(item.id);
+      }
+    }
+
+    await recordAudit(tx, {
+      shopId: actor.shopId,
+      outletId: null,
+      userId: actor.id,
+      action: AuditAction.BOOKING_CANCELLED,
+      entityType: "booking",
+      entityId: updated.id,
+      summary: `${updated.bookingNumber} cancelled${reason ? `: ${reason}` : ""}`,
+      before: { status: booking.status },
+      after: { status: "cancelled", cancellationReason: reason || null },
+    });
+
+    // Keeps totalAmount/discount/deposit consistent with which items are
+    // actually cancelled now, same as a single item's own cancel — a
+    // still-rented item's rent (and share of the deposit) stays counted.
+    const recomputed = await recomputeOrderTotal(tx, id);
+
+    // No customer-facing "booking cancelled" WhatsApp template exists yet
+    // (see `NOTIFICATION_EVENTS`) — only the item owner is notified.
+    for (const itemId of cancelledItemIds) {
+      await queueOwnerBookingNotification(tx, updated, itemId, "owner_item_cancelled");
+    }
+
+    return recomputed;
   });
-
-  await queueBookingNotification(db, updated, "booking_cancelled");
-
-  return updated;
 }

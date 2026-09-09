@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Controller, useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { AlertCircleIcon, ShirtIcon } from "lucide-react";
+import { AlertCircleIcon, PlusIcon, ShirtIcon } from "lucide-react";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -20,10 +20,12 @@ import {
   Select,
   SelectContent,
   SelectItem,
+  SelectSeparator,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
 import { Spinner } from "@/components/ui/spinner";
+import { CategoryFormDialog } from "@/components/tenant/category-form-dialog";
 import {
   createProductSchema,
   type CreateProductInput,
@@ -31,6 +33,12 @@ import {
 import { tenantPaths } from "@/lib/tenant-paths";
 import { ApiClientError, apiRequest } from "@/lib/api-client";
 import type { ProductRow } from "@/server/products/service";
+import type { CategoryRow } from "@/server/categories/service";
+
+/** Sentinel `SelectItem` value for the inline "+ Add category" row — never
+ * a real category id, so it's safe to check for before it ever reaches
+ * `field.onChange`. */
+const ADD_CATEGORY_VALUE = "__add_category__";
 
 export function ProductForm({
   product,
@@ -42,6 +50,7 @@ export function ProductForm({
   const router = useRouter();
   const isEditing = Boolean(product);
   const [formError, setFormError] = useState<string | null>(null);
+  const [categoryDialogOpen, setCategoryDialogOpen] = useState(false);
 
   const form = useForm<CreateProductInput>({
     resolver: zodResolver(createProductSchema),
@@ -138,6 +147,10 @@ export function ProductForm({
               <Select
                 value={field.value}
                 onValueChange={(next) => {
+                  if (next === ADD_CATEGORY_VALUE) {
+                    setCategoryDialogOpen(true);
+                    return;
+                  }
                   field.onChange(next);
                   setFormError(null);
                 }}
@@ -157,6 +170,11 @@ export function ProductForm({
                       {category.name}
                     </SelectItem>
                   ))}
+                  {categories.length > 0 ? <SelectSeparator /> : null}
+                  <SelectItem value={ADD_CATEGORY_VALUE}>
+                    <PlusIcon />
+                    Add category
+                  </SelectItem>
                 </SelectContent>
               </Select>
             )}
@@ -207,6 +225,15 @@ export function ProductForm({
           )}
         </Button>
       </div>
+
+      <CategoryFormDialog
+        open={categoryDialogOpen}
+        onOpenChange={setCategoryDialogOpen}
+        onSuccess={(category: CategoryRow) => {
+          form.setValue("categoryId", category.id, { shouldValidate: true });
+          setFormError(null);
+        }}
+      />
     </form>
   );
 }

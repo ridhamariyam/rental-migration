@@ -55,11 +55,13 @@ const PAYMENT_METHOD_LABELS: Record<string, string> = {
 
 export function BookingPickupDialog({
   bookingId,
+  itemId,
   expectedBarcode,
   summary,
   canRecordPayment,
 }: {
   bookingId: string;
+  itemId: string;
   expectedBarcode: string;
   summary: PaymentSummary;
   canRecordPayment: boolean;
@@ -86,7 +88,7 @@ export function BookingPickupDialog({
     setFormError(null);
 
     try {
-      await apiRequest(`/api/bookings/${bookingId}/pickup`, {
+      await apiRequest(`/api/bookings/${bookingId}/items/${itemId}/pickup`, {
         method: "POST",
         body: JSON.stringify(values),
       });

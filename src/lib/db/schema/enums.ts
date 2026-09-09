@@ -183,7 +183,7 @@ export const leaveStatusEnum = pgEnum("leave_status", [
  * `shop_owned`; `customer_owned` is a customer's own piece (e.g. a
  * family heirloom saree) the shop lists and rents out on their behalf,
  * splitting the rent with them — see `product-variations.ts`'s
- * `ownerSharePercentage` and `settlements.ts`.
+ * `ownerShareAmount` and `settlements.ts`.
  */
 export const ownershipTypeEnum = pgEnum("ownership_type", [
   "shop_owned",
@@ -205,6 +205,17 @@ export const settlementStatusEnum = pgEnum("settlement_status", [
   "cancelled",
 ]);
 
+/**
+ * `booking_created`/`pickup_today`/`return_due_today`/`staff_welcome`/
+ * `booking_cancelled` are kept here only because Postgres enums can't drop
+ * values without recreating the type — nothing in the app writes them
+ * anymore (2026-09 MSG91 template rework mapped every live event to one of
+ * the 10 approved templates in `template/*.json`; see
+ * `NOTIFICATION_EVENTS` in `src/lib/notifications.ts` for the current,
+ * shorter source of truth the UI/rules/dedup logic actually iterate).
+ * `feedback_request` (review request, sent ~2 days after an order's last
+ * item is returned) is the one addition.
+ */
 export const notificationEventEnum = pgEnum("notification_event", [
   "booking_created",
   "booking_confirmed",
@@ -218,6 +229,12 @@ export const notificationEventEnum = pgEnum("notification_event", [
   "booking_returned",
   "booking_cancelled",
   "staff_welcome",
+  // Sent to a customer-owned item's owner (not the renting customer) —
+  // see `ownershipType` on `product_variations` and
+  // `queueOwnerBookingNotification` in `server/notifications/service.ts`.
+  "owner_item_booked",
+  "owner_item_cancelled",
+  "feedback_request",
 ]);
 
 export const notificationLogStatusEnum = pgEnum("notification_log_status", [

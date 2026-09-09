@@ -18,6 +18,7 @@ import {
 import { ApiClientError, apiRequest } from "@/lib/api-client";
 import {
   NOTIFICATION_EVENT_LABELS,
+  NOTIFICATION_EVENT_SCOPE,
   NOTIFICATION_EVENTS,
   NOTIFICATION_VARIABLES,
   notificationStatusTone,
@@ -28,6 +29,14 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Dialog,
+  DialogBody,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -129,6 +138,7 @@ export function NotificationsConsole({
   const router = useRouter();
   const searchParams = useSearchParams();
   const [rules, setRules] = useState(() => sortedRules(dashboard.rules));
+  const [openEvent, setOpenEvent] = useState<NotificationEvent | null>(null);
   const [integratedNumber, setIntegratedNumber] = useState("");
   const [logQuery, setLogQuery] = useState(searchParams.get("q") ?? "");
   const [logStatus, setLogStatus] = useState(searchParams.get("status") ?? "all");
@@ -419,147 +429,58 @@ export function NotificationsConsole({
       <Card>
         <CardHeader>
           <CardTitle className="text-base">Automation rules</CardTitle>
+          <p className="text-muted-foreground text-sm">
+            Turn an event on, then click it to pick the number/template and
+            map its variables. <strong>Offset (minutes)</strong> shifts the
+            send time earlier (negative) or later (positive) than it would
+            go by default — e.g. `-60` sends an hour early, `0` sends right
+            on time. <strong>Repeat limit</strong> is only used by
+            &ldquo;Return overdue alert&rdquo; — how many days in a row to
+            keep re-sending it while the item is still not returned.
+          </p>
         </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Event</TableHead>
-                  <TableHead>Enabled</TableHead>
-                  <TableHead>Number</TableHead>
-                  <TableHead>Template</TableHead>
-                  <TableHead>Offset minutes</TableHead>
-                  <TableHead>Variables</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {rules.map((rule) => {
-                  const template = rule.templateId ? templateById.get(rule.templateId) : null;
-                  const slots = template?.variableSlots?.length
-                    ? template.variableSlots
-                    : ["body_1", "body_2", "body_3", "body_4"];
+        <CardContent className="space-y-2">
+          {rules.map((rule) => {
+            const scope = NOTIFICATION_EVENT_SCOPE[rule.event];
+            const number = rule.whatsappNumberId
+              ? numberById.get(rule.whatsappNumberId)
+              : null;
+            const template = rule.templateId ? templateById.get(rule.templateId) : null;
 
-                  return (
-                    <TableRow key={rule.event}>
-                      <TableCell className="min-w-44 font-medium">
-                        {NOTIFICATION_EVENT_LABELS[rule.event]}
-                      </TableCell>
-                      <TableCell>
-                        <Checkbox
-                          checked={rule.isEnabled}
-                          disabled={!canManage}
-                          onCheckedChange={(checked) =>
-                            updateRule(rule.event, { isEnabled: checked === true })
-                          }
-                        />
-                      </TableCell>
-                      <TableCell className="min-w-48">
-                        <Select
-                          value={rule.whatsappNumberId ?? "none"}
-                          disabled={!canManage}
-                          onValueChange={(value) =>
-                            updateRule(rule.event, {
-                              whatsappNumberId: value === "none" ? null : value,
-                            })
-                          }
-                        >
-                          <SelectTrigger>
-                            <SelectValue>
-                              {(value: string) =>
-                                numberById.get(value)?.integratedNumber ??
-                                "Choose number"
-                              }
-                            </SelectValue>
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="none">Choose number</SelectItem>
-                            {dashboard.numbers.map((number) => (
-                              <SelectItem key={number.id} value={number.id}>
-                                {number.integratedNumber}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </TableCell>
-                      <TableCell className="min-w-56">
-                        <Select
-                          value={rule.templateId ?? "none"}
-                          disabled={!canManage}
-                          onValueChange={(value) =>
-                            updateRule(rule.event, {
-                              templateId: value === "none" ? null : value,
-                            })
-                          }
-                        >
-                          <SelectTrigger>
-                            <SelectValue>
-                              {(value: string) => {
-                                const selected = templateById.get(value);
-                                return selected
-                                  ? `${selected.name} (${selected.language})`
-                                  : "Choose template";
-                              }}
-                            </SelectValue>
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="none">Choose template</SelectItem>
-                            {approvedTemplates.map((template) => (
-                              <SelectItem key={template.id} value={template.id}>
-                                {template.name} ({template.language})
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </TableCell>
-                      <TableCell className="min-w-32">
-                        <Input
-                          type="number"
-                          value={rule.scheduleOffsetMinutes}
-                          disabled={!canManage}
-                          onChange={(event) =>
-                            updateRule(rule.event, {
-                              scheduleOffsetMinutes: Number(event.target.value),
-                            })
-                          }
-                        />
-                      </TableCell>
-                      <TableCell className="min-w-72">
-                        <div className="grid gap-2">
-                          {slots.slice(0, 6).map((slot) => (
-                            <div key={slot} className="grid grid-cols-[88px_1fr] items-center gap-2">
-                              <span className="text-muted-foreground text-xs">{slot}</span>
-                              <Select
-                                value={rule.variableMapping[slot] ?? "none"}
-                                disabled={!canManage}
-                                onValueChange={(value) =>
-                                  updateRuleMapping(
-                                    rule.event,
-                                    String(slot),
-                                    value === "none" ? "" : String(value ?? ""),
-                                  )
-                                }
-                              >
-                                <SelectTrigger><SelectValue /></SelectTrigger>
-                                <SelectContent>
-                                  <SelectItem value="none">Choose variable</SelectItem>
-                                  {NOTIFICATION_VARIABLES.map((variable) => (
-                                    <SelectItem key={variable} value={variable}>
-                                      {variable}
-                                    </SelectItem>
-                                  ))}
-                                </SelectContent>
-                              </Select>
-                            </div>
-                          ))}
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
-              </TableBody>
-            </Table>
-          </div>
+            return (
+              <button
+                key={rule.event}
+                type="button"
+                onClick={() => setOpenEvent(rule.event)}
+                className="hover:bg-accent/50 flex w-full items-center justify-between gap-3 rounded-lg border p-3 text-left"
+              >
+                <div className="flex items-center gap-3">
+                  <Checkbox
+                    checked={rule.isEnabled}
+                    disabled={!canManage}
+                    onClick={(event) => event.stopPropagation()}
+                    onCheckedChange={(checked) =>
+                      updateRule(rule.event, { isEnabled: checked === true })
+                    }
+                  />
+                  <div>
+                    <p className="font-medium">{NOTIFICATION_EVENT_LABELS[rule.event]}</p>
+                    <p className="text-muted-foreground text-xs">
+                      {scope === "booking" ? "Once per booking" : "Once per item"}
+                      {" · "}
+                      {number && template
+                        ? `${number.integratedNumber} · ${template.name}`
+                        : "Not set up yet"}
+                    </p>
+                  </div>
+                </div>
+                <Badge variant={rule.isEnabled ? "default" : "secondary"}>
+                  {rule.isEnabled ? "On" : "Off"}
+                </Badge>
+              </button>
+            );
+          })}
+
           <Button
             disabled={!canManage || pending}
             onClick={() =>
@@ -584,6 +505,180 @@ export function NotificationsConsole({
           </Button>
         </CardContent>
       </Card>
+
+      <Dialog open={openEvent !== null} onOpenChange={(open) => !open && setOpenEvent(null)}>
+        <DialogContent className="sm:max-w-2xl">
+          {openEvent &&
+            (() => {
+              const rule = rules.find((candidate) => candidate.event === openEvent);
+              if (!rule) return null;
+              const template = rule.templateId ? templateById.get(rule.templateId) : null;
+              const slots = template?.variableSlots?.length
+                ? template.variableSlots
+                : ["body_1", "body_2", "body_3", "body_4", "body_5", "body_6"];
+              const scope = NOTIFICATION_EVENT_SCOPE[rule.event];
+              const isOverdueEvent = rule.event === "overdue_reminder";
+
+              return (
+                <>
+                  <DialogHeader>
+                    <DialogTitle>{NOTIFICATION_EVENT_LABELS[rule.event]}</DialogTitle>
+                    <DialogDescription>
+                      {scope === "booking"
+                        ? "Sent once per booking"
+                        : "Sent once per item"}
+                    </DialogDescription>
+                  </DialogHeader>
+                  <DialogBody>
+                    <label className="flex w-fit items-center gap-2 text-sm">
+                      <Checkbox
+                        checked={rule.isEnabled}
+                        disabled={!canManage}
+                        onCheckedChange={(checked) =>
+                          updateRule(rule.event, { isEnabled: checked === true })
+                        }
+                      />
+                      Enabled
+                    </label>
+
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <div className="space-y-1.5">
+                        <Label>WhatsApp number</Label>
+                        <Select
+                          value={rule.whatsappNumberId ?? "none"}
+                          disabled={!canManage}
+                          onValueChange={(value) =>
+                            updateRule(rule.event, {
+                              whatsappNumberId: value === "none" ? null : value,
+                            })
+                          }
+                        >
+                          <SelectTrigger className="w-full">
+                            <SelectValue>
+                              {(value: string) =>
+                                numberById.get(value)?.integratedNumber ??
+                                "Choose number"
+                              }
+                            </SelectValue>
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="none">Choose number</SelectItem>
+                            {dashboard.numbers.map((number) => (
+                              <SelectItem key={number.id} value={number.id}>
+                                {number.integratedNumber}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <Label>Template</Label>
+                        <Select
+                          value={rule.templateId ?? "none"}
+                          disabled={!canManage}
+                          onValueChange={(value) =>
+                            updateRule(rule.event, {
+                              templateId: value === "none" ? null : value,
+                            })
+                          }
+                        >
+                          <SelectTrigger className="w-full">
+                            <SelectValue>
+                              {(value: string) => {
+                                const selected = templateById.get(value);
+                                return selected
+                                  ? `${selected.name} (${selected.language})`
+                                  : "Choose template";
+                              }}
+                            </SelectValue>
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="none">Choose template</SelectItem>
+                            {approvedTemplates.map((template) => (
+                              <SelectItem key={template.id} value={template.id}>
+                                {template.name} ({template.language})
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <Label>Offset (minutes)</Label>
+                        <Input
+                          type="number"
+                          value={rule.scheduleOffsetMinutes}
+                          disabled={!canManage}
+                          onChange={(event) =>
+                            updateRule(rule.event, {
+                              scheduleOffsetMinutes: Number(event.target.value),
+                            })
+                          }
+                        />
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <Label>
+                          Repeat limit
+                          {!isOverdueEvent && (
+                            <span className="text-muted-foreground font-normal"> (overdue alert only)</span>
+                          )}
+                        </Label>
+                        <Input
+                          type="number"
+                          min={0}
+                          value={rule.repeatLimit}
+                          disabled={!canManage || !isOverdueEvent}
+                          onChange={(event) =>
+                            updateRule(rule.event, {
+                              repeatLimit: Number(event.target.value),
+                            })
+                          }
+                        />
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label className="text-muted-foreground text-xs uppercase">
+                        Template variables
+                      </Label>
+                      <div className="grid gap-2 sm:grid-cols-2">
+                        {slots.map((slot) => (
+                          <div key={slot} className="space-y-1">
+                            <span className="text-muted-foreground text-xs">{slot}</span>
+                            <Select
+                              value={rule.variableMapping[slot] ?? "none"}
+                              disabled={!canManage}
+                              onValueChange={(value) =>
+                                updateRuleMapping(
+                                  rule.event,
+                                  String(slot),
+                                  value === "none" ? "" : String(value ?? ""),
+                                )
+                              }
+                            >
+                              <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="none">Choose variable</SelectItem>
+                                {NOTIFICATION_VARIABLES.map((variable) => (
+                                  <SelectItem key={variable} value={variable}>
+                                    {variable}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </DialogBody>
+                </>
+              );
+            })()}
+        </DialogContent>
+      </Dialog>
+
 
       <Card>
         <CardHeader>
