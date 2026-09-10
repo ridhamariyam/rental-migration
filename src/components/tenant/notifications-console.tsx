@@ -193,9 +193,9 @@ export function NotificationsConsole({
     );
   }
 
-  function saveRules(onSaved?: () => void) {
+  function saveRules(onSaved?: () => void, rulesToSave: Rule[] = rules) {
     run(async () => {
-      const cleaned = rules.map((rule) => ({
+      const cleaned = rulesToSave.map((rule) => ({
         ...rule,
         variableMapping: Object.fromEntries(
           Object.entries(rule.variableMapping).filter(([, value]) => value),
@@ -209,6 +209,16 @@ export function NotificationsConsole({
       setMessage("Notification rules saved.");
       onSaved?.();
     });
+  }
+
+  // Toggling straight from the row list has no dialog/Save button of its
+  // own, so it saves immediately — built off a computed snapshot rather
+  // than the `rules` state, since `setRules` hasn't flushed yet when this
+  // runs.
+  function toggleRuleEnabled(event: NotificationEvent, isEnabled: boolean) {
+    const next = rules.map((rule) => (rule.event === event ? { ...rule, isEnabled } : rule));
+    setRules(next);
+    saveRules(undefined, next);
   }
 
   function applyLogFilters() {
@@ -503,10 +513,10 @@ export function NotificationsConsole({
                 <div className="flex items-center gap-3">
                   <Checkbox
                     checked={rule.isEnabled}
-                    disabled={!canManage}
+                    disabled={!canManage || pending}
                     onClick={(event) => event.stopPropagation()}
                     onCheckedChange={(checked) =>
-                      updateRule(rule.event, { isEnabled: checked === true })
+                      toggleRuleEnabled(rule.event, checked === true)
                     }
                   />
                   <div>
@@ -526,11 +536,6 @@ export function NotificationsConsole({
               </button>
             );
           })}
-
-          <Button disabled={!canManage || pending} onClick={() => saveRules()}>
-            <SaveIcon />
-            Save rules
-          </Button>
         </CardContent>
       </Card>
 
