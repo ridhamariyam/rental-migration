@@ -202,8 +202,16 @@ export async function updateNotificationRules(
 
   await db.transaction(async (tx) => {
     for (const rule of rules) {
-      if (rule.isEnabled && (!rule.whatsappNumberId || !rule.templateId)) {
-        throw new AppError("Choose a WhatsApp number and template before enabling a rule", 400);
+      // The whole array is saved in one PUT (every event's rule, not just
+      // the one the operator is currently editing) — an operator setting
+      // up templates one event at a time would otherwise never be able to
+      // save at all, since every *other*, not-yet-configured event is
+      // enabled by default. Silently drop back to disabled instead of
+      // rejecting the whole batch; only a rule this call actually leaves
+      // enabled has to be fully configured.
+      let isEnabled = rule.isEnabled;
+      if (isEnabled && (!rule.whatsappNumberId || !rule.templateId)) {
+        isEnabled = false;
       }
 
       if (rule.whatsappNumberId) {
@@ -232,15 +240,15 @@ export async function updateNotificationRules(
           )
           .limit(1);
         if (!template) throw AppError.notFound("Template not found");
-        if (rule.isEnabled && template.status.toLowerCase() !== "approved") {
-          throw new AppError("Only approved WhatsApp templates can be enabled", 400);
+        if (isEnabled && template.status.toLowerCase() !== "approved") {
+          isEnabled = false;
         }
       }
 
       await tx
         .update(notificationRules)
         .set({
-          isEnabled: rule.isEnabled,
+          isEnabled,
           whatsappNumberId: rule.whatsappNumberId ?? null,
           templateId: rule.templateId ?? null,
           scheduleOffsetMinutes: rule.scheduleOffsetMinutes,
