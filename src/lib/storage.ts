@@ -40,6 +40,7 @@ export const STORAGE_FOLDERS = [
   "products",
   "avatars",
   "booking-documents",
+  "attendance",
 ] as const;
 
 export type StorageFolder = (typeof STORAGE_FOLDERS)[number];

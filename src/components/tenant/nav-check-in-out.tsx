@@ -12,10 +12,15 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Spinner } from "@/components/ui/spinner";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { formatTime } from "@/lib/format";
 import type { Attendance } from "@/lib/db/schema";
 import { useAttendanceCheckInOut } from "@/hooks/use-attendance-check-in-out";
+import { CheckInCameraDialog } from "@/components/tenant/check-in-camera-dialog";
 
 /**
  * Quick check-in/out from the dashboard header, not just the Attendance
@@ -38,10 +43,16 @@ export function NavCheckInOut({
     hasCheckedOut,
   } = useAttendanceCheckInOut(initialToday);
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const [cameraOpen, setCameraOpen] = useState(false);
 
   async function handleConfirmedCheckOut() {
     await checkOut();
     setConfirmOpen(false);
+  }
+
+  async function handleCheckIn(photo: Blob) {
+    await checkIn(photo);
+    setCameraOpen(false);
   }
 
   return (
@@ -60,7 +71,11 @@ export function NavCheckInOut({
       ) : null}
 
       {!hasCheckedIn ? (
-        <Button size="sm" onClick={checkIn} disabled={isSubmitting}>
+        <Button
+          size="sm"
+          onClick={() => setCameraOpen(true)}
+          disabled={isSubmitting}
+        >
           {isSubmitting ? <Spinner /> : <LogInIcon />}
           Check in
         </Button>
@@ -84,6 +99,14 @@ export function NavCheckInOut({
           Checked out {formatTime(today!.checkOutTime!)}
         </span>
       )}
+
+      <CheckInCameraDialog
+        open={cameraOpen}
+        onOpenChange={setCameraOpen}
+        onConfirm={handleCheckIn}
+        isSubmitting={isSubmitting}
+        error={error}
+      />
 
       <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
         <DialogContent>

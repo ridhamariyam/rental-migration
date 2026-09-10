@@ -26,6 +26,7 @@ import {
   type AttendanceOutletGeofence,
 } from "@/components/tenant/attendance-geofence-map";
 import { useAttendanceCheckInOut } from "@/hooks/use-attendance-check-in-out";
+import { CheckInCameraDialog } from "@/components/tenant/check-in-camera-dialog";
 
 /**
  * Geofenced check-in/out (doc §17) — the browser's own `Geolocation` API
@@ -52,10 +53,16 @@ export function CheckInOutCard({
     hasCheckedOut,
   } = useAttendanceCheckInOut(initialToday);
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const [cameraOpen, setCameraOpen] = useState(false);
 
   async function handleConfirmedCheckOut() {
     await checkOut();
     setConfirmOpen(false);
+  }
+
+  async function handleCheckIn(photo: Blob) {
+    await checkIn(photo);
+    setCameraOpen(false);
   }
 
   return (
@@ -107,7 +114,7 @@ export function CheckInOutCard({
         </div>
 
         {!hasCheckedIn ? (
-          <Button onClick={checkIn} disabled={isSubmitting}>
+          <Button onClick={() => setCameraOpen(true)} disabled={isSubmitting}>
             {isSubmitting ? <Spinner /> : <LogInIcon />}
             Check in
           </Button>
@@ -126,6 +133,14 @@ export function CheckInOutCard({
           </p>
         )}
       </CardContent>
+
+      <CheckInCameraDialog
+        open={cameraOpen}
+        onOpenChange={setCameraOpen}
+        onConfirm={handleCheckIn}
+        isSubmitting={isSubmitting}
+        error={error}
+      />
 
       <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
         <DialogContent>

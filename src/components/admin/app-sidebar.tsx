@@ -20,7 +20,7 @@ import {
 } from "@/components/ui/sidebar";
 import { AdminCommandMenu } from "@/components/admin/admin-command-menu";
 import { AdminSignOutButton } from "@/components/admin/admin-sign-out-button";
-import { LogoMark } from "@/components/admin/logo-mark";
+import { Wordmark } from "@/components/brand/wordmark";
 import { adminPaths } from "@/lib/admin-paths";
 
 const navItems = [
@@ -49,19 +49,12 @@ export function AppSidebar({ adminEmail }: { adminEmail: string }) {
             <SidebarMenuButton
               size="lg"
               render={<Link href={adminPaths.dashboard} />}
-              // The `lg` size variant zeroes padding in icon-collapsed mode
-              // (`group-data-[collapsible=icon]:p-0!`), which otherwise left
-              // the 24px badge flex-start aligned in the 32px collapsed box
-              // — a visible left shift versus the nav icons below, which
-              // stay centered via their own (non-zeroed) padding.
-              className="mb-3 overflow-visible group-data-[collapsible=icon]:justify-center"
+              // Hidden outright when the sidebar collapses to icons: the
+              // brand here is a word, and there is no mark to stand in for
+              // it at 32px — see `components/brand/wordmark.tsx`.
+              className="mb-3 overflow-visible group-data-[collapsible=icon]:hidden"
             >
-              <span className="flex size-7 shrink-0 items-center justify-center overflow-hidden rounded-lg">
-                <LogoMark className="size-7 object-contain" />
-              </span>
-              <span className="font-script text-[22px] font-bold tracking-wide overflow-visible px-1 py-0.5 inline-block group-data-[collapsible=icon]:hidden">
-                Rentique
-              </span>
+              <Wordmark size="sm" />
             </SidebarMenuButton>
           </SidebarMenuItem>
           <SidebarMenuItem>

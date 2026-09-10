@@ -9,7 +9,6 @@
   --color-foreground: var(--foreground);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
-  --font-script: "Brush Script MT", "Segoe Script", cursive;
   --font-heading: var(--font-sans);
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
@@ -47,6 +46,23 @@
   --radius-2xl: calc(var(--radius) * 1.8);
   --radius-3xl: calc(var(--radius) * 2.2);
   --radius-4xl: calc(var(--radius) * 2.6);
+}
+
+/* Sign-in surface -------------------------------------------------------
+   The authentication screens (`/login`, `/admin/login`, `/reset-password`)
+   run a warmer, quieter palette than the operational shell behind them:
+   an off-white paper canvas rather than the app's neutral grey desk. Kept
+   as its own token set instead of retuning `--background`/`--foreground`,
+   so restyling the front door never moves a colour inside the product.
+   The brand accent stays `--primary` (#009675) — these tokens deliberately
+   contain no teal, so it can only enter via a primary action or focus. */
+@theme {
+  --color-auth-canvas: #fafaf8;
+  --color-auth-ink: #111111;
+  --color-auth-muted: #6b6b6b;
+  --color-auth-line: #e7e5e1;
+  --color-auth-danger: #d92d20;
+  --color-auth-success: #159a75;
 }
 
 :root {

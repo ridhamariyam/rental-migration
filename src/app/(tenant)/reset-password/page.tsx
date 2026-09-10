@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { LogoMark } from "@/components/admin/logo-mark";
+import { Wordmark } from "@/components/brand/wordmark";
 import { ResetPasswordForm } from "@/components/tenant/reset-password-form";
 import { TenantSignOutButton } from "@/components/tenant/tenant-sign-out-button";
 import { getCurrentUser } from "@/lib/auth/session";
@@ -31,10 +31,7 @@ export default async function ResetPasswordPage() {
       <div className="bg-card ring-foreground/10 flex w-full max-w-md flex-col gap-8 rounded-3xl p-8 ring-1 sm:p-10">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2.5">
-            <span className="flex size-8 items-center justify-center overflow-hidden rounded-lg">
-              <LogoMark className="size-8 object-contain" />
-            </span>
-            <span className="font-script text-2xl font-bold tracking-wide overflow-visible px-1 py-0.5 inline-block">Rentique</span>
+            <Wordmark />
           </div>
           <TenantSignOutButton />
         </div>

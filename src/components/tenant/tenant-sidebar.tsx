@@ -36,7 +36,7 @@ import {
   SidebarRail,
   useSidebar,
 } from "@/components/ui/sidebar";
-import { LogoMark } from "@/components/admin/logo-mark";
+import { Wordmark } from "@/components/brand/wordmark";
 import { TenantAccountButton } from "@/components/tenant/tenant-account-button";
 import { TenantCommandMenu } from "@/components/tenant/tenant-command-menu";
 import {
@@ -190,10 +190,15 @@ export function TenantSidebar({
   // Plain staff accounts get no dashboard/overview page at all (see
   // `dashboard/page.tsx`'s matching redirect) — Bookings is their
   // effective "home" instead.
-  const homeHref = user.role === "staff" ? tenantPaths.bookings : tenantPaths.dashboard;
+  const homeHref =
+    user.role === "staff" ? tenantPaths.bookings : tenantPaths.dashboard;
   const items = navItems
-    .filter((item) => item.href !== tenantPaths.dashboard || user.role !== "staff")
-    .filter((item) => !item.permission || hasPermission(user.role, item.permission))
+    .filter(
+      (item) => item.href !== tenantPaths.dashboard || user.role !== "staff",
+    )
+    .filter(
+      (item) => !item.permission || hasPermission(user.role, item.permission),
+    )
     .map((item) =>
       // The owner/super admin has no self-service "check in" page of
       // their own (see `dashboard/attendance/page.tsx`'s redirect) — send
@@ -214,14 +219,9 @@ export function TenantSidebar({
             <SidebarMenuButton
               size="lg"
               render={<Link href={homeHref} />}
-              className="mb-3 overflow-visible group-data-[collapsible=icon]:justify-center"
+              className="mb-3 overflow-visible group-data-[collapsible=icon]:hidden"
             >
-              <span className="flex size-7 shrink-0 items-center justify-center overflow-hidden rounded-lg">
-                <LogoMark className="size-7 object-contain" />
-              </span>
-              <span className="font-script text-[22px] font-bold tracking-wide overflow-visible px-1 py-0.5 inline-block group-data-[collapsible=icon]:hidden">
-                Rentique
-              </span>
+              <Wordmark size="sm" />
             </SidebarMenuButton>
           </SidebarMenuItem>
           <SidebarMenuItem>
@@ -232,7 +232,7 @@ export function TenantSidebar({
 
       <SidebarContent>
         <SidebarGroup className="px-2 py-1">
-          <SidebarGroupLabel className="px-2 py-1.5 text-[11px] font-semibold tracking-widest uppercase text-muted-foreground/60">
+          <SidebarGroupLabel className="text-muted-foreground/60 px-2 py-1.5 text-[11px] font-semibold tracking-widest uppercase">
             Business
           </SidebarGroupLabel>
           <SidebarGroupContent>
@@ -253,15 +253,15 @@ export function TenantSidebar({
                       render={<Link href={item.href} />}
                       className={
                         isActive
-                          ? "h-9 rounded-lg bg-primary/10 px-2.5 text-sm font-semibold text-primary transition-colors hover:bg-primary/15 hover:text-primary data-active:bg-primary/10 data-active:font-semibold data-active:text-primary"
-                          : "h-9 rounded-lg px-2.5 text-sm font-medium text-muted-foreground/90 transition-colors hover:bg-accent/60 hover:text-foreground"
+                          ? "bg-primary/10 text-primary hover:bg-primary/15 hover:text-primary data-active:bg-primary/10 data-active:text-primary h-9 rounded-lg px-2.5 text-sm font-semibold transition-colors data-active:font-semibold"
+                          : "text-muted-foreground/90 hover:bg-accent/60 hover:text-foreground h-9 rounded-lg px-2.5 text-sm font-medium transition-colors"
                       }
                     >
                       <Icon
                         className={
                           isActive
-                            ? "size-[18px] shrink-0 text-primary"
-                            : "size-[18px] shrink-0 text-muted-foreground/75 transition-colors group-hover/menu-button:text-foreground"
+                            ? "text-primary size-[18px] shrink-0"
+                            : "text-muted-foreground/75 group-hover/menu-button:text-foreground size-[18px] shrink-0 transition-colors"
                         }
                       />
                       <span className="min-w-0 truncate tracking-tight">
@@ -277,7 +277,7 @@ export function TenantSidebar({
 
         {accountItems.length > 0 ? (
           <SidebarGroup className="px-2 py-1">
-            <SidebarGroupLabel className="px-2 py-1.5 text-[11px] font-semibold tracking-widest uppercase text-muted-foreground/60">
+            <SidebarGroupLabel className="text-muted-foreground/60 px-2 py-1.5 text-[11px] font-semibold tracking-widest uppercase">
               Account
             </SidebarGroupLabel>
             <SidebarGroupContent>
@@ -294,15 +294,15 @@ export function TenantSidebar({
                         render={<Link href={item.href} />}
                         className={
                           isActive
-                            ? "h-9 rounded-lg bg-primary/10 px-2.5 text-sm font-semibold text-primary transition-colors hover:bg-primary/15 hover:text-primary data-active:bg-primary/10 data-active:font-semibold data-active:text-primary"
-                            : "h-9 rounded-lg px-2.5 text-sm font-medium text-muted-foreground/90 transition-colors hover:bg-accent/60 hover:text-foreground"
+                            ? "bg-primary/10 text-primary hover:bg-primary/15 hover:text-primary data-active:bg-primary/10 data-active:text-primary h-9 rounded-lg px-2.5 text-sm font-semibold transition-colors data-active:font-semibold"
+                            : "text-muted-foreground/90 hover:bg-accent/60 hover:text-foreground h-9 rounded-lg px-2.5 text-sm font-medium transition-colors"
                         }
                       >
                         <Icon
                           className={
                             isActive
-                              ? "size-[18px] shrink-0 text-primary"
-                              : "size-[18px] shrink-0 text-muted-foreground/75 transition-colors group-hover/menu-button:text-foreground"
+                              ? "text-primary size-[18px] shrink-0"
+                              : "text-muted-foreground/75 group-hover/menu-button:text-foreground size-[18px] shrink-0 transition-colors"
                           }
                         />
                         <span className="min-w-0 truncate tracking-tight">

@@ -19,6 +19,8 @@ import {
   haversineMetres,
 } from "@/lib/geo";
 import { toDateString } from "@/lib/format";
+import { uploadToStorage } from "@/lib/storage";
+import type { ValidatedImage } from "@/lib/uploads/read-image-upload";
 import type {
   AttendanceListQuery,
   CheckInOutInput,
@@ -43,6 +45,7 @@ const ATTENDANCE_SELECT = {
   checkInLatitude: attendances.checkInLatitude,
   checkInLongitude: attendances.checkInLongitude,
   checkInDistanceMetres: attendances.checkInDistanceMetres,
+  checkInPhotoUrl: attendances.checkInPhotoUrl,
   checkOutTime: attendances.checkOutTime,
   checkOutLatitude: attendances.checkOutLatitude,
   checkOutLongitude: attendances.checkOutLongitude,
@@ -79,7 +82,9 @@ async function resolveOwnOutlet(actor: TenantSessionUser) {
   const [outlet] = await db
     .select()
     .from(outlets)
-    .where(and(eq(outlets.id, actor.outletId), eq(outlets.shopId, actor.shopId)))
+    .where(
+      and(eq(outlets.id, actor.outletId), eq(outlets.shopId, actor.shopId)),
+    )
     .limit(1);
 
   if (!outlet) {
@@ -99,7 +104,12 @@ async function resolveOwnOutlet(actor: TenantSessionUser) {
  * a prerequisite for using attendance at all. Returns `null` distance
  * (nothing to compare against) when there's no geofence to check against. */
 function validatePosition(
-  outlet: { latitude: number | null; longitude: number | null; allowedRadiusMetres: number; name: string },
+  outlet: {
+    latitude: number | null;
+    longitude: number | null;
+    allowedRadiusMetres: number;
+    name: string;
+  },
   latitude: number,
   longitude: number,
 ): number | null {
@@ -109,7 +119,12 @@ function validatePosition(
     return null;
   }
 
-  const distance = haversineMetres(latitude, longitude, outlet.latitude, outlet.longitude);
+  const distance = haversineMetres(
+    latitude,
+    longitude,
+    outlet.latitude,
+    outlet.longitude,
+  );
 
   if (distance > outlet.allowedRadiusMetres) {
     throw new AppError(
@@ -183,7 +198,9 @@ export async function getWorkedHoursSummary(
     if (!row.checkOutTime) continue;
     totalMinutes += Math.max(
       0,
-      Math.round((row.checkOutTime.getTime() - row.checkInTime.getTime()) / 60_000),
+      Math.round(
+        (row.checkOutTime.getTime() - row.checkInTime.getTime()) / 60_000,
+      ),
     );
     daysWithHours += 1;
   }
@@ -193,7 +210,7 @@ export async function getWorkedHoursSummary(
 
 export async function checkIn(
   actor: TenantSessionUser,
-  input: CheckInOutInput,
+  input: CheckInOutInput & { photo: ValidatedImage },
 ): Promise<Attendance> {
   if (!hasPermission(actor.role, Permission.ATTENDANCE_SELF)) {
     throw AppError.forbidden("You do not have permission to do this");
@@ -207,6 +224,18 @@ export async function checkIn(
   const outlet = await resolveOwnOutlet(actor);
   const distance = validatePosition(outlet, input.latitude, input.longitude);
 
+  // Stored only once every other check has passed, so a check-in that is
+  // going to be refused (wrong day, outside the geofence, no permission)
+  // never leaves an orphaned object in the bucket. The folder is private
+  // and the key carries the owning shop, so the capture is readable only
+  // through `/api/files/...` by someone signed in to this tenant.
+  const checkInPhotoUrl = await uploadToStorage(
+    input.photo.buffer,
+    "attendance",
+    input.photo.contentType,
+    { ownerShopId: actor.shopId },
+  );
+
   const [attendance] = await db
     .insert(attendances)
     .values({
@@ -219,6 +248,7 @@ export async function checkIn(
       checkInLatitude: input.latitude,
       checkInLongitude: input.longitude,
       checkInDistanceMetres: distance,
+      checkInPhotoUrl,
     })
     .returning();
 
@@ -267,10 +297,7 @@ export type AttendanceListResult = {
   totalPages: number;
 };
 
-function buildAttendanceConditions(
-  shopId: string,
-  query: AttendanceListQuery,
-) {
+function buildAttendanceConditions(shopId: string, query: AttendanceListQuery) {
   const conditions = [eq(attendances.shopId, shopId)];
 
   if (query.status !== "all") {
@@ -389,12 +416,12 @@ export async function getAttendanceStats(
     db
       .select({ value: count() })
       .from(attendanceCorrections)
-      .innerJoin(attendances, eq(attendanceCorrections.attendanceId, attendances.id))
+      .innerJoin(
+        attendances,
+        eq(attendanceCorrections.attendanceId, attendances.id),
+      )
       .where(
-        and(
-          eq(attendances.shopId, shopId),
-          gte(attendances.date, monthStart),
-        ),
+        and(eq(attendances.shopId, shopId), gte(attendances.date, monthStart)),
       ),
   ]);
 
@@ -412,7 +439,9 @@ async function loadAttendanceForTenant(
   const [row] = await db
     .select()
     .from(attendances)
-    .where(and(eq(attendances.id, attendanceId), eq(attendances.shopId, shopId)))
+    .where(
+      and(eq(attendances.id, attendanceId), eq(attendances.shopId, shopId)),
+    )
     .limit(1);
 
   if (!row) {
@@ -496,7 +525,11 @@ export async function correctAttendance(
       entityId: row.id,
       summary: input.reason,
       before: previous,
-      after: { checkInTime: row.checkInTime, checkOutTime: row.checkOutTime, status: row.status },
+      after: {
+        checkInTime: row.checkInTime,
+        checkOutTime: row.checkOutTime,
+        status: row.status,
+      },
     });
 
     return row;
