@@ -35,6 +35,7 @@ import {
   DialogBody,
   DialogContent,
   DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
@@ -190,6 +191,24 @@ export function NotificationsConsole({
           : rule,
       ),
     );
+  }
+
+  function saveRules(onSaved?: () => void) {
+    run(async () => {
+      const cleaned = rules.map((rule) => ({
+        ...rule,
+        variableMapping: Object.fromEntries(
+          Object.entries(rule.variableMapping).filter(([, value]) => value),
+        ),
+      }));
+      const saved = await apiRequest<Rule[]>("/api/notifications/rules", {
+        method: "PUT",
+        body: JSON.stringify({ rules: cleaned }),
+      });
+      setRules(sortedRules(saved));
+      setMessage("Notification rules saved.");
+      onSaved?.();
+    });
   }
 
   function applyLogFilters() {
@@ -508,25 +527,7 @@ export function NotificationsConsole({
             );
           })}
 
-          <Button
-            disabled={!canManage || pending}
-            onClick={() =>
-              run(async () => {
-                const cleaned = rules.map((rule) => ({
-                  ...rule,
-                  variableMapping: Object.fromEntries(
-                    Object.entries(rule.variableMapping).filter(([, value]) => value),
-                  ),
-                }));
-                const saved = await apiRequest<Rule[]>("/api/notifications/rules", {
-                  method: "PUT",
-                  body: JSON.stringify({ rules: cleaned }),
-                });
-                setRules(sortedRules(saved));
-                setMessage("Notification rules saved.");
-              })
-            }
-          >
+          <Button disabled={!canManage || pending} onClick={() => saveRules()}>
             <SaveIcon />
             Save rules
           </Button>
@@ -700,6 +701,15 @@ export function NotificationsConsole({
                       </div>
                     </div>
                   </DialogBody>
+                  <DialogFooter showCloseButton>
+                    <Button
+                      disabled={!canManage || pending}
+                      onClick={() => saveRules(() => setOpenEvent(null))}
+                    >
+                      <SaveIcon />
+                      Save changes
+                    </Button>
+                  </DialogFooter>
                 </>
               );
             })()}
