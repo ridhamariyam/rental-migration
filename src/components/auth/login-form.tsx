@@ -1,10 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useForm, type Resolver } from "react-hook-form";
 import {
   AlertCircleIcon,
+  ArrowRightIcon,
   EyeIcon,
   EyeOffIcon,
   LockIcon,
@@ -48,15 +49,23 @@ function safeRedirectTarget(value: string | null, fallback: string): string {
  * own `zodResolver(itsSchema)`) rather than a raw Zod schema — `zodResolver`
  * has generic overloads that don't play well with a schema typed through a
  * shared, looser `ZodType<Credentials>` prop.
+ *
+ * `assistiveAction` is an optional slot on the password row (the tenant
+ * screen puts its "Forgot password?" disclosure there). It is a slot rather
+ * than a `forgotPasswordHref` prop because there is no forgot-password
+ * *route* in this app — accounts are administrator-provisioned — so what
+ * belongs there differs per surface.
  */
 export function LoginForm({
   resolver,
   apiPath,
   defaultRedirectTo,
+  assistiveAction,
 }: {
   resolver: Resolver<Credentials>;
   apiPath: string;
   defaultRedirectTo: string;
+  assistiveAction?: ReactNode;
 }) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -98,33 +107,46 @@ export function LoginForm({
 
   const isSubmitting = form.formState.isSubmitting;
 
+  // 48px tall, 10px corners, one hairline border — the field metrics the
+  // sign-in screens are laid out around. Declared once so email and
+  // password can't drift apart.
+  const fieldClass =
+    "h-12 rounded-[10px] border-auth-line bg-white text-[15px] text-auth-ink placeholder:text-auth-muted/70 md:text-[15px]";
+
   return (
-    <form onSubmit={onSubmit} noValidate className="flex flex-col gap-5">
+    <form onSubmit={onSubmit} noValidate className="flex flex-col gap-6">
       {formError ? (
         <Alert
           variant="destructive"
-          className="border-destructive/25 bg-destructive/5"
+          className="border-auth-danger/25 bg-auth-danger/5 rounded-[10px]"
         >
-          <AlertCircleIcon />
-          <AlertDescription className="text-destructive font-medium">
+          <AlertCircleIcon className="text-auth-danger" />
+          <AlertDescription className="text-auth-danger font-medium">
             {formError}
           </AlertDescription>
         </Alert>
       ) : null}
 
-      <FieldGroup>
+      <FieldGroup className="gap-5">
         <Field data-invalid={!!form.formState.errors.email}>
-          <FieldLabel htmlFor="email">Email</FieldLabel>
+          <FieldLabel
+            htmlFor="email"
+            className="text-auth-ink text-[13px] font-medium"
+          >
+            Email address
+          </FieldLabel>
           <div className="relative">
-            <MailIcon className="text-muted-foreground pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2" />
+            <MailIcon className="text-auth-muted pointer-events-none absolute top-1/2 left-3.5 size-[18px] -translate-y-1/2" />
             <Input
               id="email"
               type="email"
+              inputMode="email"
               autoComplete="email"
               autoFocus
+              placeholder="you@company.com"
               aria-invalid={!!form.formState.errors.email}
               disabled={isSubmitting}
-              className="pl-8"
+              className={`${fieldClass} pl-11`}
               {...form.register("email", {
                 onChange: () => setFormError(null),
               })}
@@ -134,16 +156,22 @@ export function LoginForm({
         </Field>
 
         <Field data-invalid={!!form.formState.errors.password}>
-          <FieldLabel htmlFor="password">Password</FieldLabel>
+          <FieldLabel
+            htmlFor="password"
+            className="text-auth-ink text-[13px] font-medium"
+          >
+            Password
+          </FieldLabel>
           <div className="relative">
-            <LockIcon className="text-muted-foreground pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2" />
+            <LockIcon className="text-auth-muted pointer-events-none absolute top-1/2 left-3.5 size-[18px] -translate-y-1/2" />
             <Input
               id="password"
               type={showPassword ? "text" : "password"}
               autoComplete="current-password"
+              placeholder="Enter your password"
               aria-invalid={!!form.formState.errors.password}
               disabled={isSubmitting}
-              className="pr-9 pl-8"
+              className={`${fieldClass} pr-12 pl-11`}
               {...form.register("password", {
                 onChange: () => setFormError(null),
               })}
@@ -154,12 +182,13 @@ export function LoginForm({
               disabled={isSubmitting}
               aria-label={showPassword ? "Hide password" : "Show password"}
               aria-pressed={showPassword}
-              className="text-muted-foreground hover:text-foreground focus-visible:text-foreground absolute inset-y-0 right-0 flex w-9 items-center justify-center transition-colors disabled:pointer-events-none disabled:opacity-50"
+              aria-controls="password"
+              className="text-auth-muted hover:text-auth-ink focus-visible:ring-ring/50 focus-visible:text-auth-ink absolute inset-y-0 right-0 flex w-12 items-center justify-center rounded-r-[10px] transition-colors outline-none focus-visible:ring-3 disabled:pointer-events-none disabled:opacity-50"
             >
               {showPassword ? (
-                <EyeOffIcon className="size-4" aria-hidden="true" />
+                <EyeOffIcon className="size-[18px]" aria-hidden="true" />
               ) : (
-                <EyeIcon className="size-4" aria-hidden="true" />
+                <EyeIcon className="size-[18px]" aria-hidden="true" />
               )}
             </button>
           </div>
@@ -167,14 +196,23 @@ export function LoginForm({
         </Field>
       </FieldGroup>
 
-      <Button type="submit" disabled={isSubmitting} className="h-10 w-full">
+      {assistiveAction ? <div className="-mt-1">{assistiveAction}</div> : null}
+
+      <Button
+        type="submit"
+        disabled={isSubmitting}
+        className="h-12 w-full gap-2 rounded-[10px] text-[15px] font-medium transition-colors duration-200 hover:bg-[color-mix(in_oklch,var(--primary),black_8%)]"
+      >
         {isSubmitting ? (
           <>
             <Spinner />
             Signing in…
           </>
         ) : (
-          "Sign in"
+          <>
+            Sign in
+            <ArrowRightIcon className="size-4" aria-hidden="true" />
+          </>
         )}
       </Button>
     </form>

@@ -2,6 +2,7 @@
 
 import { zodResolver } from "@hookform/resolvers/zod";
 import { LoginForm } from "@/components/auth/login-form";
+import { ForgotPasswordHint } from "@/components/tenant/forgot-password-hint";
 import { loginSchema } from "@/lib/validation/auth";
 
 /** Thin wrapper around the shared `LoginForm` for the tenant-facing
@@ -12,6 +13,7 @@ export function TenantLoginForm() {
       resolver={zodResolver(loginSchema)}
       apiPath="/api/auth/login"
       defaultRedirectTo="/dashboard"
+      assistiveAction={<ForgotPasswordHint />}
     />
   );
 }

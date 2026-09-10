@@ -41,18 +41,34 @@ export function useAttendanceCheckInOut(initialToday: Attendance | null) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  async function performAction(action: "check-in" | "check-out") {
+  async function performAction(action: "check-in" | "check-out", photo?: Blob) {
     setError(null);
     setIsSubmitting(true);
 
     try {
       const position = await getPosition();
+
+      // Check-in carries the live camera capture, so it goes up as
+      // multipart with the coordinates attached; check-out is unchanged
+      // and stays JSON. `apiRequest` must not set a JSON content type on
+      // the multipart body — the browser has to write its own boundary.
+      const body =
+        photo === undefined
+          ? JSON.stringify({
+              latitude: position.coords.latitude,
+              longitude: position.coords.longitude,
+            })
+          : (() => {
+              const form = new FormData();
+              form.set("latitude", String(position.coords.latitude));
+              form.set("longitude", String(position.coords.longitude));
+              form.set("photo", photo, "check-in.jpg");
+              return form;
+            })();
+
       const result = await apiRequest<Attendance>(`/api/attendance/${action}`, {
         method: "POST",
-        body: JSON.stringify({
-          latitude: position.coords.latitude,
-          longitude: position.coords.longitude,
-        }),
+        body,
       });
       setToday(result);
       router.refresh();
@@ -79,7 +95,7 @@ export function useAttendanceCheckInOut(initialToday: Attendance | null) {
     today,
     isSubmitting,
     error,
-    checkIn: () => performAction("check-in"),
+    checkIn: (photo: Blob) => performAction("check-in", photo),
     checkOut: () => performAction("check-out"),
     hasCheckedIn: Boolean(today),
     hasCheckedOut: Boolean(today?.checkOutTime),

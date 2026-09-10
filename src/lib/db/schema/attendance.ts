@@ -43,6 +43,13 @@ export const attendances = pgTable(
     checkInLatitude: doublePrecision("check_in_latitude").notNull(),
     checkInLongitude: doublePrecision("check_in_longitude").notNull(),
     checkInDistanceMetres: doublePrecision("check_in_distance_metres"),
+    //: The live camera capture taken at check-in, as the app-relative
+    //: `/api/files/attendance/<shopId>/<uuid>.jpg` path `uploadToStorage`
+    //: returns. Nullable only because rows created before this existed
+    //: have none, and because a manager's correction (see
+    //: `attendanceCorrections`) never has a capture behind it — a fresh
+    //: staff check-in always does.
+    checkInPhotoUrl: text("check_in_photo_url"),
     checkOutTime: timestamp("check_out_time", { withTimezone: true }),
     checkOutLatitude: doublePrecision("check_out_latitude"),
     checkOutLongitude: doublePrecision("check_out_longitude"),
@@ -105,5 +112,4 @@ export const attendanceCorrections = pgTable(
 );
 
 export type AttendanceCorrection = typeof attendanceCorrections.$inferSelect;
-export type NewAttendanceCorrection =
-  typeof attendanceCorrections.$inferInsert;
+export type NewAttendanceCorrection = typeof attendanceCorrections.$inferInsert;

@@ -30,9 +30,18 @@ export async function apiRequest<T>(
   path: string,
   options: RequestInit = {},
 ): Promise<T> {
+  // A `FormData` body must set its own `Content-Type`, because only the
+  // browser knows the multipart boundary it generated. Forcing the JSON
+  // header onto one produces a request the server cannot parse at all, so
+  // the header is added for every other body shape and skipped here.
+  const isMultipart =
+    typeof FormData !== "undefined" && options.body instanceof FormData;
+
   const response = await fetch(path, {
     ...options,
-    headers: { "Content-Type": "application/json", ...options.headers },
+    headers: isMultipart
+      ? options.headers
+      : { "Content-Type": "application/json", ...options.headers },
   });
 
   const payload = (await response

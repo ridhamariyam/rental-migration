@@ -12,11 +12,18 @@ import {
  * of upload here that is genuinely about a customer rather than about the
  * catalogue, so it is not readable by anyone who merely has the link.
  *
+ * An attendance capture is a photograph of a staff member's face, taken at
+ * their check-in. It is the most personal upload in the app, so it is
+ * gated the same way and scoped to the owning shop by its key.
+ *
  * Item photos, avatars and shop logos stay open: they are rendered in
  * plain `<img>` tags all over the app (including places that load before a
  * session is resolved), and gating them would break those for no real
  * gain — same posture the public Cloudinary URLs they replace already had. */
-const AUTHENTICATED_FOLDERS = new Set<StorageFolder>(["booking-documents"]);
+const AUTHENTICATED_FOLDERS = new Set<StorageFolder>([
+  "booking-documents",
+  "attendance",
+]);
 
 const ALLOWED_FOLDERS = new Set<string>(STORAGE_FOLDERS);
 

@@ -1,0 +1,1 @@
+ALTER TABLE "attendances" ADD COLUMN "check_in_photo_url" text;

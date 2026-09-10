@@ -122,13 +122,17 @@ export async function TeamAttendanceTable({
         </TableHeader>
         <TableBody>
           {items.map((record) => {
-            const name = `${record.staffFirstName} ${record.staffLastName}`.trim();
+            const name =
+              `${record.staffFirstName} ${record.staffLastName}`.trim();
             return (
               <TableRow key={record.id}>
                 <TableCell className="px-4 py-3 font-medium">
                   <div className="flex items-center gap-3">
                     <Avatar className="size-8 shrink-0">
-                      <AvatarImage src={resolveAvatarSrc(record.staffAvatarUrl, name)} alt={name} />
+                      <AvatarImage
+                        src={resolveAvatarSrc(record.staffAvatarUrl, name)}
+                        alt={name}
+                      />
                       <AvatarFallback
                         className="text-xs font-semibold text-white"
                         style={{ backgroundImage: avatarGradient(name) }}
@@ -139,32 +143,56 @@ export async function TeamAttendanceTable({
                     <span>{name}</span>
                   </div>
                 </TableCell>
-              <TableCell className="text-muted-foreground px-4 py-3 text-sm">
-                {record.outletName ?? "—"}
-              </TableCell>
-              <TableCell className="px-4 py-3 text-sm">
-                {formatDate(record.date)}
-              </TableCell>
-              <TableCell className="text-muted-foreground px-4 py-3 text-sm">
-                {formatTime(record.checkInTime)}
-              </TableCell>
-              <TableCell className="text-muted-foreground px-4 py-3 text-sm">
-                {record.checkOutTime ? formatTime(record.checkOutTime) : "—"}
-              </TableCell>
-              <TableCell className="text-muted-foreground px-4 py-3 text-sm">
-                {formatWorkedHours(record.checkInTime, record.checkOutTime) ?? "—"}
-              </TableCell>
-              <TableCell className="px-4 py-3">
-                <AttendanceStatusBadge status={record.status} />
-              </TableCell>
-              {canCorrect ? (
-                <TableCell className="px-4 py-3 text-right">
-                  <CorrectAttendanceDialog attendance={record} />
+                <TableCell className="text-muted-foreground px-4 py-3 text-sm">
+                  {record.outletName ?? "—"}
                 </TableCell>
-              ) : null}
-            </TableRow>
-          );
-        })}
+                <TableCell className="px-4 py-3 text-sm">
+                  {formatDate(record.date)}
+                </TableCell>
+                <TableCell className="text-muted-foreground px-4 py-3 text-sm">
+                  <div className="flex items-center gap-2.5">
+                    {record.checkInPhotoUrl ? (
+                      // The capture taken at check-in. It streams through
+                      // `/api/files/...`, which refuses anyone outside this
+                      // shop, so it is safe to render here but never becomes
+                      // a shareable link.
+                      <a
+                        href={record.checkInPhotoUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        title={`Check-in photo — ${name}`}
+                        className="focus-visible:ring-ring/50 shrink-0 rounded-md outline-none focus-visible:ring-3"
+                      >
+                        {/* eslint-disable-next-line @next/next/no-img-element -- access-controlled stream, not an optimisable static asset */}
+                        <img
+                          src={record.checkInPhotoUrl}
+                          alt={`${name} at check-in`}
+                          loading="lazy"
+                          className="size-9 rounded-md object-cover"
+                        />
+                      </a>
+                    ) : null}
+                    {formatTime(record.checkInTime)}
+                  </div>
+                </TableCell>
+                <TableCell className="text-muted-foreground px-4 py-3 text-sm">
+                  {record.checkOutTime ? formatTime(record.checkOutTime) : "—"}
+                </TableCell>
+                <TableCell className="text-muted-foreground px-4 py-3 text-sm">
+                  {formatWorkedHours(record.checkInTime, record.checkOutTime) ??
+                    "—"}
+                </TableCell>
+                <TableCell className="px-4 py-3">
+                  <AttendanceStatusBadge status={record.status} />
+                </TableCell>
+                {canCorrect ? (
+                  <TableCell className="px-4 py-3 text-right">
+                    <CorrectAttendanceDialog attendance={record} />
+                  </TableCell>
+                ) : null}
+              </TableRow>
+            );
+          })}
         </TableBody>
       </Table>
 
