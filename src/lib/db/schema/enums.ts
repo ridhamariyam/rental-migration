@@ -81,9 +81,21 @@ export const paymentStatusEnum = pgEnum("payment_status", [
  * backend's `PaymentType`. Phase 12 wrote `advance`/`balance`/
  * `security_deposit`/`refund`; Phase 13's return workflow activates
  * `damage_charge`/`deposit_release` (system-generated at return time, not
- * user-selectable in the "Record payment" dialog) — both were defined
- * from the start for the same "avoid a later `ALTER TYPE`" reason
- * `productStatusEnum`/`bookingStatusEnum` were.
+ * user-selectable in the "Record payment" dialog).
+ *
+ * The two deposit-outflow types are deliberately distinct, and conflating
+ * them is what caused the double-charge in RQ-01:
+ *
+ * - `deposit_release` — deposit handed **back to the customer**. Reduces
+ *   the deposit held; settles nothing they owe.
+ * - `deposit_applied`  — deposit **kept by the shop against a damage
+ *   charge**. Also reduces the deposit held, but unlike a release it is a
+ *   payment toward `rentPayable`, because the customer has now paid that
+ *   much of the damage with money the shop was already holding.
+ *
+ * `damage_charge` records the assessed charge for the audit trail; the
+ * authoritative assessed total is `bookingItems.damageCharge`, which is
+ * what `computePaymentSummary` folds into `rentPayable`.
  */
 export const paymentTypeEnum = pgEnum("payment_type", [
   "advance",
@@ -92,6 +104,7 @@ export const paymentTypeEnum = pgEnum("payment_type", [
   "damage_charge",
   "refund",
   "deposit_release",
+  "deposit_applied",
 ]);
 
 /** Mirrors the legacy backend's `PaymentMethod` in full. The client

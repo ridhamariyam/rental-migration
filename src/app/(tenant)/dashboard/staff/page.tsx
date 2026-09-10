@@ -1,3 +1,4 @@
+import type { TenantSessionUser } from "@/server/auth/guard";
 import { Suspense } from "react";
 import Link from "next/link";
 import { redirect } from "next/navigation";
@@ -81,7 +82,7 @@ export default async function StaffPage({
         </div>
 
         <Suspense key={JSON.stringify(query)} fallback={<StaffTableSkeleton />}>
-          <StaffTable shopId={user.shopId} query={query} />
+          <StaffTable actor={user as TenantSessionUser} query={query} />
         </Suspense>
       </div>
     </main>

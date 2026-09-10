@@ -498,7 +498,7 @@ export function BookingForm({
                   <FieldError errors={[form.formState.errors.securityDeposit]} />
                   <p className="text-muted-foreground text-xs">
                     For the whole order. Leave blank to hold each
-                    item&rsquo;s usual deposit.
+                    item&rsquo;s own default deposit.
                   </p>
                 </Field>
 

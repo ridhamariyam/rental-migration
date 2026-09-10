@@ -16,6 +16,7 @@ import { Permission, hasPermission } from "@/lib/auth/permissions";
 import type { TenantSessionUser } from "@/server/auth/guard";
 import { AuditAction, recordAudit } from "@/server/audit/service";
 import { addMoney, nonNegativeMoney, proRateMoney, ZERO_MONEY } from "@/lib/money";
+import { toDateString } from "@/lib/format";
 import type {
   CreateSalaryInput,
   UpdateSalaryInput,
@@ -354,7 +355,21 @@ export async function calculateSalary(
   assertCanView(actor, staffId);
   const staff = await requireTenantStaff(actor.shopId, staffId);
 
-  const { start: periodStart, end: periodEnd } = monthBounds(year, month);
+  const { start: periodStart, end: fullPeriodEnd } = monthBounds(year, month);
+
+  // Never walk into days that have not happened yet. Every day with no
+  // attendance row counts as an absence, so previewing the current month
+  // on the 10th used to score days 11-30 as absent and report a wildly
+  // understated figure — which `generatePayslip` then persisted (RQ-09).
+  const today = toDateString(new Date());
+  const periodEnd = fullPeriodEnd > today ? today : fullPeriodEnd;
+
+  if (periodEnd < periodStart) {
+    throw new AppError(
+      "That salary period has not started yet",
+      400,
+    );
+  }
 
   const configuration = await getEffectiveSalary(actor.shopId, staffId, periodEnd);
   if (!configuration) {
@@ -532,6 +547,21 @@ export async function generatePayslip(
 ): Promise<PayslipItem> {
   if (!hasPermission(actor.role, Permission.SALARY_MANAGE)) {
     throw AppError.forbidden("You do not have permission to do this");
+  }
+
+  // A payslip is a record of a finished month. Previewing the current
+  // month is useful (and clamped to today by `calculateSalary`), but
+  // persisting that preview would pay out a partial month as if it were
+  // complete (RQ-09).
+  const now = new Date();
+  const periodIsOpen =
+    year > now.getFullYear() ||
+    (year === now.getFullYear() && month >= now.getMonth() + 1);
+  if (periodIsOpen) {
+    throw new AppError(
+      "This month has not finished yet — a payslip can only be generated once the period is closed",
+      400,
+    );
   }
 
   const calculation = await calculateSalary(actor, staffId, year, month);

@@ -20,6 +20,11 @@ const AUTHENTICATED_FOLDERS = new Set<StorageFolder>(["booking-documents"]);
 
 const ALLOWED_FOLDERS = new Set<string>(STORAGE_FOLDERS);
 
+/** Shop ids are uuids; anything else in that position is not an owner
+ * segment (a legacy key, or something a caller made up). */
+const UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 /**
  * Streams one uploaded file back out of the Railway bucket (see
  * `src/lib/storage.ts`). Railway buckets are private with no public-read
@@ -51,7 +56,22 @@ export async function GET(
     }
 
     if (AUTHENTICATED_FOLDERS.has(folder as StorageFolder)) {
-      await requireTenantUser();
+      const user = await requireTenantUser();
+
+      // Private uploads carry their owning shop in the key itself
+      // (`booking-documents/<shopId>/<uuid>.pdf`, see `uploadToStorage`).
+      // Being signed in *somewhere* used to be enough, so any tenant's
+      // user could stream any other tenant's customer ID proofs given the
+      // URL — the uuid was the only thing standing in the way (RQ-13).
+      //
+      // Keys written before ownership was recorded have no shop segment.
+      // They are refused rather than served: there is no way to tell whose
+      // they are, and failing closed on a customer's ID document is the
+      // only safe default.
+      const ownerShopId = segments[1];
+      if (!UUID_PATTERN.test(ownerShopId) || ownerShopId !== user.shopId) {
+        throw new AppError("File not found", 404);
+      }
     }
 
     const key = segments.join("/");

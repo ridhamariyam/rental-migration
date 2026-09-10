@@ -20,6 +20,7 @@ import {
 import { Input } from "@/components/ui/input";
 import {
   Field,
+  FieldDescription,
   FieldError,
   FieldGroup,
   FieldLabel,
@@ -76,6 +77,7 @@ export function AddVariationDialog({
       size: "",
       rentPrice: "",
       buyingPrice: "",
+      securityDeposit: "",
       sellingPrice: "",
       quantity: "1",
       outletIds: outlets[0] ? [outlets[0].id] : [],
@@ -111,6 +113,7 @@ export function AddVariationDialog({
         size: "",
         rentPrice: "",
         buyingPrice: "",
+      securityDeposit: "",
         sellingPrice: "",
         quantity: "1",
         outletIds: outlets[0] ? [outlets[0].id] : [],
@@ -243,6 +246,23 @@ export function AddVariationDialog({
                   {...form.register("rentPrice")}
                 />
                 <FieldError errors={[form.formState.errors.rentPrice]} />
+              </Field>
+
+              <Field data-invalid={!!form.formState.errors.securityDeposit}>
+                <FieldLabel htmlFor="securityDeposit">
+                  Default security deposit
+                </FieldLabel>
+                <Input
+                  id="securityDeposit"
+                  inputMode="decimal"
+                  placeholder="0.00"
+                  disabled={isSubmitting}
+                  {...form.register("securityDeposit")}
+                />
+                <FieldDescription>
+                  Held for each unit of this item unless a booking overrides it.
+                </FieldDescription>
+                <FieldError errors={[form.formState.errors.securityDeposit]} />
               </Field>
 
               <Field data-invalid={!!form.formState.errors.sellingPrice}>

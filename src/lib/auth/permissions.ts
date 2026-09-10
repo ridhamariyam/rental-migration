@@ -65,11 +65,11 @@ export enum Permission {
   // ever need to see (a settlement is about a customer-owner, not them).
   SETTLEMENT_VIEW = "settlement:view",
   SETTLEMENT_MANAGE = "settlement:manage",
-  // Notifications (doc §13/§17, WhatsApp outbox — Phase 17). UI-only for
-  // now (see plan.md's open design question on the delivery worker); this
-  // permission just gates who can see the "coming soon" preview page,
-  // granted as broadly as `MAINTENANCE_VIEW` since every role that touches
-  // a booking will eventually want to see its notification status.
+  // Notifications (doc §13/§17, WhatsApp outbox — Phase 17). Fully wired:
+  // rows are queued by the app and delivered by the cron service in
+  // `railway.notifications.json`. Granted as broadly as `MAINTENANCE_VIEW`
+  // since every role that touches a booking wants to see whether its
+  // messages went out.
   NOTIFICATION_VIEW = "notification:view",
   NOTIFICATION_MANAGE = "notification:manage",
   // Reports & owner dashboard (doc §19/§21, Phase 18). Granted to manager

@@ -365,11 +365,25 @@ export const updateBookingOrderSchema = z
 
 export type UpdateBookingOrderInput = z.infer<typeof updateBookingOrderSchema>;
 
+/**
+ * A cancellation can move money — it releases the deposit and refunds any
+ * over-payment (see `settleCancelledOrder`) — so the reason is required
+ * rather than optional: the audit trail for "who gave this customer their
+ * money back, and why" is the whole point of recording it.
+ */
 export const cancelBookingSchema = z.object({
   reason: z
     .string()
     .trim()
-    .max(500, "Reason must be at most 500 characters")
+    .min(3, "Give a reason for the cancellation")
+    .max(500, "Reason must be at most 500 characters"),
+  /** How any refund leaves the till. Defaults to cash, matching the
+   * "Record payment" dialog's own default. */
+  refundMethod: z.enum(PAYMENT_METHOD_VALUES).default("cash"),
+  refundReference: z
+    .string()
+    .trim()
+    .max(100, "Reference number is too long")
     .optional(),
 });
 

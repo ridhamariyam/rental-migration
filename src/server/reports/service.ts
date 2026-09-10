@@ -1,6 +1,6 @@
 import "server-only";
 
-import { and, count, desc, eq, inArray, sql } from "drizzle-orm";
+import { and, count, desc, eq, inArray, ne, sql } from "drizzle-orm";
 import type { AnyPgColumn } from "drizzle-orm/pg-core";
 import { db } from "@/lib/db/client";
 import { AppError } from "@/lib/errors/app-error";
@@ -30,10 +30,55 @@ import type {
   ReportDateRangeQuery,
 } from "@/lib/validation/reports";
 
-/** Payment types that count as revenue actually collected — mirrors the
- * legacy backend's `INFLOW_PAYMENT_TYPES` exactly (a `refund`/
- * `deposit_release` moves money back out, it's never counted as income). */
+/**
+ * ## What each money figure in this module means
+ *
+ * The dashboard used to put two different definitions side by side under
+ * one word, "Revenue" — cash collected in the KPI tiles, all-time
+ * contracted rent (drafts and cancellations included) in the cards right
+ * beneath them (RQ-03). These are the definitions now, and every report
+ * here uses exactly one of them:
+ *
+ * - **Cash collected** — money that actually came in over a period.
+ *   Sums the `payments` ledger over `INFLOW_PAYMENT_TYPES`. A deposit is
+ *   *not* income (it is the customer's money, held), and a refund or a
+ *   deposit release moves money back out, so neither is counted.
+ * - **Contracted rental revenue** — rent the shop has actually earned or
+ *   committed to earning, from bookings that are real: never a `draft`
+ *   (nobody has agreed to anything yet) and never a `cancelled` one.
+ *   See `EARNED_ITEM_STATUSES`.
+ * - **Outstanding** / **Deposits held** / **Refunds** are properties of
+ *   the payment ledger, derived per booking by `computePaymentSummary`,
+ *   and are never folded into either revenue figure.
+ */
+
+/** Payment types that count as cash actually collected. A `security_deposit`
+ * is the customer's money held in trust, not income; `refund` and
+ * `deposit_release` move money back out; `deposit_applied` is not new cash
+ * (it arrived earlier as a `security_deposit`), so counting it here would
+ * double-count the same rupee. */
 const INFLOW_PAYMENT_TYPES = ["advance", "balance", "damage_charge"] as const;
+
+/**
+ * Item statuses that count toward contracted rental revenue.
+ *
+ * Excludes `draft` — an unconfirmed cart line nobody has paid for or
+ * agreed to — and `cancelled`. Before this filter existed, a test shop
+ * with one real ₹3,000 rental reported ₹51,000 of "revenue", because
+ * eight abandoned drafts and one cancellation were being counted (RQ-03).
+ */
+const EARNED_ITEM_STATUSES = [
+  "confirmed",
+  "pickup_pending",
+  "rented",
+  "return_pending",
+  "overdue",
+  "returned",
+] as const;
+
+/** Order statuses whose rent counts as earned — the order-level mirror of
+ * `EARNED_ITEM_STATUSES` (an order is only ever draft/confirmed/cancelled). */
+const EARNED_ORDER_STATUSES = ["confirmed"] as const;
 
 /** A booking currently out with the customer — picked up, not yet
  * returned. Doc §19's "Pending Returns"/"Active Rentals" tiles and the
@@ -256,6 +301,9 @@ export async function getDailyIncome(
   const bookingConditions = [
     eq(bookings.shopId, actor.shopId),
     dateRange(bookings.createdAt, fromDate, toDate),
+    // The bar series counts bookings taken, so a cancelled one should not
+    // leave a bar behind on the day it was created.
+    ne(bookings.status, "cancelled"),
   ];
   if (query.outletId) {
     bookingConditions.push(
@@ -372,7 +420,10 @@ export async function getMostRentedProducts(
 ): Promise<MostRentedRow[]> {
   requireReportAccess(actor);
 
-  const conditions = [eq(bookingItems.shopId, actor.shopId)];
+  const conditions = [
+    eq(bookingItems.shopId, actor.shopId),
+    inArray(bookingItems.status, [...EARNED_ITEM_STATUSES]),
+  ];
   if (query.outletId) conditions.push(eq(bookingItems.outletId, query.outletId));
   if (query.fromDate) conditions.push(sql`${bookingItems.fromDate} >= ${query.fromDate}`);
   if (query.toDate) conditions.push(sql`${bookingItems.toDate} <= ${query.toDate}`);
@@ -509,7 +560,10 @@ export async function getRevenueByOutlet(
 ): Promise<OutletRevenueRow[]> {
   requireReportAccess(actor);
 
-  const joinConditions = [eq(bookingItems.outletId, outlets.id)];
+  const joinConditions = [
+    eq(bookingItems.outletId, outlets.id),
+    inArray(bookingItems.status, [...EARNED_ITEM_STATUSES]),
+  ];
   if (query.fromDate) joinConditions.push(sql`${bookingItems.fromDate} >= ${query.fromDate}`);
   if (query.toDate) joinConditions.push(sql`${bookingItems.toDate} <= ${query.toDate}`);
 
@@ -565,6 +619,9 @@ export async function getStaffPerformance(
   }
   if (query.fromDate) conditions.push(sql`${bookings.createdAt}::date >= ${query.fromDate}::date`);
   if (query.toDate) conditions.push(sql`${bookings.createdAt}::date <= ${query.toDate}::date`);
+  // Credit staff for orders that became real, not for abandoned drafts or
+  // cancellations (RQ-03).
+  conditions.push(inArray(bookings.status, [...EARNED_ORDER_STATUSES]));
 
   const rows = await db
     .select({

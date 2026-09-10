@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useSearchParams } from "next/navigation";
 import {
   CheckCircle2Icon,
+  CircleDashedIcon,
   ClockIcon,
   type LucideIcon,
   RefreshCwIcon,
@@ -249,16 +250,42 @@ export function NotificationsConsole({
           </CardTitle>
         </CardHeader>
         <CardContent className="grid gap-4 lg:grid-cols-[1fr_1.4fr]">
+          {/* These are prerequisites to complete inside MSG91, not status
+            * this app can verify. They used to render with a green tick
+            * each, on a page that simultaneously said no number was
+            * connected — a checklist that always looked complete. The two
+            * items we *can* check are checked; the rest are plain. */}
           <div className="space-y-3 text-sm">
+            <p className="text-muted-foreground text-xs font-medium uppercase tracking-wider">
+              Before notifications can send
+            </p>
             {[
-              "Tenant Meta Business Portfolio is verified.",
-              "WhatsApp number is added through MSG91 Add Number.",
-              "Dedicated WhatsApp wallet has balance or auto-recharge.",
-              "Templates are approved in MSG91 before mapping here.",
+              { label: "Tenant Meta Business Portfolio is verified.", done: null },
+              {
+                label: "WhatsApp number is added through MSG91 Add Number.",
+                done: dashboard.numbers.length > 0,
+              },
+              {
+                label: "Dedicated WhatsApp wallet has balance or auto-recharge.",
+                done: null,
+              },
+              {
+                label: "Templates are approved in MSG91 before mapping here.",
+                done: dashboard.templates.length > 0,
+              },
             ].map((item) => (
-              <div key={item} className="flex items-center gap-2">
-                <CheckCircle2Icon className="size-4 text-primary" />
-                <span>{item}</span>
+              <div key={item.label} className="flex items-start gap-2">
+                {item.done === true ? (
+                  <CheckCircle2Icon className="size-4 shrink-0 text-primary" aria-label="Done" />
+                ) : (
+                  <CircleDashedIcon
+                    className="text-muted-foreground size-4 shrink-0"
+                    aria-label={item.done === false ? "Not done yet" : "Check in MSG91"}
+                  />
+                )}
+                <span className={item.done === true ? "" : "text-muted-foreground"}>
+                  {item.label}
+                </span>
               </div>
             ))}
           </div>

@@ -21,7 +21,7 @@ export async function GET(request: Request) {
       outletId: searchParams.get("outletId") ?? undefined,
     });
 
-    const result = await listStaff(user.shopId, query);
+    const result = await listStaff(user, query);
     return apiSuccess(result);
   } catch (error) {
     return apiError(error);

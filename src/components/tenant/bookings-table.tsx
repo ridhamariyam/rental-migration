@@ -55,7 +55,7 @@ export async function BookingsTable({
 }: {
   shopId: string;
   query: BookingListQuery;
-  viewer: Pick<TenantSessionUser, "id" | "role">;
+  viewer: Pick<TenantSessionUser, "id" | "role" | "outletId">;
 }) {
   const { items, total, page, totalPages } = await listBookings(
     shopId,
@@ -182,6 +182,20 @@ export async function BookingsTable({
 
                 <TableCell className="px-4 py-3 text-sm font-medium">
                   {formatMoney(booking.totalAmount)}
+                  {/* A cancelled order recomputes to ₹0.00, which used to
+                    * be the only thing this column said about a booking
+                    * the shop had already been paid for and then
+                    * cancelled. The payment status now reads "Refunded"
+                    * once the money is settled; flag the case where it is
+                    * still outstanding so the list is not the last place
+                    * to find out (RQ-08). */}
+                  {booking.status === "cancelled" &&
+                  booking.paymentStatus !== "refunded" &&
+                  booking.paymentStatus !== "unpaid" ? (
+                    <span className="text-destructive mt-0.5 block text-xs font-medium">
+                      Refund pending
+                    </span>
+                  ) : null}
                 </TableCell>
 
                 <TableCell className="px-4 py-3 text-sm">

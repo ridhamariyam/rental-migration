@@ -2,6 +2,7 @@ import "server-only";
 
 import { and, desc, eq, ilike, or } from "drizzle-orm";
 import { db } from "@/lib/db/client";
+import { ZERO_MONEY } from "@/lib/money";
 import { AppError } from "@/lib/errors/app-error";
 import { generateBarcode, generateSku } from "@/lib/barcode";
 import { outlets, productVariations, products } from "@/lib/db/schema";
@@ -268,6 +269,7 @@ export async function createVariation(
             rentPrice: input.rentPrice,
             sellingPrice: input.sellingPrice || null,
             buyingPrice: input.buyingPrice || null,
+            securityDeposit: input.securityDeposit || ZERO_MONEY,
             quantity: Number(input.quantity),
             sku,
             barcode,
@@ -319,6 +321,7 @@ export async function updateVariation(
       rentPrice: input.rentPrice,
       sellingPrice: input.sellingPrice || null,
       buyingPrice: input.buyingPrice || null,
+      securityDeposit: input.securityDeposit || ZERO_MONEY,
       quantity: Number(input.quantity),
       outletId: input.outletId,
       image: input.image || null,

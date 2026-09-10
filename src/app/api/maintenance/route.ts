@@ -26,7 +26,7 @@ export async function GET(request: Request) {
       outletId: searchParams.get("outletId") ?? undefined,
     });
 
-    const result = await listMaintenanceTasks(user.shopId, query);
+    const result = await listMaintenanceTasks(user, query);
     return apiSuccess(result);
   } catch (error) {
     return apiError(error);

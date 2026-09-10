@@ -1,3 +1,4 @@
+import type { TenantSessionUser } from "@/server/auth/guard";
 import Link from "next/link";
 import { WrenchIcon } from "lucide-react";
 import {
@@ -44,14 +45,14 @@ function maintenanceHref(query: MaintenanceListQuery, page: number): string {
 }
 
 export async function MaintenanceTasksTable({
-  shopId,
+  actor,
   query,
 }: {
-  shopId: string;
+  actor: TenantSessionUser;
   query: MaintenanceListQuery;
 }) {
   const { items, total, page, totalPages } = await listMaintenanceTasks(
-    shopId,
+    actor,
     query,
   );
   const hasFilters =

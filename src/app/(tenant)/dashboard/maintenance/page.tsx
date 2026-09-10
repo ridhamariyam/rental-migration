@@ -1,3 +1,4 @@
+import type { TenantSessionUser } from "@/server/auth/guard";
 import { Suspense } from "react";
 import { redirect } from "next/navigation";
 import { LogMaintenanceTaskDialog } from "@/components/tenant/log-maintenance-task-dialog";
@@ -84,7 +85,7 @@ export default async function MaintenancePage({
           key={JSON.stringify(query)}
           fallback={<MaintenanceTasksTableSkeleton />}
         >
-          <MaintenanceTasksTable shopId={user.shopId} query={query} />
+          <MaintenanceTasksTable actor={user as TenantSessionUser} query={query} />
         </Suspense>
       </div>
     </main>

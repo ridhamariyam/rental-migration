@@ -46,7 +46,10 @@ export async function DashboardAnalyticsSection({
     getDailyIncome(actor, { fromDate: previousFromDate, toDate: previousToDate }),
     getDashboardStats(actor, {}),
     getMostRentedProducts(actor, { limit: 4 }),
-    getRevenueByOutlet(actor, {}),
+    // Same 14-day window as the trend beside it — this used to be an
+    // all-time figure sitting next to a 14-day one, both labelled
+    // "Revenue" (RQ-03).
+    getRevenueByOutlet(actor, { fromDate, toDate }),
   ]);
 
   const previousTotalNum = Number(previousTotal);

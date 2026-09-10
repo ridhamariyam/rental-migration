@@ -39,35 +39,44 @@ export async function DashboardStatsTiles({
   const todaysTrend = trendBadge(stats.todaysIncomeChangePercent);
   const monthTrend = trendBadge(stats.monthIncomeChangePercent);
 
+  // These two tiles are **cash collected**, not contracted rent — the
+  // dashboard used to label both definitions "Revenue" and show them
+  // side by side (RQ-03). The title now says which one this is.
+  //
+  // A "vs yesterday" caption is only shown when there is a delta to go
+  // with it: `computePercentChange` returns null with no prior-period
+  // baseline, and a comparison label with nothing to compare is worse
+  // than no label. The two constant badges ("Active", "Ready") are gone
+  // for the same reason — they never changed, so they said nothing.
   const kpis = [
     {
-      title: "Today's Revenue",
+      title: "Cash Collected Today",
       value: formatMoney(stats.todaysIncome),
       badge: todaysTrend.badge,
       badgeVariant: todaysTrend.badgeVariant,
-      subtitle: "vs yesterday",
+      subtitle: todaysTrend.badge ? "vs yesterday" : "Payments received today",
       icon: BadgeIndianRupeeIcon,
     },
     {
-      title: "Monthly Revenue",
+      title: "Cash Collected This Month",
       value: formatMoney(stats.monthIncome),
       badge: monthTrend.badge,
       badgeVariant: monthTrend.badgeVariant,
-      subtitle: "vs last month",
+      subtitle: monthTrend.badge ? "vs last month" : "Payments received this month",
       icon: HandCoinsIcon,
     },
     {
       title: "Active Rentals",
       value: `${stats.activeRentals} items`,
-      badge: stats.pendingReturns > 0 ? `${stats.pendingReturns} due` : "Active",
-      badgeVariant: stats.pendingReturns > 0 ? "warning" : "positive",
+      badge: stats.pendingReturns > 0 ? `${stats.pendingReturns} due` : null,
+      badgeVariant: "warning",
       subtitle: "Out with customers",
       icon: CalendarClockIcon,
     },
     {
       title: "Available Stock",
       value: `${stats.availableProducts} items`,
-      badge: "Ready",
+      badge: null,
       badgeVariant: "neutral",
       subtitle: "Available to book",
       icon: PackageCheckIcon,

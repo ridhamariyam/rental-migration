@@ -10,7 +10,7 @@ import { AppError } from "@/lib/errors/app-error";
 import { outlets, users } from "@/lib/db/schema";
 import { requireActiveOutlet } from "@/server/outlets/service";
 import { AuditAction, recordAudit } from "@/server/audit/service";
-import type { TenantSessionUser } from "@/server/auth/guard";
+import { resolveOutletScope, type TenantSessionUser } from "@/server/auth/guard";
 import type {
   CreateStaffInput,
   StaffListQuery,
@@ -52,13 +52,17 @@ function isUniqueViolation(error: unknown): error is { code: string } {
  * `listOutlets`.
  */
 export async function listStaff(
-  shopId: string,
+  actor: Pick<TenantSessionUser, "shopId" | "role" | "outletId">,
   query: StaffListQuery,
 ): Promise<StaffListResult> {
-  const { page, pageSize, q, role, status, outletId } = query;
+  const { page, pageSize, q, role, status } = query;
+  // A manager sees their own outlet's roster, not the whole chain's — the
+  // client's `?outletId=` is reconciled against what they may actually
+  // see rather than trusted (RQ-12).
+  const outletId = resolveOutletScope(actor, query.outletId);
 
   const conditions = [
-    eq(users.shopId, shopId),
+    eq(users.shopId, actor.shopId),
     inArray(users.role, STAFF_ROLES),
   ];
 
