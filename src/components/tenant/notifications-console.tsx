@@ -35,6 +35,7 @@ import {
   DialogBody,
   DialogContent,
   DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
@@ -190,6 +191,34 @@ export function NotificationsConsole({
           : rule,
       ),
     );
+  }
+
+  function saveRules(onSaved?: () => void, rulesToSave: Rule[] = rules) {
+    run(async () => {
+      const cleaned = rulesToSave.map((rule) => ({
+        ...rule,
+        variableMapping: Object.fromEntries(
+          Object.entries(rule.variableMapping).filter(([, value]) => value),
+        ),
+      }));
+      const saved = await apiRequest<Rule[]>("/api/notifications/rules", {
+        method: "PUT",
+        body: JSON.stringify({ rules: cleaned }),
+      });
+      setRules(sortedRules(saved));
+      setMessage("Notification rules saved.");
+      onSaved?.();
+    });
+  }
+
+  // Toggling straight from the row list has no dialog/Save button of its
+  // own, so it saves immediately — built off a computed snapshot rather
+  // than the `rules` state, since `setRules` hasn't flushed yet when this
+  // runs.
+  function toggleRuleEnabled(event: NotificationEvent, isEnabled: boolean) {
+    const next = rules.map((rule) => (rule.event === event ? { ...rule, isEnabled } : rule));
+    setRules(next);
+    saveRules(undefined, next);
   }
 
   function applyLogFilters() {
@@ -484,10 +513,10 @@ export function NotificationsConsole({
                 <div className="flex items-center gap-3">
                   <Checkbox
                     checked={rule.isEnabled}
-                    disabled={!canManage}
+                    disabled={!canManage || pending}
                     onClick={(event) => event.stopPropagation()}
                     onCheckedChange={(checked) =>
-                      updateRule(rule.event, { isEnabled: checked === true })
+                      toggleRuleEnabled(rule.event, checked === true)
                     }
                   />
                   <div>
@@ -507,29 +536,6 @@ export function NotificationsConsole({
               </button>
             );
           })}
-
-          <Button
-            disabled={!canManage || pending}
-            onClick={() =>
-              run(async () => {
-                const cleaned = rules.map((rule) => ({
-                  ...rule,
-                  variableMapping: Object.fromEntries(
-                    Object.entries(rule.variableMapping).filter(([, value]) => value),
-                  ),
-                }));
-                const saved = await apiRequest<Rule[]>("/api/notifications/rules", {
-                  method: "PUT",
-                  body: JSON.stringify({ rules: cleaned }),
-                });
-                setRules(sortedRules(saved));
-                setMessage("Notification rules saved.");
-              })
-            }
-          >
-            <SaveIcon />
-            Save rules
-          </Button>
         </CardContent>
       </Card>
 
@@ -700,6 +706,15 @@ export function NotificationsConsole({
                       </div>
                     </div>
                   </DialogBody>
+                  <DialogFooter showCloseButton>
+                    <Button
+                      disabled={!canManage || pending}
+                      onClick={() => saveRules(() => setOpenEvent(null))}
+                    >
+                      <SaveIcon />
+                      Save changes
+                    </Button>
+                  </DialogFooter>
                 </>
               );
             })()}
