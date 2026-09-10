@@ -39,31 +39,59 @@ export type PaymentRow = Payment;
  * single mutable field (CLAUDE.md's rule, ported exactly from the legacy
  * `PaymentService.summarise`). `rentPayable` folds in the sum of every
  * one of the order's items' own `damageCharge` (Phase 13's return
- * workflow — damage is now recorded per item, but it's payable as part
- * of the order's one combined ledger) — `damage_charge` payments are how
- * that charge is actually recovered (from the deposit first, then owed
- * as a balance), so it has to count as part of what's payable, exactly
- * like the legacy `rent_payable = total_amount + damage_charge`.
+ * workflow — damage is recorded per item, but it's payable as part of the
+ * order's one combined ledger).
+ *
+ * How a damage charge is settled, and why the two deposit outflows are
+ * separate types (see `paymentTypeEnum`):
+ *
+ *   rentPayable   = totalAmount + Σ item.damageCharge
+ *   rentCollected = advance + balance − refund + depositAppliedToDamage
+ *   depositHeld   = depositCollected − depositReturned − depositApplied
+ *
+ * The deposit is consumed first, as a `deposit_applied` row; whatever
+ * damage it does not cover stays in `outstanding` as a normal balance.
+ * That `+ depositAppliedToDamage` term is the RQ-01 fix — without it the
+ * shop kept the deposit *and* billed the full damage, charging the
+ * customer the forfeited amount twice.
  */
 export type PaymentSummary = {
+  /** Rent plus every item's assessed damage — the total the customer owes
+   * the shop, deposit excluded. */
   rentPayable: string;
   securityDeposit: string;
   totalReceivable: string;
   advancePaid: string;
   balancePaid: string;
+  /** Deposit taken from the customer. */
   depositCollected: string;
   refunded: string;
+  /** Deposit handed **back** to the customer. */
+  depositReturned: string;
+  /** Deposit **kept against damage**. Counts toward `rentCollected`,
+   * because the customer has paid that much of the damage out of money
+   * the shop was already holding — not crediting it is what made the
+   * customer pay the same amount twice (RQ-01). */
+  depositAppliedToDamage: string;
+  /** Assessed damage across the order's items — already inside
+   * `rentPayable`, surfaced separately so a receipt can itemise it. */
+  damageCharged: string;
+  /** @deprecated Total deposit outflow (returned + applied). Kept so
+   * existing callers keep compiling; prefer the two specific fields. */
   depositReleased: string;
   rentCollected: string;
   rentBalance: string;
   depositBalance: string;
+  /** Deposit still in the shop's hands: collected − returned − applied. */
   depositHeld: string;
   outstanding: string;
   /** The flip side of `outstanding`: money already collected that now
    * exceeds what's payable (e.g. an item was cancelled after its rent was
-   * already paid) — a refund the shop owes the customer. Zero in the
-   * common case; `outstanding` and `creditBalance` are never both
-   * positive at once (one side of the ledger nets to zero first). */
+   * already paid) — a refund the shop owes the customer.
+   *
+   * `outstanding` and `creditBalance` are never both positive: an
+   * over-payment on the rent side is applied to an unpaid deposit before
+   * either is reported, so at most one of the two survives. */
   creditBalance: string;
   status: Booking["paymentStatus"];
 };
@@ -86,17 +114,52 @@ export function computePaymentSummary(
   const balance = sumByType(paymentRows, "balance");
   const depositIn = sumByType(paymentRows, "security_deposit");
   const refunded = sumByType(paymentRows, "refund");
-  const depositOut = sumByType(paymentRows, "deposit_release");
+  const depositReturned = sumByType(paymentRows, "deposit_release");
+  const depositApplied = sumByType(paymentRows, "deposit_applied");
 
   const rentPayable = addMoney(booking.totalAmount, totalDamageCharge);
   const depositDue = booking.securityDeposit;
 
-  // Refunds first offset over-collected rent, then the deposit (matches
-  // the legacy `PaymentService.summarise` exactly).
-  const rentCollected = subtractMoney(addMoney(advance, balance), refunded);
-  const rentBalance = subtractMoney(rentPayable, rentCollected);
-  const depositBalance = subtractMoney(depositDue, depositIn);
+  // Deposit kept against damage is money the customer has already handed
+  // over and the shop has kept, so it settles part of what they owe.
+  // Leaving it out of `rentCollected` — while still billing the full
+  // damage through `rentPayable` — is what made the customer pay the
+  // forfeited amount a second time (RQ-01).
+  const rentCollected = addMoney(
+    subtractMoney(addMoney(advance, balance), refunded),
+    depositApplied,
+  );
+
+  // A release hands the deposit back; an application keeps it against
+  // damage. Both leave the pot, so both reduce what is still held.
+  const depositOut = addMoney(depositReturned, depositApplied);
   const depositHeld = nonNegativeMoney(subtractMoney(depositIn, depositOut));
+
+  let rentBalance = subtractMoney(rentPayable, rentCollected);
+  let depositBalance = subtractMoney(depositDue, depositIn);
+
+  // Net an over-payment on one side against a shortfall on the other
+  // before reporting either. Without this a single "advance" covering
+  // rent *and* deposit reported an outstanding balance and a credit of
+  // the same size at once (RQ-11) — two contradictory numbers on one
+  // booking, and the doc comment claiming that could not happen.
+  function transfer(from: string, to: string): string {
+    const over = nonNegativeMoney(subtractMoney(ZERO_MONEY, from));
+    const short = nonNegativeMoney(to);
+    return compareMoney(over, short) < 0 ? over : short;
+  }
+
+  const rentCreditToDeposit = transfer(rentBalance, depositBalance);
+  if (compareMoney(rentCreditToDeposit, ZERO_MONEY) > 0) {
+    rentBalance = addMoney(rentBalance, rentCreditToDeposit);
+    depositBalance = subtractMoney(depositBalance, rentCreditToDeposit);
+  }
+
+  const depositCreditToRent = transfer(depositBalance, rentBalance);
+  if (compareMoney(depositCreditToRent, ZERO_MONEY) > 0) {
+    depositBalance = addMoney(depositBalance, depositCreditToRent);
+    rentBalance = subtractMoney(rentBalance, depositCreditToRent);
+  }
 
   const outstanding = addMoney(
     nonNegativeMoney(rentBalance),
@@ -140,6 +203,9 @@ export function computePaymentSummary(
     balancePaid: balance,
     depositCollected: depositIn,
     refunded,
+    depositReturned,
+    depositAppliedToDamage: depositApplied,
+    damageCharged: totalDamageCharge,
     depositReleased: depositOut,
     rentCollected,
     rentBalance,
@@ -553,9 +619,19 @@ export async function recordPayment(
       });
     }
 
-    // `booking_confirmed` is queued once, at booking creation (see
-    // `createBookingGroup`) — its dedupe already covers a booking created
-    // with zero advance and confirmed later by this same payment.
+    // Queue `booking_confirmed` at the transition that actually confirms
+    // the order. A booking created with an advance is confirmed inside
+    // `createBooking` and notified there; one created as a draft is
+    // confirmed here, by the payment that qualifies it (RQ-07).
+    if (nextStatus !== booking.status && nextStatus === "confirmed") {
+      const [confirmed] = await tx
+        .select()
+        .from(bookings)
+        .where(eq(bookings.id, booking.id))
+        .limit(1);
+
+      await queueBookingNotification(tx, confirmed ?? booking, "booking_confirmed");
+    }
 
     return { payments: insertedRows, summary: paymentSummary };
   });
@@ -613,6 +689,11 @@ export type BookingReceipt = {
 export async function getReceipt(
   shopId: string,
   bookingId: string,
+  // Receipts are readable by anyone in the tenant, so the actor is not
+  // consulted — kept in the signature so the call sites stay uniform with
+  // the other booking reads, and so per-role scoping can be added here
+  // without touching them.
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   _actor: Pick<TenantSessionUser, "id" | "role">,
 ): Promise<BookingReceipt | null> {
   const [row] = await db
@@ -746,4 +827,102 @@ export async function getReceipt(
         : null,
     })),
   };
+}
+
+/**
+ * Settles the money side of a cancellation. Cancelling used to be a pure
+ * status change: the payments stayed on the ledger, the deposit stayed
+ * "held", no refund row was ever written, and the order still reported
+ * `paymentStatus: "paid"` with a `totalAmount` of zero — so a fully-paid
+ * order that got cancelled looked settled while the shop was still
+ * holding the customer's money (RQ-08).
+ *
+ * Runs after the items are cancelled and `totalAmount` recomputed, so the
+ * summary it reads already reflects the reduced bill:
+ *
+ *  1. release whatever deposit is still held back to the customer, and
+ *  2. refund whatever the customer has over-paid on the rent side.
+ *
+ * Idempotent by construction — once both are written the next call sees
+ * `depositHeld` and `creditBalance` at zero and writes nothing.
+ */
+export async function settleCancelledOrder(
+  tx: PaymentTx,
+  params: {
+    actor: Pick<TenantSessionUser, "id" | "shopId">;
+    booking: Pick<Booking, "id" | "totalAmount" | "securityDeposit" | "bookingNumber">;
+    outletId: string | null;
+    refundMethod?: Payment["paymentMethod"];
+    refundReference?: string | null;
+  },
+): Promise<PaymentSummary> {
+  const method = params.refundMethod ?? "cash";
+
+  const existing = await tx
+    .select()
+    .from(payments)
+    .where(eq(payments.bookingId, params.booking.id));
+
+  const damage = await sumOrderDamageCharge(tx, params.booking.id);
+  let rows = existing;
+  let summary = computePaymentSummary(params.booking, damage, rows);
+
+  if (compareMoney(summary.depositHeld, ZERO_MONEY) > 0) {
+    const release = await insertPaymentRow(tx, {
+      shopId: params.actor.shopId,
+      outletId: params.outletId,
+      bookingId: params.booking.id,
+      amount: summary.depositHeld,
+      paymentType: "deposit_release",
+      paymentMethod: method,
+      referenceNumber: params.refundReference ?? null,
+      note: "Security deposit returned on cancellation",
+      recordedById: params.actor.id,
+    });
+    rows = [...rows, release];
+    summary = computePaymentSummary(params.booking, damage, rows);
+  }
+
+  // Only the *rent-side* over-payment is refunded here. `creditBalance`
+  // would double-count the deposit: the release above already handed that
+  // back, and once the cancelled order's `securityDeposit` recomputes to
+  // zero the returned deposit also shows up as a credit.
+  const rentOverpaid = nonNegativeMoney(
+    subtractMoney(summary.rentCollected, summary.rentPayable),
+  );
+
+  if (compareMoney(rentOverpaid, ZERO_MONEY) > 0) {
+    const refund = await insertPaymentRow(tx, {
+      shopId: params.actor.shopId,
+      outletId: params.outletId,
+      bookingId: params.booking.id,
+      amount: rentOverpaid,
+      paymentType: "refund",
+      paymentMethod: method,
+      referenceNumber: params.refundReference ?? null,
+      note: `Refund on cancellation of ${params.booking.bookingNumber}`,
+      recordedById: params.actor.id,
+    });
+    rows = [...rows, refund];
+    summary = computePaymentSummary(params.booking, damage, rows);
+  }
+
+  // A cancelled order's payment status is not the generic derivation:
+  // once everything is cancelled `rentPayable` is zero, so "nothing is
+  // owed" would read as `paid` — which is exactly the misleading label
+  // the audit found on a cancelled order the shop still owed money on.
+  // Say what actually happened instead.
+  const everCollected = addMoney(
+    addMoney(summary.advancePaid, summary.balancePaid),
+    summary.depositCollected,
+  );
+  const cancelledStatus: Booking["paymentStatus"] =
+    compareMoney(everCollected, ZERO_MONEY) <= 0 ? "unpaid" : "refunded";
+
+  await tx
+    .update(bookings)
+    .set({ paymentStatus: cancelledStatus, updatedAt: new Date() })
+    .where(eq(bookings.id, params.booking.id));
+
+  return { ...summary, status: cancelledStatus };
 }

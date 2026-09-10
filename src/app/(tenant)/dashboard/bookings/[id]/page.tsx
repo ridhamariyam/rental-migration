@@ -16,6 +16,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { AddBookingItemButton } from "@/components/tenant/add-booking-item-dialog";
 import { BookingStatusBadge } from "@/components/tenant/booking-status-badge";
+import { OrderStageBadge } from "@/components/tenant/order-stage-badge";
+import { deriveOrderStage, isOrderClosed } from "@/lib/order-stage";
 import { BookingCancelAction } from "@/components/tenant/booking-cancel-action";
 import { BookingPaymentsCard } from "@/components/tenant/booking-payments-card";
 import { BookingPickupDialog } from "@/components/tenant/booking-pickup-dialog";
@@ -88,12 +90,17 @@ export default async function BookingDetailPage({
     ? await listPaymentsForBooking(user.shopId, booking.id)
     : { payments: [], summary: null };
 
-  const canEditOrder = canManage && isEditable(booking.status);
-  const canCancelOrder = canCancel && !isTerminal(booking.status);
-  // Adding another item just needs the order itself to still be open —
-  // there's no "anchor item" concept anymore now that the order is its
-  // own row.
-  const canAddItem = canManage && booking.status !== "cancelled";
+  // The order's real stage, derived from its items — `bookings.status`
+  // alone cannot say "finished", so a fully returned and settled order
+  // used to keep showing "Confirmed" alongside live Add-item and Cancel
+  // controls and a "Total due at pickup" line (RQ-18).
+  const stage = deriveOrderStage(booking, items);
+  const orderClosed = isOrderClosed(stage);
+
+  const canEditOrder = canManage && isEditable(booking.status) && !orderClosed;
+  const canCancelOrder =
+    canCancel && !isTerminal(booking.status) && !orderClosed;
+  const canAddItem = canManage && !orderClosed;
 
   // Bulk pickup only makes sense once there are at least two items still
   // waiting for the counter — a single eligible item already has its own
@@ -148,7 +155,7 @@ export default async function BookingDetailPage({
                 <h1 className="text-2xl font-semibold tracking-tight">
                   {booking.bookingNumber}
                 </h1>
-                <BookingStatusBadge status={booking.status} />
+                <OrderStageBadge stage={stage} />
                 {canViewPayments && summary ? (
                   <PaymentStatusBadge status={summary.status} />
                 ) : null}
@@ -309,7 +316,9 @@ export default async function BookingDetailPage({
                 </span>
               </div>
               <div className="flex items-center justify-between">
-                <span className="font-semibold">Total due at pickup</span>
+                <span className="font-semibold">
+                  {orderClosed ? "Final settlement" : "Total due at pickup"}
+                </span>
                 <span className="font-semibold">
                   {formatMoney(
                     summary?.totalReceivable ??

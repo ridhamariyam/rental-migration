@@ -16,6 +16,7 @@ import {
   sql,
 } from "drizzle-orm";
 import { db } from "@/lib/db/client";
+import { markOverdueItems } from "@/server/bookings/overdue";
 import {
   bookingItems,
   bookings,
@@ -142,7 +143,15 @@ export async function ensureDefaultNotificationRules(
   );
 
   if (rows.length > 0) {
-    await database.insert(notificationRules).values(rows);
+    // The select above is only an optimisation, never a guarantee: two
+    // requests for a shop with no rules yet (the first two bookings after
+    // signup, or any two concurrent ones) both read an empty set and both
+    // insert, colliding on `uq_notification_rules_shop_event` and failing
+    // whichever transaction they were seeding. Let the unique index be the
+    // arbiter instead of the read.
+    await database.insert(notificationRules).values(rows).onConflictDoNothing({
+      target: [notificationRules.shopId, notificationRules.event],
+    });
   }
 }
 
@@ -1017,33 +1026,73 @@ export async function queueOverdueReminders(now = new Date()): Promise<number> {
     .from(bookingItems)
     .where(
       and(
-        inArray(bookingItems.status, ["pickup_pending", "rented", "return_pending", "overdue"]),
+        inArray(bookingItems.status, [
+          "pickup_pending",
+          "rented",
+          "return_pending",
+          "overdue",
+        ]),
         lt(bookingItems.toDate, toDateString(now)),
       ),
     );
 
+  if (overdueItems.length === 0) return 0;
+
+  // Batched rather than three queries per item per tick. The old shape ran
+  // a rule lookup, a prior-log lookup and a context build for every
+  // overdue item on every tick across every tenant — thousands of queries
+  // a minute at a 30s cadence, growing with each tenant added (RQ-16).
+
+  // 1. One rule lookup per *shop*, not per item.
+  const shopIds = [...new Set(overdueItems.map((item) => item.shopId))];
+  const targets = new Map<string, ResolvedRuleTarget | null>();
+  for (const shopId of shopIds) {
+    targets.set(shopId, await resolveRuleTarget(db, shopId, "overdue_reminder"));
+  }
+
+  const candidates = overdueItems.filter((item) => targets.get(item.shopId));
+  if (candidates.length === 0) return 0;
+
+  // 2. One prior-log query for every candidate, aggregated in the
+  //    database, instead of fetching each item's whole log history.
+  const priorStats = await db
+    .select({
+      bookingItemId: notificationLogs.bookingItemId,
+      sent: sql<number>`count(*)::int`,
+      lastAt: sql<Date | null>`max(${notificationLogs.createdAt})`,
+    })
+    .from(notificationLogs)
+    .where(
+      and(
+        inArray(
+          notificationLogs.bookingItemId,
+          candidates.map((item) => item.itemId),
+        ),
+        eq(notificationLogs.event, "overdue_reminder"),
+      ),
+    )
+    .groupBy(notificationLogs.bookingItemId);
+
+  const statsByItem = new Map(
+    priorStats.map((row) => [row.bookingItemId as string, row]),
+  );
+
   let queued = 0;
-  for (const item of overdueItems) {
-    const target = await resolveRuleTarget(db, item.shopId, "overdue_reminder");
+  for (const item of candidates) {
+    const target = targets.get(item.shopId);
     if (!target) continue;
 
-    const priorLogs = await db
-      .select({ createdAt: notificationLogs.createdAt })
-      .from(notificationLogs)
-      .where(
-        and(
-          eq(notificationLogs.bookingItemId, item.itemId),
-          eq(notificationLogs.event, "overdue_reminder"),
-        ),
-      )
-      .orderBy(desc(notificationLogs.createdAt));
+    const stats = statsByItem.get(item.itemId);
+    const alreadySent = stats?.sent ?? 0;
+    if (alreadySent >= target.rule.repeatLimit) continue;
 
-    if (priorLogs.length >= target.rule.repeatLimit) continue;
-    const lastSentHoursAgo = priorLogs[0]
-      ? (now.getTime() - new Date(priorLogs[0].createdAt).getTime()) / (1000 * 60 * 60)
+    const lastSentHoursAgo = stats?.lastAt
+      ? (now.getTime() - new Date(stats.lastAt).getTime()) / (1000 * 60 * 60)
       : Infinity;
     if (lastSentHoursAgo < OVERDUE_REMINDER_MIN_HOURS_BETWEEN) continue;
 
+    // 3. Only build the (expensive, multi-join) context for items that
+    //    have actually earned another reminder.
     const context = await buildItemContext(db, item.bookingId, item.itemId);
     await insertNotificationLog(db, target, {
       shopId: item.shopId,
@@ -1160,12 +1209,20 @@ async function sendClaimedNotifications(claimed: NotificationLog[]): Promise<num
 }
 
 /**
- * Runs the `overdue_reminder` scan before claiming/sending — this is the
- * only event that isn't pre-scheduled at booking/pickup/return time (see
- * `queueOverdueReminders`'s doc comment), so it has to be (re-)discovered
- * on every tick of the same cron/worker that sends everything else.
+ * The scheduled tick. Does three things, in order:
+ *
+ *  1. promotes items past their return date to `overdue` (RQ-10) — the
+ *     status used to never move even while reminders went out,
+ *  2. queues `overdue_reminder` for them; this is the only event that
+ *     isn't pre-scheduled at booking/pickup/return time (see
+ *     `queueOverdueReminders`), so it is rediscovered every tick,
+ *  3. claims and sends whatever is due.
+ *
+ * Marking runs first so the reminder scan and every report agree about
+ * which items are late within the same tick.
  */
 export async function dispatchDueNotifications(now = new Date()): Promise<number> {
+  await markOverdueItems(now);
   await queueOverdueReminders(now);
   return sendClaimedNotifications(await claimDueNotifications(now, null, 50));
 }

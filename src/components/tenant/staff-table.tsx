@@ -1,3 +1,4 @@
+import type { TenantSessionUser } from "@/server/auth/guard";
 import Link from "next/link";
 import { UsersIcon } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -51,13 +52,13 @@ function staffHref(query: StaffListQuery, page: number): string {
  * signed-in tenant. Same pattern as `OutletsTable`/`TenantsTable`.
  */
 export async function StaffTable({
-  shopId,
+  actor,
   query,
 }: {
-  shopId: string;
+  actor: TenantSessionUser;
   query: StaffListQuery;
 }) {
-  const { items, total, page, totalPages } = await listStaff(shopId, query);
+  const { items, total, page, totalPages } = await listStaff(actor, query);
   const hasFilters =
     Boolean(query.q) || query.role !== "all" || query.status !== "all";
 

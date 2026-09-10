@@ -60,3 +60,6 @@ console.log(
 
 void tick();
 setInterval(() => void tick(), intervalMs);
+
+// Marks this file as a module so its top-level bindings stay local.
+export {};

@@ -16,7 +16,10 @@ export async function POST(
     const body = cancelBookingSchema.parse(
       await request.json().catch(() => ({})),
     );
-    const item = await cancelBookingItem(user, id, itemId, body.reason);
+    const item = await cancelBookingItem(user, id, itemId, body.reason, {
+      refundMethod: body.refundMethod,
+      refundReference: body.refundReference,
+    });
 
     dispatchAfterResponse([itemId]);
 

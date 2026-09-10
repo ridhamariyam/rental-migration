@@ -1,6 +1,6 @@
 import "server-only";
 
-import { and, asc, count, desc, eq, ilike, inArray, or, sql } from "drizzle-orm";
+import { and, asc, count, desc, eq, ilike, inArray, ne, or, sql } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { AppError } from "@/lib/errors/app-error";
 import {
@@ -12,6 +12,7 @@ import {
   users,
   type Booking,
   type BookingItem,
+  type Payment,
 } from "@/lib/db/schema";
 import {
   assertTransition,
@@ -29,18 +30,23 @@ import {
 } from "@/lib/money";
 import { formatMoney } from "@/lib/format";
 import { Permission, hasPermission } from "@/lib/auth/permissions";
-import type { TenantSessionUser } from "@/server/auth/guard";
+import { outletScopeFor, type TenantSessionUser } from "@/server/auth/guard";
 import { AuditAction, recordAudit } from "@/server/audit/service";
 import {
   queueBookingLifecycleNotifications,
   queueBookingNotification,
   queueOwnerBookingNotification,
 } from "@/server/notifications/service";
-import { computePaymentSummary, insertPaymentRow } from "@/server/payments/service";
+import {
+  computePaymentSummary,
+  insertPaymentRow,
+  settleCancelledOrder,
+} from "@/server/payments/service";
 import {
   assertAvailable,
   assertCapacityAvailable,
   checkAvailability,
+  lockVariationsForUpdate,
   type CapacityRequest,
 } from "@/server/bookings/availability";
 import { quoteRental, type RentalQuote } from "@/server/bookings/pricing";
@@ -99,13 +105,25 @@ function isUniqueViolation(error: unknown): error is { code: string } {
   );
 }
 
-/** Every role sees every order in the tenant — staff included, so any
- * agent can look up an order regardless of who created/handled it.
- * Kept as a function (returning `undefined`, i.e. no extra restriction)
- * so per-role scoping can be reintroduced later without touching every
- * call site. */
-function staffScopeCondition(_actor: Pick<TenantSessionUser, "id" | "role">) {
-  return undefined;
+/**
+ * Orders are visible to the whole tenant for `admin`, and only to their
+ * own outlet for `manager`/`staff` — an order counts as "theirs" when any
+ * of its items sits at their outlet (RQ-12). Previously this returned
+ * `undefined` unconditionally, so every role saw every branch's orders.
+ */
+function staffScopeCondition(
+  actor: Pick<TenantSessionUser, "id" | "role" | "outletId">,
+) {
+  const outletId = outletScopeFor(actor);
+  if (outletId === null) return undefined;
+
+  return inArray(
+    bookings.id,
+    db
+      .select({ id: bookingItems.bookingId })
+      .from(bookingItems)
+      .where(eq(bookingItems.outletId, outletId)),
+  );
 }
 
 /**
@@ -117,7 +135,7 @@ function staffScopeCondition(_actor: Pick<TenantSessionUser, "id" | "role">) {
 export async function listBookings(
   shopId: string,
   query: BookingListQuery,
-  actor: Pick<TenantSessionUser, "id" | "role">,
+  actor: Pick<TenantSessionUser, "id" | "role" | "outletId">,
 ): Promise<BookingListResult> {
   const { page, pageSize, q, status, customerId } = query;
 
@@ -265,7 +283,7 @@ export type BookingStats = {
 
 export async function getBookingStats(
   shopId: string,
-  actor: Pick<TenantSessionUser, "id" | "role">,
+  actor: Pick<TenantSessionUser, "id" | "role" | "outletId">,
 ): Promise<BookingStats> {
   const scope = staffScopeCondition(actor);
   const scopedWhere = (...extra: (ReturnType<typeof eq> | undefined)[]) =>
@@ -339,7 +357,7 @@ export type BookingOrderDetail = Awaited<
 export async function getBookingById(
   shopId: string,
   id: string,
-  actor: Pick<TenantSessionUser, "id" | "role">,
+  actor: Pick<TenantSessionUser, "id" | "role" | "outletId">,
 ): Promise<BookingOrderDetail | null> {
   const parsedId = bookingIdParamSchema.safeParse({ id });
   if (!parsedId.success) {
@@ -417,7 +435,7 @@ export type BookingItemDetail = Awaited<
 export async function getBookingItems(
   shopId: string,
   bookingId: string,
-  actor: Pick<TenantSessionUser, "id" | "role">,
+  actor: Pick<TenantSessionUser, "id" | "role" | "outletId">,
 ): Promise<BookingItemDetail[]> {
   return bookingItemDetailBaseQuery()
     .where(
@@ -438,7 +456,7 @@ export async function getBookingItemById(
   shopId: string,
   bookingId: string,
   itemId: string,
-  actor: Pick<TenantSessionUser, "id" | "role">,
+  actor: Pick<TenantSessionUser, "id" | "role" | "outletId">,
 ): Promise<BookingItemDetail | null> {
   const [row] = await bookingItemDetailBaseQuery()
     .where(
@@ -711,9 +729,12 @@ export async function createBooking(
     requestsByVariation.set(item.variation.id, bucket);
   }
 
-  for (const { variation, requests } of requestsByVariation.values()) {
-    await assertCapacityAvailable(variation, requests);
-  }
+  // The capacity check itself has moved *inside* the transaction below,
+  // behind a `FOR UPDATE` lock on each variation — running it out here on
+  // the pooled handle is what let concurrent requests for the last unit
+  // all read "one free" and all commit. Everything above this point is
+  // pure validation and pricing, so it stays outside the transaction to
+  // keep the lock window short.
 
   // --- Order-level discount / additional cost / advance -----------------
   const orderGrossRent = prepared.reduce(
@@ -791,6 +812,19 @@ export async function createBooking(
 
   try {
     return await db.transaction(async (tx) => {
+      // Serialise every request touching these items, then re-check
+      // capacity against what is committed *now*. Both steps have to be
+      // in here: the lock without the re-check would still let the second
+      // request through on a stale read taken before it waited.
+      await lockVariationsForUpdate(
+        tx,
+        [...requestsByVariation.keys()],
+      );
+
+      for (const { variation, requests } of requestsByVariation.values()) {
+        await assertCapacityAvailable(tx, variation, requests);
+      }
+
       const [order] = await tx
         .insert(bookings)
         .values({
@@ -900,7 +934,11 @@ export async function createBooking(
         return { booking: updatedOrder, items: confirmedItems };
       }
 
-      await queueBookingNotification(tx, order, "booking_confirmed");
+      // No `booking_confirmed` here: with no advance the order is still
+      // `draft`, and telling the customer their booking is confirmed
+      // before it is — or before a rupee has been taken — is exactly what
+      // RQ-07 flagged. `recordPayment` queues it at the real
+      // draft -> confirmed transition instead.
 
       return { booking: order, items: createdItems };
     });
@@ -1002,7 +1040,14 @@ async function recomputeOrderTotal(
   );
 
   let securityDeposit = order.securityDeposit;
-  if (!order.securityDepositOverridden) {
+  if (activeItems.length === 0) {
+    // Nothing left to secure. Without this, an order whose deposit was
+    // entered by hand (`securityDepositOverridden`) kept reporting that
+    // deposit as still due after every item was cancelled — so a
+    // part-paid cancellation looked like it still owed the deposit
+    // instead of owing the customer a refund (RQ-08).
+    securityDeposit = ZERO_MONEY;
+  } else if (!order.securityDepositOverridden) {
     const variationIds = [...new Set(activeItems.map((item) => item.variationId))];
     const variationRows =
       variationIds.length > 0
@@ -1116,14 +1161,6 @@ export async function updateBookingItem(
 
   const variation = await resolveVariation(actor.shopId, item.variationId, undefined);
 
-  await assertAvailable(
-    variation,
-    input.fromDate,
-    input.toDate,
-    item.id,
-    requestedQuantity,
-  );
-
   const quote = quoteRental(
     variation,
     input.fromDate,
@@ -1133,6 +1170,19 @@ export async function updateBookingItem(
   );
 
   return db.transaction(async (tx) => {
+    // Quantity can only shrink here, but the *dates* can move onto a
+    // busier window, so this still reserves stock and still needs the
+    // lock-then-check inside the writing transaction.
+    await lockVariationsForUpdate(tx, [variation.id]);
+    await assertAvailable(
+      variation,
+      input.fromDate,
+      input.toDate,
+      item.id,
+      requestedQuantity,
+      tx,
+    );
+
     await tx
       .update(bookingItems)
       .set({
@@ -1191,9 +1241,19 @@ export async function addBookingItem(
     quantity,
   );
 
-  await assertAvailable(variation, input.fromDate, input.toDate, undefined, quantity);
-
   return db.transaction(async (tx) => {
+    // Lock and check inside the transaction that writes the row — same
+    // reasoning as `createBooking`.
+    await lockVariationsForUpdate(tx, [variation.id]);
+    await assertAvailable(
+      variation,
+      input.fromDate,
+      input.toDate,
+      undefined,
+      quantity,
+      tx,
+    );
+
     const [created] = await tx
       .insert(bookingItems)
       .values({
@@ -1232,7 +1292,11 @@ export async function cancelBookingItem(
   actor: TenantSessionUser,
   bookingId: string,
   itemId: string,
-  reason: string | undefined,
+  reason: string,
+  options: {
+    refundMethod?: Payment["paymentMethod"];
+    refundReference?: string | null;
+  } = {},
 ): Promise<BookingItemRow> {
   const order = await loadBookingForTenant(actor.shopId, bookingId);
   const item = await loadItemForTenant(actor.shopId, bookingId, itemId);
@@ -1273,6 +1337,35 @@ export async function cancelBookingItem(
       after: { status: "cancelled", cancellationReason: reason || null },
     });
 
+    // Cancelling the *last* live item ends the order in practice, so the
+    // money has to be settled exactly as a whole-order cancel would —
+    // otherwise the deposit stays held against an order with nothing left
+    // in it.
+    const siblings = await tx
+      .select({ status: bookingItems.status })
+      .from(bookingItems)
+      .where(and(eq(bookingItems.bookingId, bookingId), ne(bookingItems.id, itemId)));
+
+    const nothingLeftActive = siblings.every(
+      (sibling) => sibling.status === "cancelled" || sibling.status === "returned",
+    );
+
+    if (nothingLeftActive) {
+      const [current] = await tx
+        .select()
+        .from(bookings)
+        .where(eq(bookings.id, bookingId))
+        .limit(1);
+
+      await settleCancelledOrder(tx, {
+        actor,
+        booking: current,
+        outletId: updated.outletId,
+        refundMethod: options.refundMethod,
+        refundReference: options.refundReference,
+      });
+    }
+
     await queueOwnerBookingNotification(tx, order, itemId, "owner_item_cancelled");
 
     return updated;
@@ -1285,8 +1378,13 @@ export async function cancelBookingItem(
 export async function cancelBookingOrder(
   actor: TenantSessionUser,
   id: string,
-  reason: string | undefined,
+  reason: string,
+  options: {
+    refundMethod?: Payment["paymentMethod"];
+    refundReference?: string | null;
+  } = {},
 ): Promise<BookingRow> {
+  const { refundMethod, refundReference } = options;
   const booking = await loadBookingForTenant(actor.shopId, id);
 
   // Same reasoning as `cancelBookingItem`: same-state is a no-op-allowed
@@ -1310,7 +1408,11 @@ export async function cancelBookingOrder(
       .returning();
 
     const items = await tx
-      .select({ id: bookingItems.id, status: bookingItems.status })
+      .select({
+        id: bookingItems.id,
+        status: bookingItems.status,
+        outletId: bookingItems.outletId,
+      })
       .from(bookingItems)
       .where(eq(bookingItems.bookingId, id));
 
@@ -1353,12 +1455,51 @@ export async function cancelBookingOrder(
     // still-rented item's rent (and share of the deposit) stays counted.
     const recomputed = await recomputeOrderTotal(tx, id);
 
+    // Give the customer their money back. Runs *after* the recompute so
+    // the summary is measured against the reduced bill; without this the
+    // order sat at `paymentStatus: "paid"` holding the customer's deposit
+    // and advance with no refund anywhere on the ledger (RQ-08).
+    const settlement = await settleCancelledOrder(tx, {
+      actor,
+      booking: recomputed,
+      outletId: items[0]?.outletId ?? null,
+      refundMethod,
+      refundReference,
+    });
+
+    const [settled] = await tx
+      .select()
+      .from(bookings)
+      .where(eq(bookings.id, id))
+      .limit(1);
+
+    if (compareMoney(settlement.refunded, ZERO_MONEY) > 0 ||
+        compareMoney(settlement.depositReturned, ZERO_MONEY) > 0) {
+      await recordAudit(tx, {
+        shopId: actor.shopId,
+        outletId: items[0]?.outletId ?? null,
+        userId: actor.id,
+        action: AuditAction.PAYMENT_REFUNDED,
+        entityType: "booking",
+        entityId: id,
+        summary:
+          `${updated.bookingNumber} refund on cancellation — ` +
+          `${formatMoney(settlement.refunded)} refunded, ` +
+          `${formatMoney(settlement.depositReturned)} deposit returned`,
+        after: {
+          refunded: settlement.refunded,
+          depositReturned: settlement.depositReturned,
+          paymentStatus: settlement.status,
+        },
+      });
+    }
+
     // No customer-facing "booking cancelled" WhatsApp template exists yet
     // (see `NOTIFICATION_EVENTS`) — only the item owner is notified.
     for (const itemId of cancelledItemIds) {
       await queueOwnerBookingNotification(tx, updated, itemId, "owner_item_cancelled");
     }
 
-    return recomputed;
+    return settled ?? recomputed;
   });
 }

@@ -545,27 +545,22 @@ export async function returnBooking(
     let depositRefunded = ZERO_MONEY;
 
     if (compareMoney(damageFromDeposit, ZERO_MONEY) > 0) {
-      const release = await insertPaymentRow(tx, {
+      // One row, typed `deposit_applied` rather than `deposit_release`:
+      // this deposit is being kept against the damage, not handed back,
+      // and the summary credits it toward what the customer owes. The
+      // old pairing of a `deposit_release` with an inert `damage_charge`
+      // row recorded the outflow without ever crediting it (RQ-01).
+      const applied = await insertPaymentRow(tx, {
         shopId: actor.shopId,
         outletId: item.outletId,
         bookingId: order.id,
         amount: damageFromDeposit,
-        paymentType: "deposit_release",
+        paymentType: "deposit_applied",
         paymentMethod: "other",
-        note: "Deposit applied to damage charge",
+        note: "Security deposit applied to damage charge",
         recordedById: actor.id,
       });
-      const charge = await insertPaymentRow(tx, {
-        shopId: actor.shopId,
-        outletId: item.outletId,
-        bookingId: order.id,
-        amount: damageFromDeposit,
-        paymentType: "damage_charge",
-        paymentMethod: "other",
-        note: "Damage recovered from security deposit",
-        recordedById: actor.id,
-      });
-      rows = [...rows, release, charge];
+      rows = [...rows, applied];
     }
 
     // Only refund what's left once every *other* item in the order is

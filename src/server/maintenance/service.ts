@@ -16,7 +16,7 @@ import {
   type ProductVariation,
 } from "@/lib/db/schema";
 import { Permission, hasPermission } from "@/lib/auth/permissions";
-import type { TenantSessionUser } from "@/server/auth/guard";
+import { resolveOutletScope, type TenantSessionUser } from "@/server/auth/guard";
 import {
   getVariationByBarcode,
   getVariationForBooking,
@@ -266,10 +266,13 @@ export type MaintenanceListResult = {
  * whichever of those they have in hand, not the task itself.
  */
 export async function listMaintenanceTasks(
-  shopId: string,
+  actor: Pick<TenantSessionUser, "shopId" | "role" | "outletId">,
   query: MaintenanceListQuery,
 ): Promise<MaintenanceListResult> {
-  const { page, pageSize, q, status, taskType, outletId } = query;
+  const { page, pageSize, q, status, taskType } = query;
+  const shopId = actor.shopId;
+  // Outlet-scoped roles only ever see their own outlet's queue (RQ-12).
+  const outletId = resolveOutletScope(actor, query.outletId);
 
   const conditions = [eq(maintenanceTasks.shopId, shopId)];
 

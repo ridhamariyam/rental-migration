@@ -27,7 +27,7 @@ const UPLOAD_FOLDER = "booking-documents";
  */
 export async function POST(request: Request) {
   try {
-    await requireTenantUser(Permission.BOOKING_CREATE);
+    const user = await requireTenantUser(Permission.BOOKING_CREATE);
 
     const formData = await request.formData();
     const file = formData.get("file");
@@ -65,7 +65,9 @@ export async function POST(request: Request) {
     // rather than an unexplained 500.
     let url: string;
     try {
-      url = await uploadToStorage(buffer, UPLOAD_FOLDER, sniffedType);
+      url = await uploadToStorage(buffer, UPLOAD_FOLDER, sniffedType, {
+        ownerShopId: user.shopId,
+      });
     } catch {
       throw new AppError(
         "That file could not be uploaded — try a different one",

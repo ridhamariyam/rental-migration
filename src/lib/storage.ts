@@ -70,9 +70,16 @@ export async function uploadToStorage(
   buffer: Buffer,
   folder: StorageFolder,
   contentType: string,
+  options: { ownerShopId?: string } = {},
 ): Promise<string> {
   const extension = EXTENSION_BY_TYPE[contentType] ?? "bin";
-  const key = `${folder}/${randomUUID()}.${extension}`;
+  // Ownership is carried in the key itself for private folders, so the
+  // serving route can check "does this file belong to the caller's shop?"
+  // without a second lookup. Before this, any signed-in user of any
+  // tenant could stream any other tenant's customer ID documents if they
+  // had the URL — the only thing protecting them was the uuid (RQ-13).
+  const owner = options.ownerShopId ? `${options.ownerShopId}/` : "";
+  const key = `${folder}/${owner}${randomUUID()}.${extension}`;
 
   await client.send(
     new PutObjectCommand({

@@ -52,8 +52,12 @@ const optionalBarcodeSchema = z
  * providing one lets an owner match an existing physical label rather than
  * printing a new one.
  *
- * Ownership fields (Phase 16, doc §19–21): `ownershipType` defaults to
- * `shop_owned`, in which case none of the owner fields are read. Switching
+ * Ownership fields (Phase 16, doc §19–21): `ownershipType` is required —
+ * it cannot carry a Zod `.default()` without breaking `zodResolver`'s
+ * input/output type equality (the same constraint documented on
+ * `optionalNumericString` in `validation/outlets.ts`), so the forms send
+ * `shop_owned` explicitly. When it is `shop_owned` none of the owner
+ * fields are read. Switching
  * to `customer_owned` requires *some* way to identify the owner (a linked
  * `ownerCustomerId` or a free-text `ownerName`) and a share above 0 — the
  * same two rules the legacy backend's `check_owner_details` validator
@@ -68,10 +72,14 @@ export const createVariationSchema = z
     rentPrice: moneySchema,
     // What the shop paid for this item — kept separate from `sellingPrice`
     // and admin-only end to end (`Permission.PRODUCT_COST_VIEW`), see
-    // `add-variation-dialog.tsx`'s doc comment. No per-item security
-    // deposit here anymore — a booking's own deposit is entered fresh at
-    // booking time instead (see `bookings.securityDeposit`).
+    // `add-variation-dialog.tsx`'s doc comment.
     buyingPrice: optionalMoneySchema,
+    // The deposit this item normally holds. A booking may override it,
+    // but leaving the booking's own field blank falls back to this, so
+    // it has to be settable — the field was previously stripped from this
+    // schema while `quoteRental` still read the column, which pinned
+    // every default deposit at zero (RQ-06).
+    securityDeposit: optionalMoneySchema,
     sellingPrice: optionalMoneySchema,
     quantity: quantitySchema,
     // One or more outlets this same item is stocked at — each selected
@@ -163,6 +171,7 @@ export const updateVariationSchema = z
     rentPrice: moneySchema,
     buyingPrice: optionalMoneySchema,
     sellingPrice: optionalMoneySchema,
+    securityDeposit: optionalMoneySchema,
     quantity: quantitySchema,
     outletId: z.uuid("Choose an outlet"),
     image: z.string().trim().optional(),

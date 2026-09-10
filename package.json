@@ -6,7 +6,7 @@
     "dev": "next dev -p 3003",
     "build": "next build",
     "start": "next start",
-    "test": "tsx --test src/**/*.test.ts",
+    "test": "tsx --conditions=react-server --env-file=.env.test --test --test-concurrency=1 \"src/**/*.test.ts\"",
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
     "format": "prettier --write .",
@@ -16,7 +16,10 @@
     "db:push": "drizzle-kit push",
     "db:studio": "drizzle-kit studio",
     "db:seed:tenants": "tsx scripts/seed-demo-tenants.ts",
-    "notifications:worker": "tsx --env-file=.env.local scripts/notification-worker.ts"
+    "notifications:worker": "tsx --env-file=.env.local scripts/notification-worker.ts",
+    "test:watch": "tsx --conditions=react-server --env-file=.env.test --test --test-concurrency=1 --watch \"src/**/*.test.ts\"",
+    "test:db:setup": "tsx --env-file=.env.test scripts/setup-test-db.ts",
+    "notifications:dispatch": "tsx scripts/dispatch-notifications.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1128.0",
