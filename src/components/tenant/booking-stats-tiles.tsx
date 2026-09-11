@@ -31,12 +31,12 @@ export function BookingStatsTiles({ stats }: { stats: BookingStats }) {
   ];
 
   return (
-    <div className="flex w-full overflow-x-auto gap-3 pb-1 snap-x scrollbar-none sm:grid sm:grid-cols-4">
+    /* A plain grid at every width: these tiles used to sit in a
+       sideways-snapping strip on a phone, which hid the last of them behind
+       a scroll gesture the page gives no hint of. */
+    <div className="grid w-full grid-cols-2 gap-2 sm:grid-cols-4 sm:gap-3">
       {tiles.map((tile) => (
-        <Card
-          key={tile.label}
-          className="min-w-[180px] shrink-0 snap-start sm:min-w-0"
-        >
+        <Card key={tile.label}>
           <CardContent className="flex items-center gap-3 px-4">
             <span
               className={

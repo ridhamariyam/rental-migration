@@ -6,7 +6,11 @@ import type { SettlementSummary } from "@/server/settlements/service";
 /** Same KPI-tile treatment as `OutletStatsTiles`/`TenantStatsTiles` — the
  * accent color calls out "Pending" (the number that needs the owner's
  * attention), everything else stays neutral. */
-export function SettlementStatsTiles({ summary }: { summary: SettlementSummary }) {
+export function SettlementStatsTiles({
+  summary,
+}: {
+  summary: SettlementSummary;
+}) {
   const tiles = [
     {
       label: "Pending payout",
@@ -29,12 +33,9 @@ export function SettlementStatsTiles({ summary }: { summary: SettlementSummary }
   ];
 
   return (
-    <div className="flex w-full overflow-x-auto gap-3 pb-1 snap-x scrollbar-none sm:grid sm:grid-cols-3">
+    <div className="grid w-full grid-cols-2 gap-2 sm:grid-cols-3 sm:gap-3">
       {tiles.map((tile) => (
-        <Card
-          key={tile.label}
-          className="min-w-[200px] shrink-0 snap-start sm:min-w-0"
-        >
+        <Card key={tile.label}>
           <CardContent className="flex items-center gap-3 px-4">
             <span
               className={

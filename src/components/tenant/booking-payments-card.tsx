@@ -10,6 +10,11 @@ import {
 } from "@/components/ui/empty";
 import { Separator } from "@/components/ui/separator";
 import {
+  ListCardRow,
+  ListCards,
+  TableOnly,
+} from "@/components/tenant/list-cards";
+import {
   Table,
   TableBody,
   TableCell,
@@ -23,7 +28,12 @@ import {
   type RecordPaymentItemOption,
 } from "@/components/tenant/record-payment-dialog";
 import { formatDate, formatMoney } from "@/lib/format";
-import { compareMoney, nonNegativeMoney, subtractMoney, ZERO_MONEY } from "@/lib/money";
+import {
+  compareMoney,
+  nonNegativeMoney,
+  subtractMoney,
+  ZERO_MONEY,
+} from "@/lib/money";
 import type { PaymentRow, PaymentSummary } from "@/server/payments/service";
 
 const PAYMENT_TYPE_LABELS: Record<string, string> = {
@@ -80,8 +90,12 @@ export function creditBreakdown(summary: PaymentSummary): string | null {
     return null;
   }
 
-  const rentCredit = nonNegativeMoney(subtractMoney(ZERO_MONEY, summary.rentBalance));
-  const depositCredit = nonNegativeMoney(subtractMoney(ZERO_MONEY, summary.depositBalance));
+  const rentCredit = nonNegativeMoney(
+    subtractMoney(ZERO_MONEY, summary.rentBalance),
+  );
+  const depositCredit = nonNegativeMoney(
+    subtractMoney(ZERO_MONEY, summary.depositBalance),
+  );
 
   const parts: string[] = [];
   if (compareMoney(rentCredit, ZERO_MONEY) > 0) {
@@ -90,7 +104,9 @@ export function creditBreakdown(summary: PaymentSummary): string | null {
   if (compareMoney(depositCredit, ZERO_MONEY) > 0) {
     parts.push(`${formatMoney(depositCredit)} deposit`);
   }
-  return parts.length > 0 ? `Collected ${parts.join(" + ")} more than is now payable` : null;
+  return parts.length > 0
+    ? `Collected ${parts.join(" + ")} more than is now payable`
+    : null;
 }
 
 export function BookingPaymentsCard({
@@ -118,7 +134,8 @@ export function BookingPaymentsCard({
    * line item the entry lands on instead of always using `bookingId`. */
   items?: RecordPaymentItemOption[];
 }) {
-  const canRecordAnything = (canRecord || canRefund) && bookingStatus !== "cancelled";
+  const canRecordAnything =
+    (canRecord || canRefund) && bookingStatus !== "cancelled";
 
   return (
     <Card className="lg:col-span-3">
@@ -213,10 +230,10 @@ export function BookingPaymentsCard({
 
           {compareMoney(summary.creditBalance, ZERO_MONEY) > 0 ? (
             <div className="flex flex-col gap-0.5">
-              <span className="text-amber-600 text-xs dark:text-amber-400">
+              <span className="text-xs text-amber-600 dark:text-amber-400">
                 Credit — refund owed
               </span>
-              <span className="text-amber-600 font-semibold dark:text-amber-400">
+              <span className="font-semibold text-amber-600 dark:text-amber-400">
                 {formatMoney(summary.creditBalance)}
               </span>
             </div>
@@ -252,72 +269,115 @@ export function BookingPaymentsCard({
             </EmptyHeader>
           </Empty>
         ) : (
-          <Table>
-            <TableHeader>
-              <TableRow className="hover:bg-transparent">
-                <TableHead className="text-muted-foreground h-9 px-0 text-xs font-medium tracking-wide uppercase">
-                  Date
-                </TableHead>
-                {itemLabelsByBookingId ? (
-                  <TableHead className="text-muted-foreground h-9 text-xs font-medium tracking-wide uppercase">
-                    Item
-                  </TableHead>
-                ) : null}
-                <TableHead className="text-muted-foreground h-9 text-xs font-medium tracking-wide uppercase">
-                  Type
-                </TableHead>
-                <TableHead className="text-muted-foreground h-9 text-xs font-medium tracking-wide uppercase">
-                  Method
-                </TableHead>
-                <TableHead className="text-muted-foreground h-9 text-xs font-medium tracking-wide uppercase">
-                  Reference
-                </TableHead>
-                <TableHead className="text-muted-foreground h-9 text-right text-xs font-medium tracking-wide uppercase">
-                  Amount
-                </TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
+          <>
+            <ListCards at="md" className="-mx-1">
               {payments.map((payment) => {
                 const isOutflow = OUTFLOW_TYPES.has(payment.paymentType);
                 return (
-                  <TableRow key={payment.id}>
-                    <TableCell className="text-muted-foreground px-0 py-2.5 text-sm whitespace-nowrap">
-                      {formatDate(payment.createdAt)}
-                    </TableCell>
-                    {itemLabelsByBookingId ? (
-                      <TableCell className="text-muted-foreground py-2.5 text-sm whitespace-nowrap">
-                        {itemLabelsByBookingId[payment.bookingId] ?? "—"}
-                      </TableCell>
-                    ) : null}
-                    <TableCell className="py-2.5 text-sm">
-                      {PAYMENT_TYPE_LABELS[payment.paymentType] ??
-                        payment.paymentType}
-                    </TableCell>
-                    <TableCell className="py-2.5">
+                  <ListCardRow
+                    key={payment.id}
+                    className="px-0"
+                    title={
+                      <span
+                        className={isOutflow ? "text-destructive" : undefined}
+                      >
+                        {isOutflow ? "-" : ""}
+                        {formatMoney(payment.amount)} ·{" "}
+                        {PAYMENT_TYPE_LABELS[payment.paymentType] ??
+                          payment.paymentType}
+                      </span>
+                    }
+                    badge={
                       <Badge variant="outline" className="font-normal">
                         {PAYMENT_METHOD_LABELS[payment.paymentMethod] ??
                           payment.paymentMethod}
                       </Badge>
-                    </TableCell>
-                    <TableCell className="text-muted-foreground py-2.5 text-sm">
-                      {payment.referenceNumber || "—"}
-                    </TableCell>
-                    <TableCell
-                      className={
-                        isOutflow
-                          ? "text-destructive py-2.5 text-right text-sm font-medium"
-                          : "py-2.5 text-right text-sm font-medium"
-                      }
-                    >
-                      {isOutflow ? "-" : ""}
-                      {formatMoney(payment.amount)}
-                    </TableCell>
-                  </TableRow>
+                    }
+                    meta={
+                      <>
+                        {formatDate(payment.createdAt)}
+                        {itemLabelsByBookingId
+                          ? ` · ${itemLabelsByBookingId[payment.bookingId] ?? "—"}`
+                          : ""}
+                        {payment.referenceNumber
+                          ? ` · ${payment.referenceNumber}`
+                          : ""}
+                      </>
+                    }
+                  />
                 );
               })}
-            </TableBody>
-          </Table>
+            </ListCards>
+
+            <TableOnly at="md">
+              <Table>
+                <TableHeader>
+                  <TableRow className="hover:bg-transparent">
+                    <TableHead className="text-muted-foreground h-9 px-0 text-xs font-medium tracking-wide uppercase">
+                      Date
+                    </TableHead>
+                    {itemLabelsByBookingId ? (
+                      <TableHead className="text-muted-foreground h-9 text-xs font-medium tracking-wide uppercase">
+                        Item
+                      </TableHead>
+                    ) : null}
+                    <TableHead className="text-muted-foreground h-9 text-xs font-medium tracking-wide uppercase">
+                      Type
+                    </TableHead>
+                    <TableHead className="text-muted-foreground h-9 text-xs font-medium tracking-wide uppercase">
+                      Method
+                    </TableHead>
+                    <TableHead className="text-muted-foreground h-9 text-xs font-medium tracking-wide uppercase">
+                      Reference
+                    </TableHead>
+                    <TableHead className="text-muted-foreground h-9 text-right text-xs font-medium tracking-wide uppercase">
+                      Amount
+                    </TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {payments.map((payment) => {
+                    const isOutflow = OUTFLOW_TYPES.has(payment.paymentType);
+                    return (
+                      <TableRow key={payment.id}>
+                        <TableCell className="text-muted-foreground px-0 py-2.5 text-sm whitespace-nowrap">
+                          {formatDate(payment.createdAt)}
+                        </TableCell>
+                        {itemLabelsByBookingId ? (
+                          <TableCell className="text-muted-foreground py-2.5 text-sm whitespace-nowrap">
+                            {itemLabelsByBookingId[payment.bookingId] ?? "—"}
+                          </TableCell>
+                        ) : null}
+                        <TableCell className="py-2.5 text-sm">
+                          {PAYMENT_TYPE_LABELS[payment.paymentType] ??
+                            payment.paymentType}
+                        </TableCell>
+                        <TableCell className="py-2.5">
+                          <Badge variant="outline" className="font-normal">
+                            {PAYMENT_METHOD_LABELS[payment.paymentMethod] ??
+                              payment.paymentMethod}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-muted-foreground py-2.5 text-sm">
+                          {payment.referenceNumber || "—"}
+                        </TableCell>
+                        <TableCell
+                          className={
+                            isOutflow
+                              ? "text-destructive py-2.5 text-right text-sm font-medium"
+                              : "py-2.5 text-right text-sm font-medium"
+                          }
+                        >
+                          {isOutflow ? "-" : ""}
+                          {formatMoney(payment.amount)}
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </TableOnly>
+          </>
         )}
       </CardContent>
     </Card>

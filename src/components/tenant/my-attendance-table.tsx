@@ -14,6 +14,11 @@ import {
   PaginationPrevious,
 } from "@/components/ui/pagination";
 import {
+  ListCardRow,
+  ListCards,
+  TableOnly,
+} from "@/components/tenant/list-cards";
+import {
   Table,
   TableBody,
   TableCell,
@@ -61,48 +66,70 @@ export async function MyAttendanceTable({
 
   return (
     <>
-      <Table>
-        <TableHeader>
-          <TableRow className="hover:bg-transparent">
-            <TableHead className="text-muted-foreground h-11 px-4 text-xs font-medium tracking-wide uppercase">
-              Date
-            </TableHead>
-            <TableHead className="text-muted-foreground h-11 px-4 text-xs font-medium tracking-wide uppercase">
-              Check in
-            </TableHead>
-            <TableHead className="text-muted-foreground h-11 px-4 text-xs font-medium tracking-wide uppercase">
-              Check out
-            </TableHead>
-            <TableHead className="text-muted-foreground h-11 px-4 text-xs font-medium tracking-wide uppercase">
-              Hours
-            </TableHead>
-            <TableHead className="text-muted-foreground h-11 px-4 text-xs font-medium tracking-wide uppercase">
-              Status
-            </TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {items.map((record) => (
-            <TableRow key={record.id}>
-              <TableCell className="px-4 py-3 font-medium">
-                {formatDate(record.date)}
-              </TableCell>
-              <TableCell className="text-muted-foreground px-4 py-3 text-sm">
-                {formatTime(record.checkInTime)}
-              </TableCell>
-              <TableCell className="text-muted-foreground px-4 py-3 text-sm">
+      <ListCards>
+        {items.map((record) => (
+          <ListCardRow
+            key={record.id}
+            title={formatDate(record.date)}
+            badge={<AttendanceStatusBadge status={record.status} />}
+            meta={
+              <>
+                {formatTime(record.checkInTime)} –{" "}
                 {record.checkOutTime ? formatTime(record.checkOutTime) : "—"}
-              </TableCell>
-              <TableCell className="text-muted-foreground px-4 py-3 text-sm">
-                {formatWorkedHours(record.checkInTime, record.checkOutTime) ?? "—"}
-              </TableCell>
-              <TableCell className="px-4 py-3">
-                <AttendanceStatusBadge status={record.status} />
-              </TableCell>
+                {formatWorkedHours(record.checkInTime, record.checkOutTime)
+                  ? ` · ${formatWorkedHours(record.checkInTime, record.checkOutTime)}`
+                  : ""}
+              </>
+            }
+          />
+        ))}
+      </ListCards>
+
+      <TableOnly>
+        <Table>
+          <TableHeader>
+            <TableRow className="hover:bg-transparent">
+              <TableHead className="text-muted-foreground h-11 px-4 text-xs font-medium tracking-wide uppercase">
+                Date
+              </TableHead>
+              <TableHead className="text-muted-foreground h-11 px-4 text-xs font-medium tracking-wide uppercase">
+                Check in
+              </TableHead>
+              <TableHead className="text-muted-foreground h-11 px-4 text-xs font-medium tracking-wide uppercase">
+                Check out
+              </TableHead>
+              <TableHead className="text-muted-foreground h-11 px-4 text-xs font-medium tracking-wide uppercase">
+                Hours
+              </TableHead>
+              <TableHead className="text-muted-foreground h-11 px-4 text-xs font-medium tracking-wide uppercase">
+                Status
+              </TableHead>
             </TableRow>
-          ))}
-        </TableBody>
-      </Table>
+          </TableHeader>
+          <TableBody>
+            {items.map((record) => (
+              <TableRow key={record.id}>
+                <TableCell className="px-4 py-3 font-medium">
+                  {formatDate(record.date)}
+                </TableCell>
+                <TableCell className="text-muted-foreground px-4 py-3 text-sm">
+                  {formatTime(record.checkInTime)}
+                </TableCell>
+                <TableCell className="text-muted-foreground px-4 py-3 text-sm">
+                  {record.checkOutTime ? formatTime(record.checkOutTime) : "—"}
+                </TableCell>
+                <TableCell className="text-muted-foreground px-4 py-3 text-sm">
+                  {formatWorkedHours(record.checkInTime, record.checkOutTime) ??
+                    "—"}
+                </TableCell>
+                <TableCell className="px-4 py-3">
+                  <AttendanceStatusBadge status={record.status} />
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </TableOnly>
 
       <div className="flex flex-wrap items-center justify-between gap-3 border-t p-4">
         <p className="text-muted-foreground text-sm">
@@ -114,9 +141,7 @@ export async function MyAttendanceTable({
             <PaginationItem>
               <PaginationPrevious
                 href={
-                  page <= 1
-                    ? "#"
-                    : `${tenantPaths.attendance}?page=${page - 1}`
+                  page <= 1 ? "#" : `${tenantPaths.attendance}?page=${page - 1}`
                 }
                 aria-disabled={page <= 1}
                 tabIndex={page <= 1 ? -1 : undefined}

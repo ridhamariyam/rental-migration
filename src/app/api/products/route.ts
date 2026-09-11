@@ -1,11 +1,16 @@
 import { requireTenantUser } from "@/server/auth/guard";
-import { Permission } from "@/lib/auth/permissions";
+import { hasPermission, Permission } from "@/lib/auth/permissions";
+import { AppError } from "@/lib/errors/app-error";
 import { apiError, apiSuccess } from "@/lib/errors/api-response";
 import {
-  createProductSchema,
+  createProductRequestSchema,
   productListQuerySchema,
 } from "@/lib/validation/products";
-import { createProduct, listProducts } from "@/server/products/service";
+import {
+  createProduct,
+  createProductWithItem,
+  listProducts,
+} from "@/server/products/service";
 
 export async function GET(request: Request) {
   try {
@@ -27,12 +32,43 @@ export async function GET(request: Request) {
   }
 }
 
+/**
+ * Creates the catalogue entry and, when the body carries one, its first
+ * barcoded item in the same transaction — the "Add product" form sends
+ * both together (see `createProductWithItemSchema`). The item is omitted
+ * only by a shop with no active outlet to stock it at, which falls back to
+ * a catalogue-only row it can add items to later.
+ */
 export async function POST(request: Request) {
   try {
     const user = await requireTenantUser(Permission.PRODUCT_MANAGE);
 
-    const body = createProductSchema.parse(await request.json());
-    const product = await createProduct(user.shopId, body);
+    const body = createProductRequestSchema.parse(await request.json());
+
+    if (!body.item) {
+      const product = await createProduct(user.shopId, body);
+      return apiSuccess(product, "Product created", 201);
+    }
+
+    // Same two server-side guarantees `POST /api/products/[id]/variations`
+    // enforces on the item half, for the same reason: the form already
+    // hides the buying price from a non-admin and only offers an
+    // outlet-scoped actor their own outlet, but a hand-crafted request
+    // would not.
+    if (!hasPermission(user.role, Permission.PRODUCT_COST_VIEW)) {
+      body.item.buyingPrice = undefined;
+    }
+    if (
+      user.outletId &&
+      body.item.outletIds.some((outletId) => outletId !== user.outletId)
+    ) {
+      throw AppError.forbidden("You can only add items to your own outlet");
+    }
+
+    const product = await createProductWithItem(user.shopId, {
+      ...body,
+      item: body.item,
+    });
 
     return apiSuccess(product, "Product created", 201);
   } catch (error) {

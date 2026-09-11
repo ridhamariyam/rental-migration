@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Controller, useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -51,6 +51,27 @@ export function ProductForm({
   const isEditing = Boolean(product);
   const [formError, setFormError] = useState<string | null>(null);
   const [categoryDialogOpen, setCategoryDialogOpen] = useState(false);
+  // Same local hold as `ProductCreateForm`: a category created from the
+  // inline dialog is selectable immediately, without waiting on that
+  // dialog's `router.refresh()` to re-deliver the server-rendered list.
+  const [inlineCategories, setInlineCategories] = useState<
+    { id: string; name: string }[]
+  >([]);
+
+  const categoryOptions = useMemo(() => {
+    const merged = [...categories];
+    for (const category of inlineCategories) {
+      if (!merged.some((existing) => existing.id === category.id)) {
+        merged.push(category);
+      }
+    }
+    return merged;
+  }, [categories, inlineCategories]);
+
+  const categoryPlaceholder =
+    categoryOptions.length === 0
+      ? "No categories yet — add one"
+      : "Choose a category";
 
   const form = useForm<CreateProductInput>({
     resolver: zodResolver(createProductSchema),
@@ -85,7 +106,10 @@ export function ProductForm({
       if (error instanceof ApiClientError && error.fieldErrors.length > 0) {
         let mappedToField = false;
         for (const fieldError of error.fieldErrors) {
-          if (fieldError.field === "categoryId" || fieldError.field === "name") {
+          if (
+            fieldError.field === "categoryId" ||
+            fieldError.field === "name"
+          ) {
             form.setError(fieldError.field, { message: fieldError.message });
             mappedToField = true;
           }
@@ -139,7 +163,20 @@ export function ProductForm({
         </Field>
 
         <Field data-invalid={!!form.formState.errors.categoryId}>
-          <FieldLabel htmlFor="categoryId">Category</FieldLabel>
+          <div className="flex items-center justify-between gap-2">
+            <FieldLabel htmlFor="categoryId">Category</FieldLabel>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="text-muted-foreground hover:text-foreground h-auto gap-1 px-2 py-1 text-xs"
+              disabled={isSubmitting}
+              onClick={() => setCategoryDialogOpen(true)}
+            >
+              <PlusIcon className="size-3.5" />
+              New category
+            </Button>
+          </div>
           <Controller
             control={form.control}
             name="categoryId"
@@ -157,20 +194,20 @@ export function ProductForm({
                 disabled={isSubmitting}
               >
                 <SelectTrigger id="categoryId" className="w-full">
-                  <SelectValue placeholder="Choose a category">
+                  <SelectValue placeholder={categoryPlaceholder}>
                     {(value: string) =>
-                      categories.find((category) => category.id === value)
-                        ?.name ?? "Choose a category"
+                      categoryOptions.find((category) => category.id === value)
+                        ?.name ?? categoryPlaceholder
                     }
                   </SelectValue>
                 </SelectTrigger>
                 <SelectContent alignItemWithTrigger={false}>
-                  {categories.map((category) => (
+                  {categoryOptions.map((category) => (
                     <SelectItem key={category.id} value={category.id}>
                       {category.name}
                     </SelectItem>
                   ))}
-                  {categories.length > 0 ? <SelectSeparator /> : null}
+                  {categoryOptions.length > 0 ? <SelectSeparator /> : null}
                   <SelectItem value={ADD_CATEGORY_VALUE}>
                     <PlusIcon />
                     Add category
@@ -230,6 +267,7 @@ export function ProductForm({
         open={categoryDialogOpen}
         onOpenChange={setCategoryDialogOpen}
         onSuccess={(category: CategoryRow) => {
+          setInlineCategories((current) => [...current, category]);
           form.setValue("categoryId", category.id, { shouldValidate: true });
           setFormError(null);
         }}

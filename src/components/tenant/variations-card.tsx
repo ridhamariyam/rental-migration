@@ -42,7 +42,7 @@ export function VariationsCard({
 
   return (
     <Card>
-      <CardHeader className="flex-row items-center justify-between space-y-0 px-6 py-5 border-b border-border/60">
+      <CardHeader className="border-border/60 flex-row items-center justify-between space-y-0 border-b px-6 py-5">
         <div className="flex flex-col gap-0.5">
           <CardTitle className="text-base font-semibold tracking-tight">
             Physical items
@@ -52,7 +52,11 @@ export function VariationsCard({
           </p>
         </div>
         {canManage && outlets.length > 0 ? (
-          <Button size="sm" onClick={() => setAddOpen(true)} className="gap-1.5 font-medium shadow-2xs">
+          <Button
+            size="sm"
+            onClick={() => setAddOpen(true)}
+            className="gap-1.5 font-medium shadow-2xs"
+          >
             <PlusIcon className="size-4" />
             Add item
           </Button>
@@ -82,45 +86,68 @@ export function VariationsCard({
             ) : null}
           </Empty>
         ) : (
-          <Table>
-            <TableHeader>
-              <TableRow className="hover:bg-transparent bg-muted/20 border-b border-border/60">
-                <TableHead className="text-muted-foreground/80 h-10 px-6 text-xs font-semibold tracking-wider uppercase">
-                  Item
-                </TableHead>
-                <TableHead className="text-muted-foreground/80 h-10 px-6 text-xs font-semibold tracking-wider uppercase">
-                  Pricing
-                </TableHead>
-                <TableHead className="text-muted-foreground/80 h-10 px-6 text-xs font-semibold tracking-wider uppercase">
-                  Stock
-                </TableHead>
-                <TableHead className="text-muted-foreground/80 h-10 px-6 text-xs font-semibold tracking-wider uppercase">
-                  Outlet
-                </TableHead>
-                <TableHead className="text-muted-foreground/80 h-10 px-6 text-xs font-semibold tracking-wider uppercase">
-                  Ownership
-                </TableHead>
-                <TableHead className="text-muted-foreground/80 h-10 px-6 text-xs font-semibold tracking-wider uppercase">
-                  Listing
-                </TableHead>
-                <TableHead className="text-muted-foreground/80 h-10 px-6 text-xs font-semibold tracking-wider uppercase">
-                  Status
-                </TableHead>
-                <TableHead className="w-12 px-6" />
-              </TableRow>
-            </TableHeader>
-            <TableBody>
+          <>
+            {/* Phone and tablet: the same rows as cards. The table below
+                carries eight columns and needs ~950px of its own — below
+                `lg` its outlet, listing, status and actions columns sit
+                past the right edge, so the controls that change an item
+                are unreachable without a sideways scroll nothing hints
+                at. */}
+            <ul className="divide-border/40 divide-y lg:hidden">
               {variations.map((variation) => (
                 <VariationRow
                   key={variation.id}
+                  layout="card"
                   variation={variation}
                   productName={productName}
                   outlets={outlets}
                   canViewCost={canViewCost}
                 />
               ))}
-            </TableBody>
-          </Table>
+            </ul>
+
+            <div className="hidden lg:block">
+              <Table>
+                <TableHeader>
+                  <TableRow className="bg-muted/20 border-border/60 border-b hover:bg-transparent">
+                    <TableHead className="text-muted-foreground/80 h-10 px-4 text-xs font-semibold tracking-wider uppercase">
+                      Item
+                    </TableHead>
+                    <TableHead className="text-muted-foreground/80 h-10 px-4 text-xs font-semibold tracking-wider uppercase">
+                      Pricing
+                    </TableHead>
+                    <TableHead className="text-muted-foreground/80 h-10 px-4 text-xs font-semibold tracking-wider uppercase">
+                      Stock
+                    </TableHead>
+                    <TableHead className="text-muted-foreground/80 h-10 px-4 text-xs font-semibold tracking-wider uppercase">
+                      Outlet
+                    </TableHead>
+                    <TableHead className="text-muted-foreground/80 h-10 px-4 text-xs font-semibold tracking-wider uppercase">
+                      Ownership
+                    </TableHead>
+                    <TableHead className="text-muted-foreground/80 h-10 px-4 text-xs font-semibold tracking-wider uppercase">
+                      Listing
+                    </TableHead>
+                    <TableHead className="text-muted-foreground/80 h-10 px-4 text-xs font-semibold tracking-wider uppercase">
+                      Status
+                    </TableHead>
+                    <TableHead className="w-12 px-4" />
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {variations.map((variation) => (
+                    <VariationRow
+                      key={variation.id}
+                      variation={variation}
+                      productName={productName}
+                      outlets={outlets}
+                      canViewCost={canViewCost}
+                    />
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          </>
         )}
       </CardContent>
 

@@ -13,7 +13,10 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { PrintReceiptButton } from "@/components/tenant/print-receipt-button";
-import { creditBreakdown, outstandingBreakdown } from "@/components/tenant/booking-payments-card";
+import {
+  creditBreakdown,
+  outstandingBreakdown,
+} from "@/components/tenant/booking-payments-card";
 import { getCurrentUser } from "@/lib/auth/session";
 import { hasPermission, Permission } from "@/lib/auth/permissions";
 import { tenantPaths } from "@/lib/tenant-paths";
@@ -69,7 +72,7 @@ export default async function BookingReceiptPage({
   }
 
   return (
-    <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-6 p-6">
+    <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-6 p-4 sm:p-6">
       <div className="flex items-center justify-between gap-3 print:hidden">
         <Link
           href={`${tenantPaths.bookings}/${receipt.booking.id}`}
@@ -82,7 +85,7 @@ export default async function BookingReceiptPage({
       </div>
 
       <Card className="print:border-none print:shadow-none">
-        <CardContent className="flex flex-col gap-6 p-8">
+        <CardContent className="flex flex-col gap-6 p-5 sm:p-8">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div className="flex flex-col gap-1">
               <h1 className="text-lg font-semibold tracking-tight">
@@ -126,7 +129,9 @@ export default async function BookingReceiptPage({
 
           <div className="flex flex-col gap-3">
             <span className="text-muted-foreground text-xs tracking-wide uppercase">
-              {receipt.items.length > 1 ? `Items (${receipt.items.length})` : "Item"}
+              {receipt.items.length > 1
+                ? `Items (${receipt.items.length})`
+                : "Item"}
             </span>
             <div className="flex flex-col gap-3 text-sm">
               {receipt.items.map((item) => {
@@ -239,7 +244,11 @@ export default async function BookingReceiptPage({
                     <TableHead className="text-muted-foreground h-8 text-xs font-medium tracking-wide uppercase">
                       Type
                     </TableHead>
-                    <TableHead className="text-muted-foreground h-8 text-xs font-medium tracking-wide uppercase">
+                    {/* A receipt stays a table on a phone — it is a
+                        document, not a list — so the method rides along
+                        under the type instead of adding a fourth column
+                        that pushes the whole thing off the screen. */}
+                    <TableHead className="text-muted-foreground hidden h-8 text-xs font-medium tracking-wide uppercase sm:table-cell">
                       Method
                     </TableHead>
                     <TableHead className="text-muted-foreground h-8 text-right text-xs font-medium tracking-wide uppercase">
@@ -252,14 +261,23 @@ export default async function BookingReceiptPage({
                     const isOutflow = OUTFLOW_TYPES.has(payment.paymentType);
                     return (
                       <TableRow key={payment.id}>
-                        <TableCell className="text-muted-foreground px-0 py-2 text-sm whitespace-nowrap">
+                        <TableCell className="text-muted-foreground px-0 py-2 text-xs sm:text-sm sm:whitespace-nowrap">
                           {formatDate(payment.createdAt)}
                         </TableCell>
                         <TableCell className="py-2 text-sm">
-                          {PAYMENT_TYPE_LABELS[payment.paymentType] ??
-                            payment.paymentType}
+                          <div className="flex flex-col items-start gap-1">
+                            {PAYMENT_TYPE_LABELS[payment.paymentType] ??
+                              payment.paymentType}
+                            <Badge
+                              variant="outline"
+                              className="font-normal sm:hidden"
+                            >
+                              {PAYMENT_METHOD_LABELS[payment.paymentMethod] ??
+                                payment.paymentMethod}
+                            </Badge>
+                          </div>
                         </TableCell>
-                        <TableCell className="py-2">
+                        <TableCell className="hidden py-2 sm:table-cell">
                           <Badge variant="outline" className="font-normal">
                             {PAYMENT_METHOD_LABELS[payment.paymentMethod] ??
                               payment.paymentMethod}

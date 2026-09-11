@@ -49,6 +49,11 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
+  ListCardRow,
+  ListCards,
+  TableOnly,
+} from "@/components/tenant/list-cards";
+import {
   Table,
   TableBody,
   TableCell,
@@ -96,7 +101,14 @@ type Log = {
   recipientPhone: string;
   recipientName: string | null;
   templateName: string;
-  status: "queued" | "sending" | "sent" | "delivered" | "read" | "failed" | "cancelled";
+  status:
+    | "queued"
+    | "sending"
+    | "sent"
+    | "delivered"
+    | "read"
+    | "failed"
+    | "cancelled";
   attempts: number;
   scheduledFor: string | Date | null;
   sentAt: string | Date | null;
@@ -112,7 +124,11 @@ type Dashboard = {
   logs: { items: Log[]; total: number; page: number; totalPages: number };
 };
 
-const STAT_TILES: { label: string; value: keyof Dashboard["stats"]; icon: LucideIcon }[] = [
+const STAT_TILES: {
+  label: string;
+  value: keyof Dashboard["stats"];
+  icon: LucideIcon;
+}[] = [
   { label: "Queued", value: "queued", icon: ClockIcon },
   { label: "Sent", value: "sent", icon: SendIcon },
   { label: "Failed", value: "failed", icon: XCircleIcon },
@@ -126,7 +142,9 @@ function errorMessage(error: unknown): string {
 
 function sortedRules(rules: Rule[]) {
   return [...rules].sort(
-    (a, b) => NOTIFICATION_EVENTS.indexOf(a.event) - NOTIFICATION_EVENTS.indexOf(b.event),
+    (a, b) =>
+      NOTIFICATION_EVENTS.indexOf(a.event) -
+      NOTIFICATION_EVENTS.indexOf(b.event),
   );
 }
 
@@ -143,7 +161,9 @@ export function NotificationsConsole({
   const [openEvent, setOpenEvent] = useState<NotificationEvent | null>(null);
   const [integratedNumber, setIntegratedNumber] = useState("");
   const [logQuery, setLogQuery] = useState(searchParams.get("q") ?? "");
-  const [logStatus, setLogStatus] = useState(searchParams.get("status") ?? "all");
+  const [logStatus, setLogStatus] = useState(
+    searchParams.get("status") ?? "all",
+  );
   const [logEvent, setLogEvent] = useState(searchParams.get("event") ?? "all");
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -154,7 +174,8 @@ export function NotificationsConsole({
     (template) => template.status.toLowerCase() === "approved",
   );
   const templateById = useMemo(
-    () => new Map(dashboard.templates.map((template) => [template.id, template])),
+    () =>
+      new Map(dashboard.templates.map((template) => [template.id, template])),
     [dashboard.templates],
   );
   const numberById = useMemo(
@@ -183,11 +204,18 @@ export function NotificationsConsole({
     );
   }
 
-  function updateRuleMapping(event: NotificationEvent, slot: string, variable: string) {
+  function updateRuleMapping(
+    event: NotificationEvent,
+    slot: string,
+    variable: string,
+  ) {
     setRules((current) =>
       current.map((rule) =>
         rule.event === event
-          ? { ...rule, variableMapping: { ...rule.variableMapping, [slot]: variable } }
+          ? {
+              ...rule,
+              variableMapping: { ...rule.variableMapping, [slot]: variable },
+            }
           : rule,
       ),
     );
@@ -216,7 +244,9 @@ export function NotificationsConsole({
   // than the `rules` state, since `setRules` hasn't flushed yet when this
   // runs.
   function toggleRuleEnabled(event: NotificationEvent, isEnabled: boolean) {
-    const next = rules.map((rule) => (rule.event === event ? { ...rule, isEnabled } : rule));
+    const next = rules.map((rule) =>
+      rule.event === event ? { ...rule, isEnabled } : rule,
+    );
     setRules(next);
     saveRules(undefined, next);
   }
@@ -226,14 +256,20 @@ export function NotificationsConsole({
     if (logQuery.trim()) params.set("q", logQuery.trim());
     if (logStatus !== "all") params.set("status", logStatus);
     if (logEvent !== "all") params.set("event", logEvent);
-    router.push(params.size ? `/dashboard/notifications?${params}` : "/dashboard/notifications");
+    router.push(
+      params.size
+        ? `/dashboard/notifications?${params}`
+        : "/dashboard/notifications",
+    );
   }
 
   return (
     <main className="flex flex-1 flex-col gap-6 p-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="flex flex-col gap-1">
-          <h1 className="text-xl font-semibold tracking-tight">Notifications</h1>
+          <h1 className="text-xl font-semibold tracking-tight">
+            Notifications
+          </h1>
           <p className="text-muted-foreground max-w-2xl text-sm">
             Connect tenant WhatsApp numbers through MSG91, sync approved
             templates, map variables, and track every automated send.
@@ -241,7 +277,9 @@ export function NotificationsConsole({
         </div>
         <Badge variant={defaultNumber ? "default" : "secondary"}>
           <SmartphoneIcon />
-          {defaultNumber ? defaultNumber.integratedNumber : "No number selected"}
+          {defaultNumber
+            ? defaultNumber.integratedNumber
+            : "No number selected"}
         </Badge>
       </div>
 
@@ -249,8 +287,8 @@ export function NotificationsConsole({
         <div
           className={
             error
-              ? "rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive"
-              : "rounded-lg border border-primary/20 bg-primary/10 px-4 py-3 text-sm text-primary"
+              ? "border-destructive/30 bg-destructive/10 text-destructive rounded-lg border px-4 py-3 text-sm"
+              : "border-primary/20 bg-primary/10 text-primary rounded-lg border px-4 py-3 text-sm"
           }
         >
           {error ?? message}
@@ -263,8 +301,12 @@ export function NotificationsConsole({
             <CardContent className="flex items-center gap-3 px-4">
               <Icon className="text-muted-foreground size-5" />
               <div>
-                <p className="text-muted-foreground text-xs font-medium uppercase">{label}</p>
-                <p className="text-lg font-semibold">{dashboard.stats[value]}</p>
+                <p className="text-muted-foreground text-xs font-medium uppercase">
+                  {label}
+                </p>
+                <p className="text-lg font-semibold">
+                  {dashboard.stats[value]}
+                </p>
               </div>
             </CardContent>
           </Card>
@@ -280,22 +322,26 @@ export function NotificationsConsole({
         </CardHeader>
         <CardContent className="grid gap-4 lg:grid-cols-[1fr_1.4fr]">
           {/* These are prerequisites to complete inside MSG91, not status
-            * this app can verify. They used to render with a green tick
-            * each, on a page that simultaneously said no number was
-            * connected — a checklist that always looked complete. The two
-            * items we *can* check are checked; the rest are plain. */}
+           * this app can verify. They used to render with a green tick
+           * each, on a page that simultaneously said no number was
+           * connected — a checklist that always looked complete. The two
+           * items we *can* check are checked; the rest are plain. */}
           <div className="space-y-3 text-sm">
-            <p className="text-muted-foreground text-xs font-medium uppercase tracking-wider">
+            <p className="text-muted-foreground text-xs font-medium tracking-wider uppercase">
               Before notifications can send
             </p>
             {[
-              { label: "Tenant Meta Business Portfolio is verified.", done: null },
+              {
+                label: "Tenant Meta Business Portfolio is verified.",
+                done: null,
+              },
               {
                 label: "WhatsApp number is added through MSG91 Add Number.",
                 done: dashboard.numbers.length > 0,
               },
               {
-                label: "Dedicated WhatsApp wallet has balance or auto-recharge.",
+                label:
+                  "Dedicated WhatsApp wallet has balance or auto-recharge.",
                 done: null,
               },
               {
@@ -305,14 +351,21 @@ export function NotificationsConsole({
             ].map((item) => (
               <div key={item.label} className="flex items-start gap-2">
                 {item.done === true ? (
-                  <CheckCircle2Icon className="size-4 shrink-0 text-primary" aria-label="Done" />
+                  <CheckCircle2Icon
+                    className="text-primary size-4 shrink-0"
+                    aria-label="Done"
+                  />
                 ) : (
                   <CircleDashedIcon
                     className="text-muted-foreground size-4 shrink-0"
-                    aria-label={item.done === false ? "Not done yet" : "Check in MSG91"}
+                    aria-label={
+                      item.done === false ? "Not done yet" : "Check in MSG91"
+                    }
                   />
                 )}
-                <span className={item.done === true ? "" : "text-muted-foreground"}>
+                <span
+                  className={item.done === true ? "" : "text-muted-foreground"}
+                >
                   {item.label}
                 </span>
               </div>
@@ -320,7 +373,9 @@ export function NotificationsConsole({
           </div>
 
           <div className="grid gap-3">
-            <Label htmlFor="integrated-number">Integrated WhatsApp number</Label>
+            <Label htmlFor="integrated-number">
+              Integrated WhatsApp number
+            </Label>
             <div className="flex flex-col gap-2 sm:flex-row">
               <Input
                 id="integrated-number"
@@ -335,7 +390,9 @@ export function NotificationsConsole({
                   run(async () => {
                     await apiRequest("/api/notifications/numbers/sync", {
                       method: "POST",
-                      body: JSON.stringify({ integratedNumber: integratedNumber || undefined }),
+                      body: JSON.stringify({
+                        integratedNumber: integratedNumber || undefined,
+                      }),
                     });
                     setMessage("WhatsApp numbers synced.");
                   })
@@ -351,7 +408,9 @@ export function NotificationsConsole({
                   run(async () => {
                     await apiRequest("/api/notifications/templates/sync", {
                       method: "POST",
-                      body: JSON.stringify({ whatsappNumberId: defaultNumber?.id }),
+                      body: JSON.stringify({
+                        whatsappNumberId: defaultNumber?.id,
+                      }),
                     });
                     setMessage("Templates synced.");
                   })
@@ -369,54 +428,104 @@ export function NotificationsConsole({
         <CardHeader>
           <CardTitle className="text-base">Numbers</CardTitle>
         </CardHeader>
-        <CardContent className="overflow-x-auto">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Number</TableHead>
-                <TableHead>Name</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead className="w-28">Default</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {dashboard.numbers.map((number) => (
-                <TableRow key={number.id}>
-                  <TableCell className="font-medium">{number.integratedNumber}</TableCell>
-                  <TableCell>{number.displayName ?? "-"}</TableCell>
-                  <TableCell><Badge variant="outline">{number.status}</Badge></TableCell>
-                  <TableCell>
-                    {number.isDefault ? (
-                      <Badge>Default</Badge>
-                    ) : (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        disabled={!canManage || pending}
-                        onClick={() =>
-                          run(async () => {
-                            await apiRequest(`/api/notifications/numbers/${number.id}/default`, {
-                              method: "PATCH",
-                            });
-                            setMessage("Default number updated.");
-                          })
-                        }
-                      >
-                        Set
-                      </Button>
-                    )}
-                  </TableCell>
-                </TableRow>
-              ))}
-              {dashboard.numbers.length === 0 && (
+        <CardContent className="p-0 sm:p-6">
+          <ListCards>
+            {dashboard.numbers.map((number) => (
+              <ListCardRow
+                key={number.id}
+                title={number.integratedNumber}
+                badge={<Badge variant="outline">{number.status}</Badge>}
+                meta={number.displayName ?? "-"}
+                action={
+                  number.isDefault ? (
+                    <Badge>Default</Badge>
+                  ) : (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={!canManage || pending}
+                      onClick={() =>
+                        run(async () => {
+                          await apiRequest(
+                            `/api/notifications/numbers/${number.id}/default`,
+                            { method: "PATCH" },
+                          );
+                          setMessage("Default number updated.");
+                        })
+                      }
+                    >
+                      Set
+                    </Button>
+                  )
+                }
+              />
+            ))}
+            {dashboard.numbers.length === 0 ? (
+              <li className="text-muted-foreground p-6 text-center text-sm">
+                No WhatsApp number has been connected yet.
+              </li>
+            ) : null}
+          </ListCards>
+
+          <TableOnly>
+            <Table>
+              <TableHeader>
                 <TableRow>
-                  <TableCell colSpan={4} className="text-muted-foreground h-24 text-center">
-                    No WhatsApp number has been connected yet.
-                  </TableCell>
+                  <TableHead>Number</TableHead>
+                  <TableHead>Name</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead className="w-28">Default</TableHead>
                 </TableRow>
-              )}
-            </TableBody>
-          </Table>
+              </TableHeader>
+              <TableBody>
+                {dashboard.numbers.map((number) => (
+                  <TableRow key={number.id}>
+                    <TableCell className="font-medium">
+                      {number.integratedNumber}
+                    </TableCell>
+                    <TableCell>{number.displayName ?? "-"}</TableCell>
+                    <TableCell>
+                      <Badge variant="outline">{number.status}</Badge>
+                    </TableCell>
+                    <TableCell>
+                      {number.isDefault ? (
+                        <Badge>Default</Badge>
+                      ) : (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled={!canManage || pending}
+                          onClick={() =>
+                            run(async () => {
+                              await apiRequest(
+                                `/api/notifications/numbers/${number.id}/default`,
+                                {
+                                  method: "PATCH",
+                                },
+                              );
+                              setMessage("Default number updated.");
+                            })
+                          }
+                        >
+                          Set
+                        </Button>
+                      )}
+                    </TableCell>
+                  </TableRow>
+                ))}
+                {dashboard.numbers.length === 0 && (
+                  <TableRow>
+                    <TableCell
+                      colSpan={4}
+                      className="text-muted-foreground h-24 text-center"
+                    >
+                      No WhatsApp number has been connected yet.
+                    </TableCell>
+                  </TableRow>
+                )}
+              </TableBody>
+            </Table>
+          </TableOnly>
         </CardContent>
       </Card>
 
@@ -424,61 +533,97 @@ export function NotificationsConsole({
         <CardHeader>
           <CardTitle className="text-base">Templates</CardTitle>
         </CardHeader>
-        <CardContent className="overflow-x-auto">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Template</TableHead>
-                <TableHead>Number</TableHead>
-                <TableHead>Language</TableHead>
-                <TableHead>Category</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Variables</TableHead>
-                <TableHead>Body</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {dashboard.templates.map((template) => (
-                <TableRow key={template.id}>
-                  <TableCell className="min-w-48 font-medium">
-                    {template.name}
-                  </TableCell>
-                  <TableCell>{template.integratedNumber}</TableCell>
-                  <TableCell>{template.language}</TableCell>
-                  <TableCell>{template.category ?? "-"}</TableCell>
-                  <TableCell>
-                    <Badge
-                      variant={
-                        template.status.toLowerCase() === "approved"
-                          ? "default"
-                          : "secondary"
-                      }
-                    >
-                      {template.status}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="min-w-40">
-                    {template.variableSlots.length > 0
-                      ? template.variableSlots.join(", ")
-                      : "-"}
-                  </TableCell>
-                  <TableCell className="text-muted-foreground max-w-md truncate">
-                    {template.body ?? "-"}
-                  </TableCell>
-                </TableRow>
-              ))}
-              {dashboard.templates.length === 0 && (
-                <TableRow>
-                  <TableCell
-                    colSpan={7}
-                    className="text-muted-foreground h-24 text-center"
+        <CardContent className="p-0 sm:p-6">
+          <ListCards at="lg">
+            {dashboard.templates.map((template) => (
+              <ListCardRow
+                key={template.id}
+                title={template.name}
+                badge={
+                  <Badge
+                    variant={
+                      template.status.toLowerCase() === "approved"
+                        ? "default"
+                        : "secondary"
+                    }
                   >
-                    No approved templates have been synced yet.
-                  </TableCell>
+                    {template.status}
+                  </Badge>
+                }
+                meta={
+                  <>
+                    {template.integratedNumber} · {template.language}
+                    {template.category ? ` · ${template.category}` : ""}
+                    {template.variableSlots.length > 0
+                      ? ` · ${template.variableSlots.join(", ")}`
+                      : ""}
+                  </>
+                }
+              />
+            ))}
+            {dashboard.templates.length === 0 ? (
+              <li className="text-muted-foreground p-6 text-center text-sm">
+                No approved templates have been synced yet.
+              </li>
+            ) : null}
+          </ListCards>
+
+          <TableOnly at="lg">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Template</TableHead>
+                  <TableHead>Number</TableHead>
+                  <TableHead>Language</TableHead>
+                  <TableHead>Category</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Variables</TableHead>
+                  <TableHead>Body</TableHead>
                 </TableRow>
-              )}
-            </TableBody>
-          </Table>
+              </TableHeader>
+              <TableBody>
+                {dashboard.templates.map((template) => (
+                  <TableRow key={template.id}>
+                    <TableCell className="min-w-48 font-medium">
+                      {template.name}
+                    </TableCell>
+                    <TableCell>{template.integratedNumber}</TableCell>
+                    <TableCell>{template.language}</TableCell>
+                    <TableCell>{template.category ?? "-"}</TableCell>
+                    <TableCell>
+                      <Badge
+                        variant={
+                          template.status.toLowerCase() === "approved"
+                            ? "default"
+                            : "secondary"
+                        }
+                      >
+                        {template.status}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="min-w-40">
+                      {template.variableSlots.length > 0
+                        ? template.variableSlots.join(", ")
+                        : "-"}
+                    </TableCell>
+                    <TableCell className="text-muted-foreground max-w-md truncate">
+                      {template.body ?? "-"}
+                    </TableCell>
+                  </TableRow>
+                ))}
+                {dashboard.templates.length === 0 && (
+                  <TableRow>
+                    <TableCell
+                      colSpan={7}
+                      className="text-muted-foreground h-24 text-center"
+                    >
+                      No approved templates have been synced yet.
+                    </TableCell>
+                  </TableRow>
+                )}
+              </TableBody>
+            </Table>
+          </TableOnly>
         </CardContent>
       </Card>
 
@@ -486,13 +631,13 @@ export function NotificationsConsole({
         <CardHeader>
           <CardTitle className="text-base">Automation rules</CardTitle>
           <p className="text-muted-foreground text-sm">
-            Turn an event on, then click it to pick the number/template and
-            map its variables. <strong>Offset (minutes)</strong> shifts the
-            send time earlier (negative) or later (positive) than it would
-            go by default — e.g. `-60` sends an hour early, `0` sends right
-            on time. <strong>Repeat limit</strong> is only used by
-            &ldquo;Return overdue alert&rdquo; — how many days in a row to
-            keep re-sending it while the item is still not returned.
+            Turn an event on, then click it to pick the number/template and map
+            its variables. <strong>Offset (minutes)</strong> shifts the send
+            time earlier (negative) or later (positive) than it would go by
+            default — e.g. `-60` sends an hour early, `0` sends right on time.{" "}
+            <strong>Repeat limit</strong> is only used by &ldquo;Return overdue
+            alert&rdquo; — how many days in a row to keep re-sending it while
+            the item is still not returned.
           </p>
         </CardHeader>
         <CardContent className="space-y-2">
@@ -501,7 +646,9 @@ export function NotificationsConsole({
             const number = rule.whatsappNumberId
               ? numberById.get(rule.whatsappNumberId)
               : null;
-            const template = rule.templateId ? templateById.get(rule.templateId) : null;
+            const template = rule.templateId
+              ? templateById.get(rule.templateId)
+              : null;
 
             return (
               <button
@@ -520,9 +667,13 @@ export function NotificationsConsole({
                     }
                   />
                   <div>
-                    <p className="font-medium">{NOTIFICATION_EVENT_LABELS[rule.event]}</p>
+                    <p className="font-medium">
+                      {NOTIFICATION_EVENT_LABELS[rule.event]}
+                    </p>
                     <p className="text-muted-foreground text-xs">
-                      {scope === "booking" ? "Once per booking" : "Once per item"}
+                      {scope === "booking"
+                        ? "Once per booking"
+                        : "Once per item"}
                       {" · "}
                       {number && template
                         ? `${number.integratedNumber} · ${template.name}`
@@ -539,13 +690,20 @@ export function NotificationsConsole({
         </CardContent>
       </Card>
 
-      <Dialog open={openEvent !== null} onOpenChange={(open) => !open && setOpenEvent(null)}>
+      <Dialog
+        open={openEvent !== null}
+        onOpenChange={(open) => !open && setOpenEvent(null)}
+      >
         <DialogContent className="sm:max-w-2xl">
           {openEvent &&
             (() => {
-              const rule = rules.find((candidate) => candidate.event === openEvent);
+              const rule = rules.find(
+                (candidate) => candidate.event === openEvent,
+              );
               if (!rule) return null;
-              const template = rule.templateId ? templateById.get(rule.templateId) : null;
+              const template = rule.templateId
+                ? templateById.get(rule.templateId)
+                : null;
               const slots = template?.variableSlots?.length
                 ? template.variableSlots
                 : ["body_1", "body_2", "body_3", "body_4", "body_5", "body_6"];
@@ -555,7 +713,9 @@ export function NotificationsConsole({
               return (
                 <>
                   <DialogHeader>
-                    <DialogTitle>{NOTIFICATION_EVENT_LABELS[rule.event]}</DialogTitle>
+                    <DialogTitle>
+                      {NOTIFICATION_EVENT_LABELS[rule.event]}
+                    </DialogTitle>
                     <DialogDescription>
                       {scope === "booking"
                         ? "Sent once per booking"
@@ -568,7 +728,9 @@ export function NotificationsConsole({
                         checked={rule.isEnabled}
                         disabled={!canManage}
                         onCheckedChange={(checked) =>
-                          updateRule(rule.event, { isEnabled: checked === true })
+                          updateRule(rule.event, {
+                            isEnabled: checked === true,
+                          })
                         }
                       />
                       Enabled
@@ -627,7 +789,9 @@ export function NotificationsConsole({
                             </SelectValue>
                           </SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="none">Choose template</SelectItem>
+                            <SelectItem value="none">
+                              Choose template
+                            </SelectItem>
                             {approvedTemplates.map((template) => (
                               <SelectItem key={template.id} value={template.id}>
                                 {template.name} ({template.language})
@@ -655,7 +819,10 @@ export function NotificationsConsole({
                         <Label>
                           Repeat limit
                           {!isOverdueEvent && (
-                            <span className="text-muted-foreground font-normal"> (overdue alert only)</span>
+                            <span className="text-muted-foreground font-normal">
+                              {" "}
+                              (overdue alert only)
+                            </span>
                           )}
                         </Label>
                         <Input
@@ -679,7 +846,9 @@ export function NotificationsConsole({
                       <div className="grid gap-2 sm:grid-cols-2">
                         {slots.map((slot) => (
                           <div key={slot} className="space-y-1">
-                            <span className="text-muted-foreground text-xs">{slot}</span>
+                            <span className="text-muted-foreground text-xs">
+                              {slot}
+                            </span>
                             <Select
                               value={rule.variableMapping[slot] ?? "none"}
                               disabled={!canManage}
@@ -691,9 +860,13 @@ export function NotificationsConsole({
                                 )
                               }
                             >
-                              <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+                              <SelectTrigger className="w-full">
+                                <SelectValue />
+                              </SelectTrigger>
                               <SelectContent>
-                                <SelectItem value="none">Choose variable</SelectItem>
+                                <SelectItem value="none">
+                                  Choose variable
+                                </SelectItem>
                                 {NOTIFICATION_VARIABLES.map((variable) => (
                                   <SelectItem key={variable} value={variable}>
                                     {variable}
@@ -721,12 +894,11 @@ export function NotificationsConsole({
         </DialogContent>
       </Dialog>
 
-
       <Card>
         <CardHeader>
           <CardTitle className="text-base">Delivery log</CardTitle>
         </CardHeader>
-        <CardContent className="space-y-4 overflow-x-auto">
+        <CardContent className="space-y-4">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
             <Input
               value={logQuery}
@@ -734,17 +906,34 @@ export function NotificationsConsole({
               placeholder="Search customer, phone, booking, template"
               className="sm:max-w-sm"
             />
-            <Select value={logStatus} onValueChange={(value) => setLogStatus(value ?? "all")}>
+            <Select
+              value={logStatus}
+              onValueChange={(value) => setLogStatus(value ?? "all")}
+            >
               <SelectTrigger className="sm:w-40">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                {["all", "queued", "sending", "sent", "delivered", "read", "failed", "cancelled"].map((status) => (
-                  <SelectItem key={status} value={status}>{status}</SelectItem>
+                {[
+                  "all",
+                  "queued",
+                  "sending",
+                  "sent",
+                  "delivered",
+                  "read",
+                  "failed",
+                  "cancelled",
+                ].map((status) => (
+                  <SelectItem key={status} value={status}>
+                    {status}
+                  </SelectItem>
                 ))}
               </SelectContent>
             </Select>
-            <Select value={logEvent} onValueChange={(value) => setLogEvent(value ?? "all")}>
+            <Select
+              value={logEvent}
+              onValueChange={(value) => setLogEvent(value ?? "all")}
+            >
               <SelectTrigger className="sm:w-52">
                 <SelectValue />
               </SelectTrigger>
@@ -761,64 +950,133 @@ export function NotificationsConsole({
               Apply
             </Button>
           </div>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>When</TableHead>
-                <TableHead>Customer</TableHead>
-                <TableHead>Booking</TableHead>
-                <TableHead>Event</TableHead>
-                <TableHead>Template</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead className="w-24">Retry</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {dashboard.logs.items.map((log) => (
-                <TableRow key={log.id}>
-                  <TableCell>
+          <ListCards at="lg" className="border-t">
+            {dashboard.logs.items.map((log) => (
+              <ListCardRow
+                key={log.id}
+                title={
+                  log.customerName ?? log.recipientName ?? log.recipientPhone
+                }
+                badge={
+                  <Badge variant={notificationStatusTone(log.status)}>
+                    {log.status}
+                  </Badge>
+                }
+                meta={
+                  <>
                     {log.sentAt
                       ? formatDateTime(log.sentAt)
                       : log.scheduledFor
                         ? formatDateTime(log.scheduledFor)
-                        : "Queued"}
-                  </TableCell>
-                  <TableCell>{log.customerName ?? log.recipientName ?? log.recipientPhone}</TableCell>
-                  <TableCell>{log.bookingNumber ?? "-"}</TableCell>
-                  <TableCell>{NOTIFICATION_EVENT_LABELS[log.event]}</TableCell>
-                  <TableCell>{log.templateName}</TableCell>
-                  <TableCell>
-                    <Badge variant={notificationStatusTone(log.status)}>{log.status}</Badge>
-                  </TableCell>
-                  <TableCell>
-                    <Button
-                      size="icon"
-                      variant="ghost"
-                      disabled={!canManage || pending || log.status !== "failed"}
-                      title="Retry notification"
-                      onClick={() =>
-                        run(async () => {
-                          await apiRequest(`/api/notifications/${log.id}/retry`, {
-                            method: "POST",
-                          });
-                          setMessage("Notification queued for retry.");
-                        })
-                      }
-                    >
-                      <RotateCcwIcon />
-                    </Button>
-                  </TableCell>
-                </TableRow>
-              ))}
-              {dashboard.logs.items.length === 0 && (
+                        : "Queued"}{" "}
+                    · {NOTIFICATION_EVENT_LABELS[log.event]} ·{" "}
+                    {log.templateName}
+                    {log.bookingNumber ? ` · ${log.bookingNumber}` : ""}
+                  </>
+                }
+                action={
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    disabled={!canManage || pending || log.status !== "failed"}
+                    title="Retry notification"
+                    onClick={() =>
+                      run(async () => {
+                        await apiRequest(`/api/notifications/${log.id}/retry`, {
+                          method: "POST",
+                        });
+                        setMessage("Notification queued for retry.");
+                      })
+                    }
+                  >
+                    <RotateCcwIcon />
+                  </Button>
+                }
+              />
+            ))}
+            {dashboard.logs.items.length === 0 ? (
+              <li className="text-muted-foreground p-6 text-center text-sm">
+                No notifications have been queued yet.
+              </li>
+            ) : null}
+          </ListCards>
+
+          <TableOnly at="lg">
+            <Table>
+              <TableHeader>
                 <TableRow>
-                  <TableCell colSpan={7} className="text-muted-foreground h-24 text-center">
-                    No notifications have been queued yet.
-                  </TableCell>
+                  <TableHead>When</TableHead>
+                  <TableHead>Customer</TableHead>
+                  <TableHead>Booking</TableHead>
+                  <TableHead>Event</TableHead>
+                  <TableHead>Template</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead className="w-24">Retry</TableHead>
                 </TableRow>
-              )}
-            </TableBody>
-          </Table>
+              </TableHeader>
+              <TableBody>
+                {dashboard.logs.items.map((log) => (
+                  <TableRow key={log.id}>
+                    <TableCell>
+                      {log.sentAt
+                        ? formatDateTime(log.sentAt)
+                        : log.scheduledFor
+                          ? formatDateTime(log.scheduledFor)
+                          : "Queued"}
+                    </TableCell>
+                    <TableCell>
+                      {log.customerName ??
+                        log.recipientName ??
+                        log.recipientPhone}
+                    </TableCell>
+                    <TableCell>{log.bookingNumber ?? "-"}</TableCell>
+                    <TableCell>
+                      {NOTIFICATION_EVENT_LABELS[log.event]}
+                    </TableCell>
+                    <TableCell>{log.templateName}</TableCell>
+                    <TableCell>
+                      <Badge variant={notificationStatusTone(log.status)}>
+                        {log.status}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        disabled={
+                          !canManage || pending || log.status !== "failed"
+                        }
+                        title="Retry notification"
+                        onClick={() =>
+                          run(async () => {
+                            await apiRequest(
+                              `/api/notifications/${log.id}/retry`,
+                              {
+                                method: "POST",
+                              },
+                            );
+                            setMessage("Notification queued for retry.");
+                          })
+                        }
+                      >
+                        <RotateCcwIcon />
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+                {dashboard.logs.items.length === 0 && (
+                  <TableRow>
+                    <TableCell
+                      colSpan={7}
+                      className="text-muted-foreground h-24 text-center"
+                    >
+                      No notifications have been queued yet.
+                    </TableCell>
+                  </TableRow>
+                )}
+              </TableBody>
+            </Table>
+          </TableOnly>
         </CardContent>
       </Card>
     </main>

@@ -16,6 +16,11 @@ import {
   PaginationPrevious,
 } from "@/components/ui/pagination";
 import {
+  ListCardRow,
+  ListCards,
+  TableOnly,
+} from "@/components/tenant/list-cards";
+import {
   Table,
   TableBody,
   TableCell,
@@ -89,112 +94,161 @@ export async function TeamAttendanceTable({
 
   return (
     <>
-      <Table>
-        <TableHeader>
-          <TableRow className="hover:bg-transparent">
-            <TableHead className="text-muted-foreground h-11 px-4 text-xs font-medium tracking-wide uppercase">
-              Staff
-            </TableHead>
-            <TableHead className="text-muted-foreground h-11 px-4 text-xs font-medium tracking-wide uppercase">
-              Outlet
-            </TableHead>
-            <TableHead className="text-muted-foreground h-11 px-4 text-xs font-medium tracking-wide uppercase">
-              Date
-            </TableHead>
-            <TableHead className="text-muted-foreground h-11 px-4 text-xs font-medium tracking-wide uppercase">
-              Check in
-            </TableHead>
-            <TableHead className="text-muted-foreground h-11 px-4 text-xs font-medium tracking-wide uppercase">
-              Check out
-            </TableHead>
-            <TableHead className="text-muted-foreground h-11 px-4 text-xs font-medium tracking-wide uppercase">
-              Hours
-            </TableHead>
-            <TableHead className="text-muted-foreground h-11 px-4 text-xs font-medium tracking-wide uppercase">
-              Status
-            </TableHead>
-            {canCorrect ? (
-              <TableHead className="text-muted-foreground h-11 px-4 text-xs font-medium tracking-wide uppercase">
-                <span className="sr-only">Actions</span>
-              </TableHead>
-            ) : null}
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {items.map((record) => {
-            const name =
-              `${record.staffFirstName} ${record.staffLastName}`.trim();
-            return (
-              <TableRow key={record.id}>
-                <TableCell className="px-4 py-3 font-medium">
-                  <div className="flex items-center gap-3">
-                    <Avatar className="size-8 shrink-0">
-                      <AvatarImage
-                        src={resolveAvatarSrc(record.staffAvatarUrl, name)}
-                        alt={name}
-                      />
-                      <AvatarFallback
-                        className="text-xs font-semibold text-white"
-                        style={{ backgroundImage: avatarGradient(name) }}
-                      >
-                        {initialsFor(name)}
-                      </AvatarFallback>
-                    </Avatar>
-                    <span>{name}</span>
-                  </div>
-                </TableCell>
-                <TableCell className="text-muted-foreground px-4 py-3 text-sm">
-                  {record.outletName ?? "—"}
-                </TableCell>
-                <TableCell className="px-4 py-3 text-sm">
-                  {formatDate(record.date)}
-                </TableCell>
-                <TableCell className="text-muted-foreground px-4 py-3 text-sm">
-                  <div className="flex items-center gap-2.5">
-                    {record.checkInPhotoUrl ? (
-                      // The capture taken at check-in. It streams through
-                      // `/api/files/...`, which refuses anyone outside this
-                      // shop, so it is safe to render here but never becomes
-                      // a shareable link.
-                      <a
-                        href={record.checkInPhotoUrl}
-                        target="_blank"
-                        rel="noreferrer"
-                        title={`Check-in photo — ${name}`}
-                        className="focus-visible:ring-ring/50 shrink-0 rounded-md outline-none focus-visible:ring-3"
-                      >
-                        {/* eslint-disable-next-line @next/next/no-img-element -- access-controlled stream, not an optimisable static asset */}
-                        <img
-                          src={record.checkInPhotoUrl}
-                          alt={`${name} at check-in`}
-                          loading="lazy"
-                          className="size-9 rounded-md object-cover"
-                        />
-                      </a>
-                    ) : null}
-                    {formatTime(record.checkInTime)}
-                  </div>
-                </TableCell>
-                <TableCell className="text-muted-foreground px-4 py-3 text-sm">
+      <ListCards at="lg">
+        {items.map((record) => {
+          const name =
+            `${record.staffFirstName} ${record.staffLastName}`.trim();
+          return (
+            <ListCardRow
+              key={record.id}
+              media={
+                <Avatar className="size-10">
+                  <AvatarImage
+                    src={resolveAvatarSrc(record.staffAvatarUrl, name)}
+                    alt={name}
+                  />
+                  <AvatarFallback
+                    className="text-xs font-semibold text-white"
+                    style={{ backgroundImage: avatarGradient(name) }}
+                  >
+                    {initialsFor(name)}
+                  </AvatarFallback>
+                </Avatar>
+              }
+              title={name}
+              badge={<AttendanceStatusBadge status={record.status} />}
+              meta={
+                <>
+                  {formatDate(record.date)} · {formatTime(record.checkInTime)} –{" "}
                   {record.checkOutTime ? formatTime(record.checkOutTime) : "—"}
-                </TableCell>
-                <TableCell className="text-muted-foreground px-4 py-3 text-sm">
-                  {formatWorkedHours(record.checkInTime, record.checkOutTime) ??
-                    "—"}
-                </TableCell>
-                <TableCell className="px-4 py-3">
-                  <AttendanceStatusBadge status={record.status} />
-                </TableCell>
-                {canCorrect ? (
-                  <TableCell className="px-4 py-3 text-right">
-                    <CorrectAttendanceDialog attendance={record} />
+                  {formatWorkedHours(record.checkInTime, record.checkOutTime)
+                    ? ` · ${formatWorkedHours(record.checkInTime, record.checkOutTime)}`
+                    : ""}{" "}
+                  · {record.outletName ?? "—"}
+                </>
+              }
+              action={
+                canCorrect ? (
+                  <CorrectAttendanceDialog attendance={record} />
+                ) : undefined
+              }
+            />
+          );
+        })}
+      </ListCards>
+
+      <TableOnly at="lg">
+        <Table>
+          <TableHeader>
+            <TableRow className="hover:bg-transparent">
+              <TableHead className="text-muted-foreground h-11 px-4 text-xs font-medium tracking-wide uppercase">
+                Staff
+              </TableHead>
+              <TableHead className="text-muted-foreground h-11 px-4 text-xs font-medium tracking-wide uppercase">
+                Outlet
+              </TableHead>
+              <TableHead className="text-muted-foreground h-11 px-4 text-xs font-medium tracking-wide uppercase">
+                Date
+              </TableHead>
+              <TableHead className="text-muted-foreground h-11 px-4 text-xs font-medium tracking-wide uppercase">
+                Check in
+              </TableHead>
+              <TableHead className="text-muted-foreground h-11 px-4 text-xs font-medium tracking-wide uppercase">
+                Check out
+              </TableHead>
+              <TableHead className="text-muted-foreground h-11 px-4 text-xs font-medium tracking-wide uppercase">
+                Hours
+              </TableHead>
+              <TableHead className="text-muted-foreground h-11 px-4 text-xs font-medium tracking-wide uppercase">
+                Status
+              </TableHead>
+              {canCorrect ? (
+                <TableHead className="text-muted-foreground h-11 px-4 text-xs font-medium tracking-wide uppercase">
+                  <span className="sr-only">Actions</span>
+                </TableHead>
+              ) : null}
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {items.map((record) => {
+              const name =
+                `${record.staffFirstName} ${record.staffLastName}`.trim();
+              return (
+                <TableRow key={record.id}>
+                  <TableCell className="px-4 py-3 font-medium">
+                    <div className="flex items-center gap-3">
+                      <Avatar className="size-8 shrink-0">
+                        <AvatarImage
+                          src={resolveAvatarSrc(record.staffAvatarUrl, name)}
+                          alt={name}
+                        />
+                        <AvatarFallback
+                          className="text-xs font-semibold text-white"
+                          style={{ backgroundImage: avatarGradient(name) }}
+                        >
+                          {initialsFor(name)}
+                        </AvatarFallback>
+                      </Avatar>
+                      <span>{name}</span>
+                    </div>
                   </TableCell>
-                ) : null}
-              </TableRow>
-            );
-          })}
-        </TableBody>
-      </Table>
+                  <TableCell className="text-muted-foreground px-4 py-3 text-sm">
+                    {record.outletName ?? "—"}
+                  </TableCell>
+                  <TableCell className="px-4 py-3 text-sm">
+                    {formatDate(record.date)}
+                  </TableCell>
+                  <TableCell className="text-muted-foreground px-4 py-3 text-sm">
+                    <div className="flex items-center gap-2.5">
+                      {record.checkInPhotoUrl ? (
+                        // The capture taken at check-in. It streams through
+                        // `/api/files/...`, which refuses anyone outside this
+                        // shop, so it is safe to render here but never becomes
+                        // a shareable link.
+                        <a
+                          href={record.checkInPhotoUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          title={`Check-in photo — ${name}`}
+                          className="focus-visible:ring-ring/50 shrink-0 rounded-md outline-none focus-visible:ring-3"
+                        >
+                          {/* eslint-disable-next-line @next/next/no-img-element -- access-controlled stream, not an optimisable static asset */}
+                          <img
+                            src={record.checkInPhotoUrl}
+                            alt={`${name} at check-in`}
+                            loading="lazy"
+                            className="size-9 rounded-md object-cover"
+                          />
+                        </a>
+                      ) : null}
+                      {formatTime(record.checkInTime)}
+                    </div>
+                  </TableCell>
+                  <TableCell className="text-muted-foreground px-4 py-3 text-sm">
+                    {record.checkOutTime
+                      ? formatTime(record.checkOutTime)
+                      : "—"}
+                  </TableCell>
+                  <TableCell className="text-muted-foreground px-4 py-3 text-sm">
+                    {formatWorkedHours(
+                      record.checkInTime,
+                      record.checkOutTime,
+                    ) ?? "—"}
+                  </TableCell>
+                  <TableCell className="px-4 py-3">
+                    <AttendanceStatusBadge status={record.status} />
+                  </TableCell>
+                  {canCorrect ? (
+                    <TableCell className="px-4 py-3 text-right">
+                      <CorrectAttendanceDialog attendance={record} />
+                    </TableCell>
+                  ) : null}
+                </TableRow>
+              );
+            })}
+          </TableBody>
+        </Table>
+      </TableOnly>
 
       <div className="flex flex-wrap items-center justify-between gap-3 border-t p-4">
         <p className="text-muted-foreground text-sm">

@@ -14,6 +14,11 @@ import {
   PaginationPrevious,
 } from "@/components/ui/pagination";
 import {
+  ListCardRow,
+  ListCards,
+  TableOnly,
+} from "@/components/tenant/list-cards";
+import {
   Table,
   TableBody,
   TableCell,
@@ -40,7 +45,10 @@ export async function SettlementsTable({
   canManage: boolean;
   basePath: string;
 }) {
-  const { items, total, page, totalPages } = await listSettlements(actor, query);
+  const { items, total, page, totalPages } = await listSettlements(
+    actor,
+    query,
+  );
 
   if (items.length === 0) {
     return (
@@ -72,82 +80,116 @@ export async function SettlementsTable({
 
   return (
     <>
-      <Table>
-        <TableHeader>
-          <TableRow className="hover:bg-transparent">
-            <TableHead className="text-muted-foreground h-11 px-4 text-xs font-medium tracking-wide uppercase">
-              Item
-            </TableHead>
-            <TableHead className="text-muted-foreground h-11 px-4 text-xs font-medium tracking-wide uppercase">
-              Owner
-            </TableHead>
-            <TableHead className="text-muted-foreground h-11 px-4 text-xs font-medium tracking-wide uppercase">
-              Gross / share
-            </TableHead>
-            <TableHead className="text-muted-foreground h-11 px-4 text-xs font-medium tracking-wide uppercase">
-              Owner amount
-            </TableHead>
-            <TableHead className="text-muted-foreground h-11 px-4 text-xs font-medium tracking-wide uppercase">
-              Status
-            </TableHead>
-            {canManage ? (
+      <ListCards at="lg">
+        {items.map((settlement) => (
+          <ListCardRow
+            key={settlement.id}
+            title={settlement.productName}
+            badge={<SettlementStatusBadge status={settlement.status} />}
+            meta={
+              <>
+                {formatMoney(settlement.ownerAmount)} to{" "}
+                {settlement.ownerName || "—"} ·{" "}
+                {formatMoney(settlement.grossRentalAmount)} gross ·{" "}
+                {settlement.bookingNumber}
+                {settlement.paidAt
+                  ? ` · paid ${formatDate(settlement.paidAt)}`
+                  : ""}
+              </>
+            }
+            action={
+              canManage && settlement.status === "pending" ? (
+                <SettlementRowActions
+                  settlementId={settlement.id}
+                  ownerName={settlement.ownerName}
+                  ownerAmount={settlement.ownerAmount}
+                />
+              ) : undefined
+            }
+          />
+        ))}
+      </ListCards>
+
+      <TableOnly at="lg">
+        <Table>
+          <TableHeader>
+            <TableRow className="hover:bg-transparent">
               <TableHead className="text-muted-foreground h-11 px-4 text-xs font-medium tracking-wide uppercase">
-                Actions
+                Item
               </TableHead>
-            ) : null}
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {items.map((settlement) => (
-            <TableRow key={settlement.id}>
-              <TableCell className="px-4 py-3">
-                <div className="flex flex-col">
-                  <span className="font-medium">{settlement.productName}</span>
-                  <span className="text-muted-foreground font-mono text-xs">
-                    {settlement.sku} · {settlement.bookingNumber}
-                  </span>
-                </div>
-              </TableCell>
-              <TableCell className="px-4 py-3 text-sm">
-                <div className="flex flex-col">
-                  <span>{settlement.ownerName || "—"}</span>
-                  {settlement.ownerPhone ? (
-                    <span className="text-muted-foreground text-xs">
-                      {settlement.ownerPhone}
-                    </span>
-                  ) : null}
-                </div>
-              </TableCell>
-              <TableCell className="text-muted-foreground px-4 py-3 text-sm">
-                {formatMoney(settlement.grossRentalAmount)} ·{" "}
-                {formatMoney(settlement.shareAmount)} share
-              </TableCell>
-              <TableCell className="px-4 py-3 text-sm font-medium">
-                {formatMoney(settlement.ownerAmount)}
-                {settlement.paidAt ? (
-                  <span className="text-muted-foreground block text-xs font-normal">
-                    Paid {formatDate(settlement.paidAt)}
-                  </span>
-                ) : null}
-              </TableCell>
-              <TableCell className="px-4 py-3">
-                <SettlementStatusBadge status={settlement.status} />
-              </TableCell>
+              <TableHead className="text-muted-foreground h-11 px-4 text-xs font-medium tracking-wide uppercase">
+                Owner
+              </TableHead>
+              <TableHead className="text-muted-foreground h-11 px-4 text-xs font-medium tracking-wide uppercase">
+                Gross / share
+              </TableHead>
+              <TableHead className="text-muted-foreground h-11 px-4 text-xs font-medium tracking-wide uppercase">
+                Owner amount
+              </TableHead>
+              <TableHead className="text-muted-foreground h-11 px-4 text-xs font-medium tracking-wide uppercase">
+                Status
+              </TableHead>
               {canManage ? (
-                <TableCell className="px-4 py-3">
-                  {settlement.status === "pending" ? (
-                    <SettlementRowActions
-                      settlementId={settlement.id}
-                      ownerName={settlement.ownerName}
-                      ownerAmount={settlement.ownerAmount}
-                    />
-                  ) : null}
-                </TableCell>
+                <TableHead className="text-muted-foreground h-11 px-4 text-xs font-medium tracking-wide uppercase">
+                  Actions
+                </TableHead>
               ) : null}
             </TableRow>
-          ))}
-        </TableBody>
-      </Table>
+          </TableHeader>
+          <TableBody>
+            {items.map((settlement) => (
+              <TableRow key={settlement.id}>
+                <TableCell className="px-4 py-3">
+                  <div className="flex flex-col">
+                    <span className="font-medium">
+                      {settlement.productName}
+                    </span>
+                    <span className="text-muted-foreground font-mono text-xs">
+                      {settlement.sku} · {settlement.bookingNumber}
+                    </span>
+                  </div>
+                </TableCell>
+                <TableCell className="px-4 py-3 text-sm">
+                  <div className="flex flex-col">
+                    <span>{settlement.ownerName || "—"}</span>
+                    {settlement.ownerPhone ? (
+                      <span className="text-muted-foreground text-xs">
+                        {settlement.ownerPhone}
+                      </span>
+                    ) : null}
+                  </div>
+                </TableCell>
+                <TableCell className="text-muted-foreground px-4 py-3 text-sm">
+                  {formatMoney(settlement.grossRentalAmount)} ·{" "}
+                  {formatMoney(settlement.shareAmount)} share
+                </TableCell>
+                <TableCell className="px-4 py-3 text-sm font-medium">
+                  {formatMoney(settlement.ownerAmount)}
+                  {settlement.paidAt ? (
+                    <span className="text-muted-foreground block text-xs font-normal">
+                      Paid {formatDate(settlement.paidAt)}
+                    </span>
+                  ) : null}
+                </TableCell>
+                <TableCell className="px-4 py-3">
+                  <SettlementStatusBadge status={settlement.status} />
+                </TableCell>
+                {canManage ? (
+                  <TableCell className="px-4 py-3">
+                    {settlement.status === "pending" ? (
+                      <SettlementRowActions
+                        settlementId={settlement.id}
+                        ownerName={settlement.ownerName}
+                        ownerAmount={settlement.ownerAmount}
+                      />
+                    ) : null}
+                  </TableCell>
+                ) : null}
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </TableOnly>
 
       <div className="flex flex-wrap items-center justify-between gap-3 border-t p-4">
         <p className="text-muted-foreground text-sm">

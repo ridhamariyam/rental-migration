@@ -1,11 +1,27 @@
 import "server-only";
 
-import { and, asc, count, desc, eq, ilike, isNotNull, ne, or } from "drizzle-orm";
+import {
+  and,
+  asc,
+  count,
+  desc,
+  eq,
+  ilike,
+  isNotNull,
+  ne,
+  or,
+} from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { AppError } from "@/lib/errors/app-error";
 import { categories, productVariations, products } from "@/lib/db/schema";
+import { requireActiveOutlet } from "@/server/outlets/service";
+import {
+  insertVariations,
+  withIdentifierConflictHandling,
+} from "@/server/variations/service";
 import type {
   CreateProductInput,
+  CreateProductWithItemInput,
   ProductListQuery,
   UpdateProductInput,
 } from "@/lib/validation/products";
@@ -262,12 +278,16 @@ async function requireUniqueName(
     .limit(1);
 
   if (existing) {
-    throw new AppError("A product with this name already exists in this category", 409, [
-      {
-        field: "name",
-        message: "A product with this name already exists in this category",
-      },
-    ]);
+    throw new AppError(
+      "A product with this name already exists in this category",
+      409,
+      [
+        {
+          field: "name",
+          message: "A product with this name already exists in this category",
+        },
+      ],
+    );
   }
 }
 
@@ -289,6 +309,77 @@ export async function createProduct(
     .returning();
 
   return product;
+}
+
+/**
+ * "Add product" in one submit: the catalogue entry *and* its first
+ * barcoded item. Creating a product used to leave it unbookable until
+ * someone opened its page and added an item as a separate second step, so
+ * the two now happen together — the item half is exactly what "+ Add item"
+ * creates (`insertVariations`), sharing this function's transaction so a
+ * rejected item (duplicate SKU, duplicate colour/size at an outlet) rolls
+ * the product back rather than stranding an empty listing.
+ *
+ * Every check that reads through the pool runs *before* the transaction
+ * opens, for the `max: 1` dev-pool reason documented on `insertVariations`.
+ * Field errors raised by the item half come back namespaced (`item.sku`,
+ * `item.color`, …), matching the nested shape `createProductWithItemSchema`
+ * validates and the form registers its inputs under.
+ */
+export async function createProductWithItem(
+  shopId: string,
+  input: CreateProductWithItemInput,
+): Promise<ProductRow> {
+  await requireCategory(shopId, input.categoryId);
+  await requireUniqueName(shopId, input.categoryId, input.name);
+
+  for (const outletId of input.item.outletIds) {
+    await requireActiveOutlet(shopId, outletId);
+  }
+
+  return withIdentifierConflictHandling(() =>
+    db.transaction(async (tx) => {
+      const [product] = await tx
+        .insert(products)
+        .values({
+          shopId,
+          categoryId: input.categoryId,
+          name: input.name,
+          description: input.description || null,
+        })
+        .returning();
+
+      try {
+        await insertVariations(tx, {
+          productId: product.id,
+          productName: product.name,
+          input: input.item,
+        });
+      } catch (error) {
+        throw namespaceItemErrors(error);
+      }
+
+      return product;
+    }),
+  );
+}
+
+/** Re-labels an item-level `AppError`'s field errors as `item.<field>` so
+ * the combined form can attach them to its nested inputs — the item
+ * services know nothing about being nested under a product form. */
+function namespaceItemErrors(error: unknown): unknown {
+  if (!(error instanceof AppError) || error.fieldErrors.length === 0) {
+    return error;
+  }
+
+  return new AppError(
+    error.message,
+    error.status,
+    error.fieldErrors.map((fieldError) => ({
+      field: `item.${fieldError.field}`,
+      message: fieldError.message,
+    })),
+  );
 }
 
 export async function updateProduct(

@@ -14,6 +14,11 @@ import {
   PaginationPrevious,
 } from "@/components/ui/pagination";
 import {
+  ListCardRow,
+  ListCards,
+  TableOnly,
+} from "@/components/tenant/list-cards";
+import {
   Table,
   TableBody,
   TableCell,
@@ -81,69 +86,101 @@ export async function PayslipsTable({
 
   return (
     <>
-      <Table>
-        <TableHeader>
-          <TableRow className="hover:bg-transparent">
-            {showStaffColumn ? (
-              <TableHead className="text-muted-foreground h-11 px-4 text-xs font-medium tracking-wide uppercase">
-                Staff
-              </TableHead>
-            ) : null}
-            <TableHead className="text-muted-foreground h-11 px-4 text-xs font-medium tracking-wide uppercase">
-              Period
-            </TableHead>
-            <TableHead className="text-muted-foreground h-11 px-4 text-xs font-medium tracking-wide uppercase">
-              Present / Working
-            </TableHead>
-            <TableHead className="text-muted-foreground h-11 px-4 text-xs font-medium tracking-wide uppercase">
-              Total hours
-            </TableHead>
-            <TableHead className="text-muted-foreground h-11 px-4 text-xs font-medium tracking-wide uppercase">
-              Avg / day
-            </TableHead>
-            <TableHead className="text-muted-foreground h-11 px-4 text-xs font-medium tracking-wide uppercase">
-              Overtime
-            </TableHead>
-            <TableHead className="text-muted-foreground h-11 px-4 text-xs font-medium tracking-wide uppercase">
-              Net amount
-            </TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {items.map((payslip) => (
-            <TableRow key={payslip.id}>
-              {showStaffColumn ? (
-                <TableCell className="px-4 py-3 font-medium">
-                  {payslip.staffFirstName} {payslip.staffLastName}
-                </TableCell>
-              ) : null}
-              <TableCell className="px-4 py-3 text-sm">
-                {MONTH_LABELS[payslip.periodMonth - 1]} {payslip.periodYear}
-              </TableCell>
-              <TableCell className="text-muted-foreground px-4 py-3 text-sm">
-                {payslip.presentDays + payslip.approvedLeaveDays} /{" "}
-                {payslip.workingDays}
-              </TableCell>
-              <TableCell className="text-muted-foreground px-4 py-3 text-sm">
+      {/* A payslip row is all numbers — the card keeps the two that decide
+          whether it needs a second look (net amount, days present) in front
+          of the truncation point. */}
+      <ListCards at="lg">
+        {items.map((payslip) => (
+          <ListCardRow
+            key={payslip.id}
+            title={
+              showStaffColumn
+                ? `${payslip.staffFirstName} ${payslip.staffLastName}`
+                : `${MONTH_LABELS[payslip.periodMonth - 1]} ${payslip.periodYear}`
+            }
+            meta={
+              <>
+                {formatMoney(payslip.netAmount)} ·{" "}
+                {showStaffColumn
+                  ? `${MONTH_LABELS[payslip.periodMonth - 1]} ${payslip.periodYear} · `
+                  : ""}
+                {payslip.presentDays + payslip.approvedLeaveDays}/
+                {payslip.workingDays} days ·{" "}
                 {formatMinutes(payslip.totalWorkedMinutes)}
-              </TableCell>
-              <TableCell className="text-muted-foreground px-4 py-3 text-sm">
-                {payslip.presentDays > 0
-                  ? formatMinutes(payslip.averageMinutesPerDay)
-                  : "—"}
-              </TableCell>
-              <TableCell className="text-muted-foreground px-4 py-3 text-sm">
                 {payslip.overtimeMinutes > 0
-                  ? `${formatMinutes(payslip.overtimeMinutes)} · ${formatMoney(payslip.overtimePay)}`
-                  : "—"}
-              </TableCell>
-              <TableCell className="px-4 py-3 text-sm font-medium">
-                {formatMoney(payslip.netAmount)}
-              </TableCell>
+                  ? ` · ${formatMinutes(payslip.overtimeMinutes)} OT`
+                  : ""}
+              </>
+            }
+          />
+        ))}
+      </ListCards>
+
+      <TableOnly at="lg">
+        <Table>
+          <TableHeader>
+            <TableRow className="hover:bg-transparent">
+              {showStaffColumn ? (
+                <TableHead className="text-muted-foreground h-11 px-4 text-xs font-medium tracking-wide uppercase">
+                  Staff
+                </TableHead>
+              ) : null}
+              <TableHead className="text-muted-foreground h-11 px-4 text-xs font-medium tracking-wide uppercase">
+                Period
+              </TableHead>
+              <TableHead className="text-muted-foreground h-11 px-4 text-xs font-medium tracking-wide uppercase">
+                Present / Working
+              </TableHead>
+              <TableHead className="text-muted-foreground h-11 px-4 text-xs font-medium tracking-wide uppercase">
+                Total hours
+              </TableHead>
+              <TableHead className="text-muted-foreground h-11 px-4 text-xs font-medium tracking-wide uppercase">
+                Avg / day
+              </TableHead>
+              <TableHead className="text-muted-foreground h-11 px-4 text-xs font-medium tracking-wide uppercase">
+                Overtime
+              </TableHead>
+              <TableHead className="text-muted-foreground h-11 px-4 text-xs font-medium tracking-wide uppercase">
+                Net amount
+              </TableHead>
             </TableRow>
-          ))}
-        </TableBody>
-      </Table>
+          </TableHeader>
+          <TableBody>
+            {items.map((payslip) => (
+              <TableRow key={payslip.id}>
+                {showStaffColumn ? (
+                  <TableCell className="px-4 py-3 font-medium">
+                    {payslip.staffFirstName} {payslip.staffLastName}
+                  </TableCell>
+                ) : null}
+                <TableCell className="px-4 py-3 text-sm">
+                  {MONTH_LABELS[payslip.periodMonth - 1]} {payslip.periodYear}
+                </TableCell>
+                <TableCell className="text-muted-foreground px-4 py-3 text-sm">
+                  {payslip.presentDays + payslip.approvedLeaveDays} /{" "}
+                  {payslip.workingDays}
+                </TableCell>
+                <TableCell className="text-muted-foreground px-4 py-3 text-sm">
+                  {formatMinutes(payslip.totalWorkedMinutes)}
+                </TableCell>
+                <TableCell className="text-muted-foreground px-4 py-3 text-sm">
+                  {payslip.presentDays > 0
+                    ? formatMinutes(payslip.averageMinutesPerDay)
+                    : "—"}
+                </TableCell>
+                <TableCell className="text-muted-foreground px-4 py-3 text-sm">
+                  {payslip.overtimeMinutes > 0
+                    ? `${formatMinutes(payslip.overtimeMinutes)} · ${formatMoney(payslip.overtimePay)}`
+                    : "—"}
+                </TableCell>
+                <TableCell className="px-4 py-3 text-sm font-medium">
+                  {formatMoney(payslip.netAmount)}
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </TableOnly>
 
       <div className="flex flex-wrap items-center justify-between gap-3 border-t p-4">
         <p className="text-muted-foreground text-sm">
