@@ -17,6 +17,7 @@ import { ProductStatusAction } from "@/components/tenant/product-status-action";
 import { VariationsCard } from "@/components/tenant/variations-card";
 import { getCurrentUser } from "@/lib/auth/session";
 import { hasPermission, Permission } from "@/lib/auth/permissions";
+import { outletScopeFor } from "@/server/auth/guard";
 import { tenantPaths } from "@/lib/tenant-paths";
 import { formatDate } from "@/lib/format";
 import { getProductById } from "@/server/products/service";
@@ -77,8 +78,11 @@ export default async function ProductDetailPage({
 
   // An outlet-scoped actor (manager/staff) only ever adds/edits items at
   // their own outlet — the picker never offers another outlet's option.
-  const outlets = user.outletId
-    ? allOutlets.filter((outlet) => outlet.id === user.outletId)
+  // Admin/super_admin stay unscoped even if `outletId` happens to be set
+  // on their user row, matching `outletScopeFor`'s role-based check.
+  const scopedOutletId = outletScopeFor(user);
+  const outlets = scopedOutletId
+    ? allOutlets.filter((outlet) => outlet.id === scopedOutletId)
     : allOutlets;
 
   const fields = [
