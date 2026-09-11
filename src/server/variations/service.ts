@@ -1,6 +1,6 @@
 import "server-only";
 
-import { and, desc, eq, ilike, or } from "drizzle-orm";
+import { and, desc, eq, ilike, isNull, ne, or } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { ZERO_MONEY } from "@/lib/money";
 import { AppError } from "@/lib/errors/app-error";
@@ -26,6 +26,11 @@ export type VariationListItem = VariationRow & {
  * sent to the pool while a transaction holds that one connection would wait
  * on itself forever. */
 type VariationTx = Parameters<Parameters<typeof db.transaction>[0]>[0];
+
+/** Either the top-level `db` handle or a transaction handle —
+ * `requireUniqueVariant` is called from both a plain (non-transactional)
+ * update and from inside `createVariation`'s transaction. */
+type VariationDbOrTx = typeof db | VariationTx;
 
 function isUniqueViolation(error: unknown): error is { code: string } {
   return (
@@ -232,6 +237,47 @@ async function requireProduct(shopId: string, productId: string) {
   return product;
 }
 
+const DUPLICATE_VARIANT_MESSAGE =
+  "An item with this size and colour already exists at this outlet";
+
+/** Same product + same outlet + same size/colour combo (blank counts as
+ * its own value, matched case-insensitively) is blocked as a duplicate —
+ * mirrors the accidental-double-entry reasoning behind `requireUniqueName`
+ * for products. Scoped per outlet rather than per product so stocking the
+ * same variant at a second outlet (the whole point of picking several
+ * outlets in one "+ Add item" submit) is still allowed. */
+async function requireUniqueVariant(
+  tx: VariationDbOrTx,
+  productId: string,
+  outletId: string,
+  color: string | null,
+  size: string | null,
+  excludeId?: string,
+) {
+  const conditions = [
+    eq(productVariations.productId, productId),
+    eq(productVariations.outletId, outletId),
+    color ? ilike(productVariations.color, color) : isNull(productVariations.color),
+    size ? ilike(productVariations.size, size) : isNull(productVariations.size),
+  ];
+  if (excludeId) {
+    conditions.push(ne(productVariations.id, excludeId));
+  }
+
+  const [existing] = await tx
+    .select({ id: productVariations.id })
+    .from(productVariations)
+    .where(and(...conditions))
+    .limit(1);
+
+  if (existing) {
+    throw new AppError(DUPLICATE_VARIANT_MESSAGE, 409, [
+      { field: "color", message: DUPLICATE_VARIANT_MESSAGE },
+      { field: "size", message: DUPLICATE_VARIANT_MESSAGE },
+    ]);
+  }
+}
+
 export async function createVariation(
   shopId: string,
   productId: string,
@@ -245,9 +291,14 @@ export async function createVariation(
 
   const created: VariationRow[] = [];
 
+  const normalizedColor = input.color?.trim() || null;
+  const normalizedSize = input.size?.trim() || null;
+
   try {
     await db.transaction(async (tx) => {
       for (const outletId of input.outletIds) {
+        await requireUniqueVariant(tx, productId, outletId, normalizedColor, normalizedSize);
+
         // A manual sku/barcode only ever applies to a single outlet's copy
         // (enforced by `createVariationSchema`'s superRefine) — every
         // other outlet in the batch always gets a freshly auto-generated
@@ -312,6 +363,14 @@ export async function updateVariation(
   }
 
   await requireActiveOutlet(shopId, input.outletId);
+  await requireUniqueVariant(
+    db,
+    existing.productId,
+    input.outletId,
+    input.color?.trim() || null,
+    input.size?.trim() || null,
+    id,
+  );
 
   const [variation] = await db
     .update(productVariations)

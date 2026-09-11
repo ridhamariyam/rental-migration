@@ -137,6 +137,8 @@ export function AddVariationDialog({
             fieldError.field === "sku" ||
             fieldError.field === "barcode" ||
             fieldError.field === "outletIds" ||
+            fieldError.field === "color" ||
+            fieldError.field === "size" ||
             fieldError.field === "ownerName" ||
             fieldError.field === "ownerShareAmount"
           ) {
@@ -145,6 +147,8 @@ export function AddVariationDialog({
                 | "sku"
                 | "barcode"
                 | "outletIds"
+                | "color"
+                | "size"
                 | "ownerName"
                 | "ownerShareAmount",
               { message: fieldError.message },

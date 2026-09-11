@@ -85,8 +85,8 @@ export function ProductForm({
       if (error instanceof ApiClientError && error.fieldErrors.length > 0) {
         let mappedToField = false;
         for (const fieldError of error.fieldErrors) {
-          if (fieldError.field === "categoryId") {
-            form.setError("categoryId", { message: fieldError.message });
+          if (fieldError.field === "categoryId" || fieldError.field === "name") {
+            form.setError(fieldError.field, { message: fieldError.message });
             mappedToField = true;
           }
         }

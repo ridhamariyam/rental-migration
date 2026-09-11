@@ -131,11 +131,13 @@ export function EditVariationDialog({
         for (const fieldError of error.fieldErrors) {
           if (
             fieldError.field === "outletId" ||
+            fieldError.field === "color" ||
+            fieldError.field === "size" ||
             fieldError.field === "ownerName" ||
             fieldError.field === "ownerShareAmount"
           ) {
             form.setError(
-              fieldError.field as "outletId" | "ownerName" | "ownerShareAmount",
+              fieldError.field as "outletId" | "color" | "size" | "ownerName" | "ownerShareAmount",
               { message: fieldError.message },
             );
             mappedToField = true;
