@@ -1,6 +1,6 @@
 import type { TenantSessionUser } from "@/server/auth/guard";
 import Link from "next/link";
-import { WrenchIcon } from "lucide-react";
+import { EyeIcon, WrenchIcon } from "lucide-react";
 import {
   Empty,
   EmptyDescription,
@@ -25,6 +25,12 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { Button } from "@/components/ui/button";
+import {
+  ListCardRow,
+  ListCards,
+  TableOnly,
+} from "@/components/tenant/list-cards";
 import { MaintenanceTaskStatusBadge } from "@/components/tenant/maintenance-task-status-badge";
 import { MaintenanceTaskTypeBadge } from "@/components/tenant/maintenance-task-type-badge";
 import { tenantPaths } from "@/lib/tenant-paths";
@@ -69,7 +75,9 @@ export async function MaintenanceTasksTable({
             <WrenchIcon />
           </EmptyMedia>
           <EmptyTitle>
-            {hasFilters ? "No tasks match your filters" : "Nothing to clean or repair"}
+            {hasFilters
+              ? "No tasks match your filters"
+              : "Nothing to clean or repair"}
           </EmptyTitle>
           <EmptyDescription>
             {hasFilters
@@ -83,62 +91,96 @@ export async function MaintenanceTasksTable({
 
   return (
     <>
-      <Table>
-        <TableHeader>
-          <TableRow className="hover:bg-transparent">
-            <TableHead className="text-muted-foreground h-11 px-4 text-xs font-medium tracking-wide uppercase">
-              Item
-            </TableHead>
-            <TableHead className="text-muted-foreground h-11 px-4 text-xs font-medium tracking-wide uppercase">
-              Type
-            </TableHead>
-            <TableHead className="text-muted-foreground h-11 px-4 text-xs font-medium tracking-wide uppercase">
-              Outlet
-            </TableHead>
-            <TableHead className="text-muted-foreground h-11 px-4 text-xs font-medium tracking-wide uppercase">
-              Assigned to
-            </TableHead>
-            <TableHead className="text-muted-foreground h-11 px-4 text-xs font-medium tracking-wide uppercase">
-              Opened
-            </TableHead>
-            <TableHead className="text-muted-foreground h-11 px-4 text-xs font-medium tracking-wide uppercase">
-              Status
-            </TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {items.map((task) => (
-            <TableRow key={task.id}>
-              <TableCell className="px-4 py-3 font-medium">
-                <Link
-                  href={`${tenantPaths.maintenance}/${task.id}`}
-                  className="hover:underline"
-                >
-                  {task.productName}
-                </Link>
-                <p className="text-muted-foreground text-xs font-normal">
-                  SKU {task.sku}
-                </p>
-              </TableCell>
-              <TableCell className="px-4 py-3">
-                <MaintenanceTaskTypeBadge taskType={task.taskType} />
-              </TableCell>
-              <TableCell className="text-muted-foreground px-4 py-3 text-sm">
-                {task.outletName ?? "—"}
-              </TableCell>
-              <TableCell className="text-muted-foreground px-4 py-3 text-sm">
-                {task.assignedToName ?? "Unassigned"}
-              </TableCell>
-              <TableCell className="text-muted-foreground px-4 py-3 text-sm whitespace-nowrap">
-                {formatDate(task.createdAt)}
-              </TableCell>
-              <TableCell className="px-4 py-3">
+      <ListCards at="lg">
+        {items.map((task) => (
+          <ListCardRow
+            key={task.id}
+            title={task.productName}
+            badge={
+              <>
                 <MaintenanceTaskStatusBadge status={task.status} />
-              </TableCell>
+                <MaintenanceTaskTypeBadge taskType={task.taskType} />
+              </>
+            }
+            meta={
+              <>
+                {formatDate(task.createdAt)} · {task.outletName ?? "—"} ·{" "}
+                {task.assignedToName ?? "Unassigned"} · SKU {task.sku}
+              </>
+            }
+            action={
+              <Button
+                variant="outline"
+                size="sm"
+                nativeButton={false}
+                render={<Link href={`${tenantPaths.maintenance}/${task.id}`} />}
+              >
+                <EyeIcon />
+                View
+              </Button>
+            }
+          />
+        ))}
+      </ListCards>
+
+      <TableOnly at="lg">
+        <Table>
+          <TableHeader>
+            <TableRow className="hover:bg-transparent">
+              <TableHead className="text-muted-foreground h-11 px-4 text-xs font-medium tracking-wide uppercase">
+                Item
+              </TableHead>
+              <TableHead className="text-muted-foreground h-11 px-4 text-xs font-medium tracking-wide uppercase">
+                Type
+              </TableHead>
+              <TableHead className="text-muted-foreground h-11 px-4 text-xs font-medium tracking-wide uppercase">
+                Outlet
+              </TableHead>
+              <TableHead className="text-muted-foreground h-11 px-4 text-xs font-medium tracking-wide uppercase">
+                Assigned to
+              </TableHead>
+              <TableHead className="text-muted-foreground h-11 px-4 text-xs font-medium tracking-wide uppercase">
+                Opened
+              </TableHead>
+              <TableHead className="text-muted-foreground h-11 px-4 text-xs font-medium tracking-wide uppercase">
+                Status
+              </TableHead>
             </TableRow>
-          ))}
-        </TableBody>
-      </Table>
+          </TableHeader>
+          <TableBody>
+            {items.map((task) => (
+              <TableRow key={task.id}>
+                <TableCell className="px-4 py-3 font-medium">
+                  <Link
+                    href={`${tenantPaths.maintenance}/${task.id}`}
+                    className="hover:underline"
+                  >
+                    {task.productName}
+                  </Link>
+                  <p className="text-muted-foreground text-xs font-normal">
+                    SKU {task.sku}
+                  </p>
+                </TableCell>
+                <TableCell className="px-4 py-3">
+                  <MaintenanceTaskTypeBadge taskType={task.taskType} />
+                </TableCell>
+                <TableCell className="text-muted-foreground px-4 py-3 text-sm">
+                  {task.outletName ?? "—"}
+                </TableCell>
+                <TableCell className="text-muted-foreground px-4 py-3 text-sm">
+                  {task.assignedToName ?? "Unassigned"}
+                </TableCell>
+                <TableCell className="text-muted-foreground px-4 py-3 text-sm whitespace-nowrap">
+                  {formatDate(task.createdAt)}
+                </TableCell>
+                <TableCell className="px-4 py-3">
+                  <MaintenanceTaskStatusBadge status={task.status} />
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </TableOnly>
 
       <div className="flex flex-wrap items-center justify-between gap-3 border-t p-4">
         <p className="text-muted-foreground text-sm">

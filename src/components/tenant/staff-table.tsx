@@ -1,8 +1,14 @@
 import type { TenantSessionUser } from "@/server/auth/guard";
 import Link from "next/link";
-import { UsersIcon } from "lucide-react";
+import { EyeIcon, UsersIcon } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import {
+  ListCardRow,
+  ListCards,
+  TableOnly,
+} from "@/components/tenant/list-cards";
 import {
   Empty,
   EmptyDescription,
@@ -84,83 +90,149 @@ export async function StaffTable({
 
   return (
     <>
-      <Table>
-        <TableHeader>
-          <TableRow className="hover:bg-transparent">
-            <TableHead className="text-muted-foreground h-11 px-4 text-xs font-medium tracking-wide uppercase">
-              Name
-            </TableHead>
-            <TableHead className="text-muted-foreground h-11 px-4 text-xs font-medium tracking-wide uppercase">
-              Contact
-            </TableHead>
-            <TableHead className="text-muted-foreground h-11 px-4 text-xs font-medium tracking-wide uppercase">
-              Role
-            </TableHead>
-            <TableHead className="text-muted-foreground h-11 px-4 text-xs font-medium tracking-wide uppercase">
-              Outlet
-            </TableHead>
-            <TableHead className="text-muted-foreground h-11 px-4 text-xs font-medium tracking-wide uppercase">
-              Status
-            </TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {items.map((member) => {
-            const name = `${member.firstName} ${member.lastName}`;
-            return (
-              <TableRow key={member.id}>
-                <TableCell className="px-4 py-3 font-medium">
-                  <Link
-                    href={`${tenantPaths.staff}/${member.id}`}
-                    className="group flex items-center gap-3"
+      <ListCards at="md">
+        {items.map((member) => {
+          const name = `${member.firstName} ${member.lastName}`;
+          return (
+            <ListCardRow
+              key={member.id}
+              media={
+                <Avatar className="size-10">
+                  <AvatarImage
+                    src={resolveAvatarSrc(member.avatarUrl, name)}
+                    alt={name}
+                  />
+                  <AvatarFallback
+                    className="text-xs font-semibold text-white"
+                    style={{ backgroundImage: avatarGradient(name) }}
                   >
-                    <Avatar>
-                      <AvatarImage src={resolveAvatarSrc(member.avatarUrl, name)} alt={name} />
-                      <AvatarFallback
-                        className="text-xs font-semibold text-white"
-                        style={{ backgroundImage: avatarGradient(name) }}
-                      >
-                        {initialsFor(name)}
-                      </AvatarFallback>
-                    </Avatar>
-                    <span className="group-hover:underline">{name}</span>
-                  </Link>
-                </TableCell>
-                <TableCell className="text-muted-foreground px-4 py-3 text-sm">
-                  <div className="flex flex-col">
-                    <span>{member.email}</span>
-                    <span>{member.phone ?? "—"}</span>
-                  </div>
-                </TableCell>
-                <TableCell className="px-4 py-3">
-                  <Badge variant="outline" className="capitalize">
+                    {initialsFor(name)}
+                  </AvatarFallback>
+                </Avatar>
+              }
+              title={name}
+              badge={
+                <>
+                  <Badge variant="outline" className="shrink-0 capitalize">
                     {member.role}
                   </Badge>
-                </TableCell>
-                <TableCell className="text-muted-foreground px-4 py-3 text-sm">
-                  {member.outletName ?? "Unassigned"}
-                </TableCell>
-                <TableCell className="px-4 py-3">
-                  {member.isActive ? (
+                  {member.isActive ? null : (
                     <Badge
-                      variant="secondary"
-                      className="bg-primary/10 text-primary"
+                      variant="outline"
+                      className="text-muted-foreground shrink-0"
                     >
-                      <span className="size-1.5 rounded-full bg-current" />
-                      Active
-                    </Badge>
-                  ) : (
-                    <Badge variant="outline" className="text-muted-foreground">
                       <span className="size-1.5 rounded-full bg-current" />
                       Inactive
                     </Badge>
                   )}
-                </TableCell>
-              </TableRow>
-            );
-          })}
-        </TableBody>
-      </Table>
+                </>
+              }
+              meta={
+                <>
+                  {member.outletName ?? "Unassigned"} · {member.email}
+                </>
+              }
+              action={
+                <Button
+                  variant="outline"
+                  size="sm"
+                  nativeButton={false}
+                  render={<Link href={`${tenantPaths.staff}/${member.id}`} />}
+                >
+                  <EyeIcon />
+                  View
+                </Button>
+              }
+            />
+          );
+        })}
+      </ListCards>
+
+      <TableOnly at="md">
+        <Table>
+          <TableHeader>
+            <TableRow className="hover:bg-transparent">
+              <TableHead className="text-muted-foreground h-11 px-4 text-xs font-medium tracking-wide uppercase">
+                Name
+              </TableHead>
+              <TableHead className="text-muted-foreground h-11 px-4 text-xs font-medium tracking-wide uppercase">
+                Contact
+              </TableHead>
+              <TableHead className="text-muted-foreground h-11 px-4 text-xs font-medium tracking-wide uppercase">
+                Role
+              </TableHead>
+              <TableHead className="text-muted-foreground h-11 px-4 text-xs font-medium tracking-wide uppercase">
+                Outlet
+              </TableHead>
+              <TableHead className="text-muted-foreground h-11 px-4 text-xs font-medium tracking-wide uppercase">
+                Status
+              </TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {items.map((member) => {
+              const name = `${member.firstName} ${member.lastName}`;
+              return (
+                <TableRow key={member.id}>
+                  <TableCell className="px-4 py-3 font-medium">
+                    <Link
+                      href={`${tenantPaths.staff}/${member.id}`}
+                      className="group flex items-center gap-3"
+                    >
+                      <Avatar>
+                        <AvatarImage
+                          src={resolveAvatarSrc(member.avatarUrl, name)}
+                          alt={name}
+                        />
+                        <AvatarFallback
+                          className="text-xs font-semibold text-white"
+                          style={{ backgroundImage: avatarGradient(name) }}
+                        >
+                          {initialsFor(name)}
+                        </AvatarFallback>
+                      </Avatar>
+                      <span className="group-hover:underline">{name}</span>
+                    </Link>
+                  </TableCell>
+                  <TableCell className="text-muted-foreground px-4 py-3 text-sm">
+                    <div className="flex flex-col">
+                      <span>{member.email}</span>
+                      <span>{member.phone ?? "—"}</span>
+                    </div>
+                  </TableCell>
+                  <TableCell className="px-4 py-3">
+                    <Badge variant="outline" className="capitalize">
+                      {member.role}
+                    </Badge>
+                  </TableCell>
+                  <TableCell className="text-muted-foreground px-4 py-3 text-sm">
+                    {member.outletName ?? "Unassigned"}
+                  </TableCell>
+                  <TableCell className="px-4 py-3">
+                    {member.isActive ? (
+                      <Badge
+                        variant="secondary"
+                        className="bg-primary/10 text-primary"
+                      >
+                        <span className="size-1.5 rounded-full bg-current" />
+                        Active
+                      </Badge>
+                    ) : (
+                      <Badge
+                        variant="outline"
+                        className="text-muted-foreground"
+                      >
+                        <span className="size-1.5 rounded-full bg-current" />
+                        Inactive
+                      </Badge>
+                    )}
+                  </TableCell>
+                </TableRow>
+              );
+            })}
+          </TableBody>
+        </Table>
+      </TableOnly>
 
       <div className="flex flex-wrap items-center justify-between gap-3 border-t p-4">
         <p className="text-muted-foreground text-sm">

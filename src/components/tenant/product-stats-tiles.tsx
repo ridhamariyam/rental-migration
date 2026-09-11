@@ -25,27 +25,28 @@ export function ProductStatsTiles({ stats }: { stats: ProductStats }) {
   ];
 
   return (
-    <div className="flex w-full overflow-x-auto gap-3 pb-1 snap-x scrollbar-none sm:grid sm:grid-cols-3">
+    /* All three tiles are on screen at every width — they used to sit in a
+       sideways-snapping strip on a phone, which put "Inactive" out of sight
+       behind a scroll gesture for three numbers that easily fit abreast
+       once the icon is dropped. */
+    <div className="grid w-full grid-cols-3 gap-2 sm:gap-3">
       {tiles.map((tile) => (
-        <Card
-          key={tile.label}
-          className="min-w-[200px] shrink-0 snap-start sm:min-w-0"
-        >
-          <CardContent className="flex items-center gap-3 px-4">
+        <Card key={tile.label}>
+          <CardContent className="flex items-center gap-3 px-3 sm:px-4">
             <span
               className={
                 tile.accent
-                  ? "bg-primary/10 text-primary flex size-9 shrink-0 items-center justify-center rounded-full"
-                  : "bg-muted text-muted-foreground flex size-9 shrink-0 items-center justify-center rounded-full"
+                  ? "bg-primary/10 text-primary hidden size-9 shrink-0 items-center justify-center rounded-full sm:flex"
+                  : "bg-muted text-muted-foreground hidden size-9 shrink-0 items-center justify-center rounded-full sm:flex"
               }
             >
               <tile.icon className="size-4" aria-hidden="true" />
             </span>
-            <div className="flex flex-col">
-              <span className="text-muted-foreground text-xs font-medium tracking-wide uppercase">
+            <div className="flex min-w-0 flex-col">
+              <span className="text-muted-foreground text-[0.625rem] leading-tight font-medium tracking-wide uppercase sm:text-xs">
                 {tile.label}
               </span>
-              <span className="text-lg font-semibold tracking-tight">
+              <span className="text-base font-semibold tracking-tight sm:text-lg">
                 {tile.value}
               </span>
             </div>

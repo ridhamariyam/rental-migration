@@ -15,7 +15,10 @@ export function OnboardingChecklistSkeleton() {
         <Skeleton className="mb-3 h-1.5 w-full rounded-full" />
         <div className="divide-border/60 flex flex-col divide-y">
           {Array.from({ length: 3 }).map((_, index) => (
-            <div key={index} className="flex items-center gap-3 py-3 first:pt-0 last:pb-0">
+            <div
+              key={index}
+              className="flex items-center gap-3 py-3 first:pt-0 last:pb-0"
+            >
               <Skeleton className="size-9 shrink-0 rounded-full" />
               <div className="flex flex-1 flex-col gap-1.5">
                 <Skeleton className="h-3.5 w-32" />

@@ -1,12 +1,22 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { ArrowLeftIcon, BarcodeIcon, ShirtIcon, TagIcon } from "lucide-react";
+import {
+  ArrowLeftIcon,
+  BarcodeIcon,
+  BuildingIcon,
+  ShirtIcon,
+  TagIcon,
+} from "lucide-react";
+import { ProductCreateForm } from "@/components/tenant/product-create-form";
 import { ProductForm } from "@/components/tenant/product-form";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { getCurrentUser } from "@/lib/auth/session";
 import { hasPermission, Permission } from "@/lib/auth/permissions";
+import { outletScopeFor } from "@/server/auth/guard";
 import { tenantPaths } from "@/lib/tenant-paths";
 import { listAllCategories } from "@/server/categories/service";
+import { listActiveOutletsForSelect } from "@/server/outlets/service";
 
 export const metadata = {
   title: "Add Product — Rentique",
@@ -15,21 +25,21 @@ export const metadata = {
 const nextSteps = [
   {
     icon: ShirtIcon,
-    title: "Catalogue entry, not stock",
+    title: "Listing and first item together",
     description:
-      "This is the listing itself — add its barcoded physical items next, from the product's page.",
+      "One submit creates the catalogue entry and its first physical copy — no second step before it can be rented.",
   },
   {
     icon: BarcodeIcon,
-    title: "SKU and barcode per item",
+    title: "SKU and barcode generated",
     description:
-      "Each physical copy gets its own generated SKU and barcode, ready to print and attach.",
+      "The item gets its own SKU and barcode, ready to print and attach. Leave both blank unless you're matching a label you already have.",
   },
   {
     icon: TagIcon,
-    title: "Organized by category",
+    title: "More copies any time",
     description:
-      "Categories make products easier to browse and filter — manage them from the Categories page.",
+      "Extra barcoded copies — other sizes, colours, or outlets — are added from the product's own page.",
   },
 ];
 
@@ -43,7 +53,20 @@ export default async function NewProductPage() {
     redirect(tenantPaths.products);
   }
 
-  const categories = await listAllCategories(user.shopId);
+  const canViewCost = hasPermission(user.role, Permission.PRODUCT_COST_VIEW);
+
+  const [categories, allOutlets] = await Promise.all([
+    listAllCategories(user.shopId),
+    listActiveOutletsForSelect(user.shopId),
+  ]);
+
+  // An outlet-scoped actor (manager/staff) only ever stocks items at their
+  // own outlet — the picker never offers another outlet's option, same rule
+  // the product page's "+ Add item" follows.
+  const scopedOutletId = outletScopeFor(user);
+  const outlets = scopedOutletId
+    ? allOutlets.filter((outlet) => outlet.id === scopedOutletId)
+    : allOutlets;
 
   return (
     <main className="flex flex-1 flex-col gap-6 p-6">
@@ -69,11 +92,32 @@ export default async function NewProductPage() {
           <CardHeader>
             <CardTitle className="text-base">Product details</CardTitle>
           </CardHeader>
-          <CardContent>
-            <ProductForm categories={categories} />
+          <CardContent className="flex flex-col gap-5">
+            {/* Without an active outlet there is nowhere to stock a
+                physical item, so the form falls back to the catalogue row
+                on its own — items get added from the product's page once an
+                outlet exists. */}
+            {outlets.length === 0 ? (
+              <>
+                <Alert>
+                  <BuildingIcon />
+                  <AlertDescription>
+                    {scopedOutletId
+                      ? "Your outlet is deactivated, so this product is created without a physical item for now."
+                      : "Add an active outlet to stock physical items. This product is created as a catalogue entry for now — add its items from the product's page afterwards."}
+                  </AlertDescription>
+                </Alert>
+                <ProductForm categories={categories} />
+              </>
+            ) : (
+              <ProductCreateForm
+                categories={categories}
+                outlets={outlets}
+                canViewCost={canViewCost}
+              />
+            )}
           </CardContent>
         </Card>
-
 
         <Card>
           <CardHeader>

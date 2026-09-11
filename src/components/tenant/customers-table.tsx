@@ -1,5 +1,6 @@
 import Link from "next/link";
-import { ContactIcon } from "lucide-react";
+import { ContactIcon, EyeIcon } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
   Empty,
@@ -26,6 +27,11 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import {
+  ListCardRow,
+  ListCards,
+  TableOnly,
+} from "@/components/tenant/list-cards";
 import { tenantPaths } from "@/lib/tenant-paths";
 import { paginationRange } from "@/lib/pagination-range";
 import {
@@ -80,91 +86,157 @@ export async function CustomersTable({
 
   return (
     <>
-      <Table>
-        <TableHeader>
-          <TableRow className="hover:bg-transparent">
-            <TableHead className="text-muted-foreground h-11 px-4 text-xs font-medium tracking-wide uppercase">
-              Customer
-            </TableHead>
-            <TableHead className="text-muted-foreground h-11 px-4 text-xs font-medium tracking-wide uppercase">
-              Phone
-            </TableHead>
-            <TableHead className="text-muted-foreground h-11 px-4 text-xs font-medium tracking-wide uppercase">
-              Assigned staff
-            </TableHead>
-            <TableHead className="text-muted-foreground h-11 px-4 text-xs font-medium tracking-wide uppercase">
-              Status
-            </TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {items.map((customer) => {
-            const name = `${customer.firstName} ${customer.lastName}`;
-            return (
-              <TableRow key={customer.id}>
-                <TableCell className="px-4 py-3 font-medium">
-                  <Link
-                    href={`${tenantPaths.customers}/${customer.id}`}
-                    className="group flex items-center gap-3"
+      <ListCards>
+        {items.map((customer) => {
+          const name = `${customer.firstName} ${customer.lastName}`;
+          return (
+            <ListCardRow
+              key={customer.id}
+              media={
+                <Avatar className="size-10 shadow-xs">
+                  <AvatarFallback
+                    className="text-xs font-semibold"
+                    style={customerGlassAvatarStyle(name)}
                   >
-                    <Avatar className="size-9 shrink-0 shadow-xs">
-                      <AvatarFallback
-                        className="text-xs font-semibold"
-                        style={customerGlassAvatarStyle(name)}
-                      >
-                        {initialsFor(name)}
-                      </AvatarFallback>
-                    </Avatar>
-                    <span className="group-hover:underline">{name}</span>
-                  </Link>
-                </TableCell>
-                <TableCell className="text-muted-foreground px-4 py-3 text-sm">
-                  {customer.phone}
-                </TableCell>
-                <TableCell className="text-muted-foreground px-4 py-3 text-sm">
-                  {customer.primaryStaffName ? (
-                    <span className="flex items-center gap-2">
-                      <Avatar className="size-5 shrink-0">
-                        <AvatarImage
-                          src={staffAvatarSrc(customer.primaryStaffName)}
-                          alt={customer.primaryStaffName}
-                        />
+                    {initialsFor(name)}
+                  </AvatarFallback>
+                </Avatar>
+              }
+              title={name}
+              badge={
+                customer.isActive ? (
+                  <Badge
+                    variant="secondary"
+                    className="bg-primary/10 text-primary shrink-0"
+                  >
+                    <span className="size-1.5 rounded-full bg-current" />
+                    Active
+                  </Badge>
+                ) : (
+                  <Badge
+                    variant="outline"
+                    className="text-muted-foreground shrink-0"
+                  >
+                    <span className="size-1.5 rounded-full bg-current" />
+                    Archived
+                  </Badge>
+                )
+              }
+              meta={
+                <>
+                  {customer.phone} · {customer.primaryStaffName ?? "Unassigned"}
+                </>
+              }
+              action={
+                <Button
+                  variant="outline"
+                  size="sm"
+                  nativeButton={false}
+                  render={
+                    <Link href={`${tenantPaths.customers}/${customer.id}`} />
+                  }
+                >
+                  <EyeIcon />
+                  View
+                </Button>
+              }
+            />
+          );
+        })}
+      </ListCards>
+
+      <TableOnly>
+        <Table>
+          <TableHeader>
+            <TableRow className="hover:bg-transparent">
+              <TableHead className="text-muted-foreground h-11 px-4 text-xs font-medium tracking-wide uppercase">
+                Customer
+              </TableHead>
+              <TableHead className="text-muted-foreground h-11 px-4 text-xs font-medium tracking-wide uppercase">
+                Phone
+              </TableHead>
+              <TableHead className="text-muted-foreground h-11 px-4 text-xs font-medium tracking-wide uppercase">
+                Assigned staff
+              </TableHead>
+              <TableHead className="text-muted-foreground h-11 px-4 text-xs font-medium tracking-wide uppercase">
+                Status
+              </TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {items.map((customer) => {
+              const name = `${customer.firstName} ${customer.lastName}`;
+              return (
+                <TableRow key={customer.id}>
+                  <TableCell className="px-4 py-3 font-medium">
+                    <Link
+                      href={`${tenantPaths.customers}/${customer.id}`}
+                      className="group flex items-center gap-3"
+                    >
+                      <Avatar className="size-9 shrink-0 shadow-xs">
                         <AvatarFallback
-                          className="!text-white text-[10px] font-semibold"
-                          style={{
-                            backgroundImage: avatarGradient(customer.primaryStaffName),
-                          }}
+                          className="text-xs font-semibold"
+                          style={customerGlassAvatarStyle(name)}
                         >
-                          {initialsFor(customer.primaryStaffName)}
+                          {initialsFor(name)}
                         </AvatarFallback>
                       </Avatar>
-                      <span>{customer.primaryStaffName}</span>
-                    </span>
-                  ) : (
-                    "Unassigned"
-                  )}
-                </TableCell>
-                <TableCell className="px-4 py-3">
-                  {customer.isActive ? (
-                    <Badge
-                      variant="secondary"
-                      className="bg-primary/10 text-primary"
-                    >
-                      <span className="size-1.5 rounded-full bg-current" />
-                      Active
-                    </Badge>
-                  ) : (
-                    <Badge variant="outline" className="text-muted-foreground">
-                      <span className="size-1.5 rounded-full bg-current" />
-                      Archived
-                    </Badge>
-                  )}
-                </TableCell>
-              </TableRow>
-            );
-          })}
-        </TableBody>
-      </Table>
+                      <span className="group-hover:underline">{name}</span>
+                    </Link>
+                  </TableCell>
+                  <TableCell className="text-muted-foreground px-4 py-3 text-sm">
+                    {customer.phone}
+                  </TableCell>
+                  <TableCell className="text-muted-foreground px-4 py-3 text-sm">
+                    {customer.primaryStaffName ? (
+                      <span className="flex items-center gap-2">
+                        <Avatar className="size-5 shrink-0">
+                          <AvatarImage
+                            src={staffAvatarSrc(customer.primaryStaffName)}
+                            alt={customer.primaryStaffName}
+                          />
+                          <AvatarFallback
+                            className="text-[10px] font-semibold !text-white"
+                            style={{
+                              backgroundImage: avatarGradient(
+                                customer.primaryStaffName,
+                              ),
+                            }}
+                          >
+                            {initialsFor(customer.primaryStaffName)}
+                          </AvatarFallback>
+                        </Avatar>
+                        <span>{customer.primaryStaffName}</span>
+                      </span>
+                    ) : (
+                      "Unassigned"
+                    )}
+                  </TableCell>
+                  <TableCell className="px-4 py-3">
+                    {customer.isActive ? (
+                      <Badge
+                        variant="secondary"
+                        className="bg-primary/10 text-primary"
+                      >
+                        <span className="size-1.5 rounded-full bg-current" />
+                        Active
+                      </Badge>
+                    ) : (
+                      <Badge
+                        variant="outline"
+                        className="text-muted-foreground"
+                      >
+                        <span className="size-1.5 rounded-full bg-current" />
+                        Archived
+                      </Badge>
+                    )}
+                  </TableCell>
+                </TableRow>
+              );
+            })}
+          </TableBody>
+        </Table>
+      </TableOnly>
 
       <div className="flex flex-wrap items-center justify-between gap-3 border-t p-4">
         <p className="text-muted-foreground text-sm">

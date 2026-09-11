@@ -25,12 +25,9 @@ export function StaffStatsTiles({ stats }: { stats: StaffStats }) {
   ];
 
   return (
-    <div className="flex w-full overflow-x-auto gap-3 pb-1 snap-x scrollbar-none sm:grid sm:grid-cols-3">
+    <div className="grid w-full grid-cols-2 gap-2 sm:grid-cols-3 sm:gap-3">
       {tiles.map((tile) => (
-        <Card
-          key={tile.label}
-          className="min-w-[200px] shrink-0 snap-start sm:min-w-0"
-        >
+        <Card key={tile.label}>
           <CardContent className="flex items-center gap-3 px-4">
             <span
               className={

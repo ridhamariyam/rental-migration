@@ -31,12 +31,9 @@ export function MaintenanceStatsTiles({ stats }: { stats: MaintenanceStats }) {
   ];
 
   return (
-    <div className="flex w-full overflow-x-auto gap-3 pb-1 snap-x scrollbar-none sm:grid sm:grid-cols-2 lg:grid-cols-4">
+    <div className="grid w-full grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-4">
       {tiles.map((tile) => (
-        <Card
-          key={tile.label}
-          className="min-w-[180px] shrink-0 snap-start sm:min-w-0"
-        >
+        <Card key={tile.label}>
           <CardContent className="flex items-center gap-3 px-4">
             <span
               className={

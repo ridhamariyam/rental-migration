@@ -24,6 +24,11 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { DecideLeaveActions } from "@/components/tenant/decide-leave-actions";
+import {
+  ListCardRow,
+  ListCards,
+  TableOnly,
+} from "@/components/tenant/list-cards";
 import { LeaveStatusBadge } from "@/components/tenant/leave-status-badge";
 import { WithdrawLeaveDialog } from "@/components/tenant/withdraw-leave-dialog";
 import { tenantPaths } from "@/lib/tenant-paths";
@@ -68,7 +73,9 @@ export async function LeaveTable({
             <CalendarOffIcon />
           </EmptyMedia>
           <EmptyTitle>
-            {hasFilters ? "No requests match your filters" : "No leave requests"}
+            {hasFilters
+              ? "No requests match your filters"
+              : "No leave requests"}
           </EmptyTitle>
           <EmptyDescription>
             {hasFilters
@@ -82,75 +89,131 @@ export async function LeaveTable({
 
   return (
     <>
-      <Table>
-        <TableHeader>
-          <TableRow className="hover:bg-transparent">
-            {canManage ? (
-              <TableHead className="text-muted-foreground h-11 px-4 text-xs font-medium tracking-wide uppercase">
-                Staff
-              </TableHead>
-            ) : null}
-            <TableHead className="text-muted-foreground h-11 px-4 text-xs font-medium tracking-wide uppercase">
-              Dates
-            </TableHead>
-            <TableHead className="text-muted-foreground h-11 px-4 text-xs font-medium tracking-wide uppercase">
-              Reason
-            </TableHead>
-            <TableHead className="text-muted-foreground h-11 px-4 text-xs font-medium tracking-wide uppercase">
-              Status
-            </TableHead>
-            <TableHead className="text-muted-foreground h-11 px-4 text-xs font-medium tracking-wide uppercase">
-              <span className="sr-only">Actions</span>
-            </TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {items.map((leave) => {
-            const isOwn = leave.staffId === actor.id;
-            const canDecide = canManage && !isOwn && leave.status === "pending";
-            const canWithdraw =
-              leave.status === "pending" && (isOwn || canManage);
-            const name = `${leave.staffFirstName} ${leave.staffLastName}`.trim();
+      {/* Approve/reject (or withdraw) is the row's action on a phone too —
+          a leave request has no page of its own to "view". */}
+      <ListCards at="md">
+        {items.map((leave) => {
+          const isOwn = leave.staffId === actor.id;
+          const canDecide = canManage && !isOwn && leave.status === "pending";
+          const canWithdraw =
+            leave.status === "pending" && (isOwn || canManage);
+          const name = `${leave.staffFirstName} ${leave.staffLastName}`.trim();
 
-            return (
-              <TableRow key={leave.id}>
-                {canManage ? (
-                  <TableCell className="px-4 py-3 font-medium">
-                    <div className="flex items-center gap-3">
-                      <Avatar className="size-8 shrink-0">
-                        <AvatarImage src={resolveAvatarSrc(leave.staffAvatarUrl, name)} alt={name} />
-                        <AvatarFallback
-                          className="text-xs font-semibold text-white"
-                          style={{ backgroundImage: avatarGradient(name) }}
-                        >
-                          {initialsFor(name)}
-                        </AvatarFallback>
-                      </Avatar>
-                      <span>{name}</span>
-                    </div>
-                  </TableCell>
-                ) : null}
-                <TableCell className="text-muted-foreground px-4 py-3 text-sm whitespace-nowrap">
+          return (
+            <ListCardRow
+              key={leave.id}
+              media={
+                canManage ? (
+                  <Avatar className="size-10">
+                    <AvatarImage
+                      src={resolveAvatarSrc(leave.staffAvatarUrl, name)}
+                      alt={name}
+                    />
+                    <AvatarFallback
+                      className="text-xs font-semibold text-white"
+                      style={{ backgroundImage: avatarGradient(name) }}
+                    >
+                      {initialsFor(name)}
+                    </AvatarFallback>
+                  </Avatar>
+                ) : undefined
+              }
+              title={canManage ? name : leave.reason}
+              badge={<LeaveStatusBadge status={leave.status} />}
+              meta={
+                <>
                   {formatDate(leave.fromDate)} – {formatDate(leave.toDate)}
-                </TableCell>
-                <TableCell className="max-w-64 truncate px-4 py-3 text-sm">
-                  {leave.reason}
-                </TableCell>
-                <TableCell className="px-4 py-3">
-                  <LeaveStatusBadge status={leave.status} />
-                </TableCell>
-                <TableCell className="px-4 py-3 text-right">
-                  {canDecide ? (
-                    <DecideLeaveActions leaveId={leave.id} />
-                  ) : canWithdraw ? (
-                    <WithdrawLeaveDialog leaveId={leave.id} />
+                  {canManage ? ` · ${leave.reason}` : ""}
+                </>
+              }
+              action={
+                canDecide ? (
+                  <DecideLeaveActions leaveId={leave.id} />
+                ) : canWithdraw ? (
+                  <WithdrawLeaveDialog leaveId={leave.id} />
+                ) : undefined
+              }
+            />
+          );
+        })}
+      </ListCards>
+
+      <TableOnly at="md">
+        <Table>
+          <TableHeader>
+            <TableRow className="hover:bg-transparent">
+              {canManage ? (
+                <TableHead className="text-muted-foreground h-11 px-4 text-xs font-medium tracking-wide uppercase">
+                  Staff
+                </TableHead>
+              ) : null}
+              <TableHead className="text-muted-foreground h-11 px-4 text-xs font-medium tracking-wide uppercase">
+                Dates
+              </TableHead>
+              <TableHead className="text-muted-foreground h-11 px-4 text-xs font-medium tracking-wide uppercase">
+                Reason
+              </TableHead>
+              <TableHead className="text-muted-foreground h-11 px-4 text-xs font-medium tracking-wide uppercase">
+                Status
+              </TableHead>
+              <TableHead className="text-muted-foreground h-11 px-4 text-xs font-medium tracking-wide uppercase">
+                <span className="sr-only">Actions</span>
+              </TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {items.map((leave) => {
+              const isOwn = leave.staffId === actor.id;
+              const canDecide =
+                canManage && !isOwn && leave.status === "pending";
+              const canWithdraw =
+                leave.status === "pending" && (isOwn || canManage);
+              const name =
+                `${leave.staffFirstName} ${leave.staffLastName}`.trim();
+
+              return (
+                <TableRow key={leave.id}>
+                  {canManage ? (
+                    <TableCell className="px-4 py-3 font-medium">
+                      <div className="flex items-center gap-3">
+                        <Avatar className="size-8 shrink-0">
+                          <AvatarImage
+                            src={resolveAvatarSrc(leave.staffAvatarUrl, name)}
+                            alt={name}
+                          />
+                          <AvatarFallback
+                            className="text-xs font-semibold text-white"
+                            style={{ backgroundImage: avatarGradient(name) }}
+                          >
+                            {initialsFor(name)}
+                          </AvatarFallback>
+                        </Avatar>
+                        <span>{name}</span>
+                      </div>
+                    </TableCell>
                   ) : null}
-                </TableCell>
-              </TableRow>
-            );
-          })}
-        </TableBody>
-      </Table>
+                  <TableCell className="text-muted-foreground px-4 py-3 text-sm whitespace-nowrap">
+                    {formatDate(leave.fromDate)} – {formatDate(leave.toDate)}
+                  </TableCell>
+                  <TableCell className="max-w-64 truncate px-4 py-3 text-sm">
+                    {leave.reason}
+                  </TableCell>
+                  <TableCell className="px-4 py-3">
+                    <LeaveStatusBadge status={leave.status} />
+                  </TableCell>
+                  <TableCell className="px-4 py-3 text-right">
+                    {canDecide ? (
+                      <DecideLeaveActions leaveId={leave.id} />
+                    ) : canWithdraw ? (
+                      <WithdrawLeaveDialog leaveId={leave.id} />
+                    ) : null}
+                  </TableCell>
+                </TableRow>
+              );
+            })}
+          </TableBody>
+        </Table>
+      </TableOnly>
 
       <div className="flex flex-wrap items-center justify-between gap-3 border-t p-4">
         <p className="text-muted-foreground text-sm">

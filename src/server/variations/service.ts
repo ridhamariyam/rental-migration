@@ -257,7 +257,9 @@ async function requireUniqueVariant(
   const conditions = [
     eq(productVariations.productId, productId),
     eq(productVariations.outletId, outletId),
-    color ? ilike(productVariations.color, color) : isNull(productVariations.color),
+    color
+      ? ilike(productVariations.color, color)
+      : isNull(productVariations.color),
     size ? ilike(productVariations.size, size) : isNull(productVariations.size),
   ];
   if (excludeId) {
@@ -278,6 +280,118 @@ async function requireUniqueVariant(
   }
 }
 
+/**
+ * Runs a variation write, turning the driver's unique-violation — a SKU or
+ * barcode another request allocated in the window between this one's
+ * uniqueness check and its insert — into the shared 409. Exported so the
+ * combined product + first-item create reports the clash in exactly the
+ * same words "+ Add item" does.
+ */
+export async function withIdentifierConflictHandling<T>(
+  run: () => Promise<T>,
+): Promise<T> {
+  try {
+    return await run();
+  } catch (error) {
+    if (isUniqueViolation(error)) {
+      throw new AppError(
+        "That SKU or barcode was just taken by another item — try again",
+        409,
+      );
+    }
+    throw error;
+  }
+}
+
+/**
+ * The insert half of "+ Add item", split out from `createVariation` so the
+ * combined product + first-item create (`createProductWithItem`) can run it
+ * inside the *same* transaction that inserts the product — a failed item
+ * must never leave a catalogue row with no stock behind.
+ *
+ * The caller owns the pool-based checks (`requireActiveOutlet`, and for
+ * "+ Add item" `requireProduct`) and must run them *before* opening the
+ * transaction: the dev pool is `max: 1`, so a query sent to the pool while
+ * a transaction holds that one connection would wait on itself forever.
+ */
+export async function insertVariations(
+  tx: VariationTx,
+  {
+    productId,
+    productName,
+    input,
+  }: { productId: string; productName: string; input: CreateVariationInput },
+): Promise<VariationRow[]> {
+  const created: VariationRow[] = [];
+
+  const normalizedColor = input.color?.trim() || null;
+  const normalizedSize = input.size?.trim() || null;
+
+  for (const outletId of input.outletIds) {
+    await requireUniqueVariant(
+      tx,
+      productId,
+      outletId,
+      normalizedColor,
+      normalizedSize,
+    );
+
+    // A manual sku/barcode only ever applies to a single outlet's copy
+    // (enforced by `createVariationSchema`'s superRefine) — every
+    // other outlet in the batch always gets a freshly auto-generated
+    // pair.
+    const { sku, barcode } = await allocateIdentifiers(
+      tx,
+      productName,
+      input.outletIds.length === 1 ? input.sku : undefined,
+      input.outletIds.length === 1 ? input.barcode : undefined,
+    );
+
+    const [variation] = await tx
+      .insert(productVariations)
+      .values({
+        productId,
+        outletId,
+        color: input.color || null,
+        size: input.size || null,
+        rentPrice: input.rentPrice,
+        sellingPrice: input.sellingPrice || null,
+        buyingPrice: input.buyingPrice || null,
+        securityDeposit: input.securityDeposit || ZERO_MONEY,
+        quantity: Number(input.quantity),
+        sku,
+        barcode,
+        image: input.image || null,
+        ownershipType: input.ownershipType,
+        ownerName:
+          input.ownershipType === "customer_owned"
+            ? input.ownerName || null
+            : null,
+        ownerPhone:
+          input.ownershipType === "customer_owned"
+            ? input.ownerPhone || null
+            : null,
+        ownerCustomerId:
+          input.ownershipType === "customer_owned"
+            ? input.ownerCustomerId || null
+            : null,
+        ownerShareAmount:
+          input.ownershipType === "customer_owned"
+            ? input.ownerShareAmount || "0"
+            : "0",
+        ownerNotes:
+          input.ownershipType === "customer_owned"
+            ? input.ownerNotes || null
+            : null,
+      })
+      .returning();
+
+    created.push(variation);
+  }
+
+  return created;
+}
+
 export async function createVariation(
   shopId: string,
   productId: string,
@@ -289,67 +403,15 @@ export async function createVariation(
     await requireActiveOutlet(shopId, outletId);
   }
 
-  const created: VariationRow[] = [];
-
-  const normalizedColor = input.color?.trim() || null;
-  const normalizedSize = input.size?.trim() || null;
-
-  try {
-    await db.transaction(async (tx) => {
-      for (const outletId of input.outletIds) {
-        await requireUniqueVariant(tx, productId, outletId, normalizedColor, normalizedSize);
-
-        // A manual sku/barcode only ever applies to a single outlet's copy
-        // (enforced by `createVariationSchema`'s superRefine) — every
-        // other outlet in the batch always gets a freshly auto-generated
-        // pair.
-        const { sku, barcode } = await allocateIdentifiers(
-          tx,
-          product.name,
-          input.outletIds.length === 1 ? input.sku : undefined,
-          input.outletIds.length === 1 ? input.barcode : undefined,
-        );
-
-        const [variation] = await tx
-          .insert(productVariations)
-          .values({
-            productId,
-            outletId,
-            color: input.color || null,
-            size: input.size || null,
-            rentPrice: input.rentPrice,
-            sellingPrice: input.sellingPrice || null,
-            buyingPrice: input.buyingPrice || null,
-            securityDeposit: input.securityDeposit || ZERO_MONEY,
-            quantity: Number(input.quantity),
-            sku,
-            barcode,
-            image: input.image || null,
-            ownershipType: input.ownershipType,
-            ownerName: input.ownershipType === "customer_owned" ? input.ownerName || null : null,
-            ownerPhone: input.ownershipType === "customer_owned" ? input.ownerPhone || null : null,
-            ownerCustomerId:
-              input.ownershipType === "customer_owned" ? input.ownerCustomerId || null : null,
-            ownerShareAmount:
-              input.ownershipType === "customer_owned" ? input.ownerShareAmount || "0" : "0",
-            ownerNotes: input.ownershipType === "customer_owned" ? input.ownerNotes || null : null,
-          })
-          .returning();
-
-        created.push(variation);
-      }
-    });
-
-    return created;
-  } catch (error) {
-    if (isUniqueViolation(error)) {
-      throw new AppError(
-        "That SKU or barcode was just taken by another item — try again",
-        409,
-      );
-    }
-    throw error;
-  }
+  return withIdentifierConflictHandling(() =>
+    db.transaction((tx) =>
+      insertVariations(tx, {
+        productId,
+        productName: product.name,
+        input,
+      }),
+    ),
+  );
 }
 
 export async function updateVariation(
@@ -385,13 +447,26 @@ export async function updateVariation(
       outletId: input.outletId,
       image: input.image || null,
       ownershipType: input.ownershipType,
-      ownerName: input.ownershipType === "customer_owned" ? input.ownerName || null : null,
-      ownerPhone: input.ownershipType === "customer_owned" ? input.ownerPhone || null : null,
+      ownerName:
+        input.ownershipType === "customer_owned"
+          ? input.ownerName || null
+          : null,
+      ownerPhone:
+        input.ownershipType === "customer_owned"
+          ? input.ownerPhone || null
+          : null,
       ownerCustomerId:
-        input.ownershipType === "customer_owned" ? input.ownerCustomerId || null : null,
+        input.ownershipType === "customer_owned"
+          ? input.ownerCustomerId || null
+          : null,
       ownerShareAmount:
-        input.ownershipType === "customer_owned" ? input.ownerShareAmount || "0" : "0",
-      ownerNotes: input.ownershipType === "customer_owned" ? input.ownerNotes || null : null,
+        input.ownershipType === "customer_owned"
+          ? input.ownerShareAmount || "0"
+          : "0",
+      ownerNotes:
+        input.ownershipType === "customer_owned"
+          ? input.ownerNotes || null
+          : null,
       updatedAt: new Date(),
     })
     .where(eq(productVariations.id, id))

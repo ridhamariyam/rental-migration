@@ -1,7 +1,8 @@
 import { Suspense } from "react";
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { PlusIcon } from "lucide-react";
+import { CheckCircle2Icon, PlusIcon } from "lucide-react";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { ProductFilters } from "@/components/tenant/product-filters";
 import { ProductStatsTiles } from "@/components/tenant/product-stats-tiles";
 import { ProductsTable } from "@/components/tenant/products-table";
@@ -39,6 +40,7 @@ export default async function ProductsPage({
   const canManage = hasPermission(user.role, Permission.PRODUCT_MANAGE);
 
   const rawParams = await searchParams;
+  const justCreated = rawParams.created === "1";
   const query = productListQuerySchema.parse({
     page: rawParams.page,
     pageSize: rawParams.pageSize,
@@ -72,6 +74,15 @@ export default async function ProductsPage({
           </Button>
         ) : null}
       </div>
+
+      {justCreated ? (
+        <Alert className="border-emerald-500/30 bg-emerald-500/5">
+          <CheckCircle2Icon className="text-emerald-600" />
+          <AlertDescription className="font-medium text-emerald-700 dark:text-emerald-400">
+            Product created — it&rsquo;s listed below, ready to rent.
+          </AlertDescription>
+        </Alert>
+      ) : null}
 
       <ProductStatsTiles stats={stats} />
 
