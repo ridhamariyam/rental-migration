@@ -1,6 +1,6 @@
 import "server-only";
 
-import { and, asc, count, desc, eq, ilike, isNotNull, or } from "drizzle-orm";
+import { and, asc, count, desc, eq, ilike, isNotNull, ne, or } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { AppError } from "@/lib/errors/app-error";
 import { categories, productVariations, products } from "@/lib/db/schema";
@@ -236,11 +236,47 @@ async function requireCategory(shopId: string, categoryId: string) {
   }
 }
 
+/** Same product name within the same category is almost always a mistake
+ * (an accidental double-submit or someone forgetting one already exists) —
+ * blocked case-insensitively, scoped per category so the same name is
+ * still fine across two different categories. */
+async function requireUniqueName(
+  shopId: string,
+  categoryId: string,
+  name: string,
+  excludeId?: string,
+) {
+  const conditions = [
+    eq(products.shopId, shopId),
+    eq(products.categoryId, categoryId),
+    ilike(products.name, name.trim()),
+  ];
+  if (excludeId) {
+    conditions.push(ne(products.id, excludeId));
+  }
+
+  const [existing] = await db
+    .select({ id: products.id })
+    .from(products)
+    .where(and(...conditions))
+    .limit(1);
+
+  if (existing) {
+    throw new AppError("A product with this name already exists in this category", 409, [
+      {
+        field: "name",
+        message: "A product with this name already exists in this category",
+      },
+    ]);
+  }
+}
+
 export async function createProduct(
   shopId: string,
   input: CreateProductInput,
 ): Promise<ProductRow> {
   await requireCategory(shopId, input.categoryId);
+  await requireUniqueName(shopId, input.categoryId, input.name);
 
   const [product] = await db
     .insert(products)
@@ -266,6 +302,7 @@ export async function updateProduct(
   }
 
   await requireCategory(shopId, input.categoryId);
+  await requireUniqueName(shopId, input.categoryId, input.name, id);
 
   const [product] = await db
     .update(products)
