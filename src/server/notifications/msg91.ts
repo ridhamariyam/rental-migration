@@ -112,8 +112,20 @@ function extractDeclaredVariables(record: UnknownRecord): string[] | null {
   return null;
 }
 
-/** Reverse of each declared variable's `parameter_name` -> the variable's own key. */
-function extractLegacySlotAliases(record: UnknownRecord): Record<string, string> {
+/**
+ * Reverse-maps every way a rule's `variableMapping` could have ended up
+ * keyed wrong for a NAMED-parameter template, onto the correct MSG91
+ * component key:
+ *  - `parameter_name` (e.g. "var_1") from `variable_type`, for slots
+ *    derived by the old regex-based `extractVariableSlots`.
+ *  - Generic positional `body_N` (e.g. "body_1"), because the rules in
+ *    this app were actually hand-configured with that convention
+ *    regardless of template type — the true bug this whole fix targets.
+ */
+function extractLegacySlotAliases(
+  record: UnknownRecord,
+  declaredVariables: string[] | null,
+): Record<string, string> {
   const aliases: Record<string, string> = {};
 
   const addFrom = (variableType: unknown) => {
@@ -126,6 +138,11 @@ function extractLegacySlotAliases(record: UnknownRecord): Record<string, string>
   addFrom(record.variable_type);
   const languages = Array.isArray(record.languages) ? record.languages.map(asRecord) : [];
   for (const language of languages) addFrom(language.variable_type);
+
+  declaredVariables?.forEach((variable, index) => {
+    const positional = `body_${index + 1}`;
+    if (positional !== variable) aliases[positional] = variable;
+  });
 
   return aliases;
 }
@@ -225,6 +242,7 @@ export class Msg91Client {
           ? { items: componentsValue }
           : asRecord(componentsValue);
         const body = extractTemplateBody(record);
+        const variableSlots = extractDeclaredVariables(record) ?? extractVariableSlots(body, components);
 
         return {
           name,
@@ -238,8 +256,8 @@ export class Msg91Client {
           status: stringValue(record.status) ?? "approved",
           body,
           components,
-          variableSlots: extractDeclaredVariables(record) ?? extractVariableSlots(body, components),
-          legacySlotAliases: extractLegacySlotAliases(record),
+          variableSlots,
+          legacySlotAliases: extractLegacySlotAliases(record, variableSlots),
           raw: record,
         };
       })
