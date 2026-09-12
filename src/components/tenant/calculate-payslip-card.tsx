@@ -16,8 +16,9 @@ import {
 } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { Spinner } from "@/components/ui/spinner";
+import { DatePicker } from "@/components/ui/date-picker";
 import { ApiClientError, apiRequest } from "@/lib/api-client";
-import { formatMinutes, formatMoney } from "@/lib/format";
+import { formatMinutes, formatMoney, toDateString } from "@/lib/format";
 import type { SalaryCalculation } from "@/server/salary/service";
 
 const MONTH_LABELS = [
@@ -53,12 +54,31 @@ export function CalculatePayslipCard({
   const router = useRouter();
   const [year, setYear] = useState(now.getFullYear());
   const [month, setMonth] = useState(now.getMonth() + 1);
+  // Most payroll is monthly, so that stays the default; a shop running a
+  // fortnight (or settling a leaver mid-month) switches to explicit dates.
+  const [mode, setMode] = useState<"month" | "range">("month");
+  const [fromDate, setFromDate] = useState(() => {
+    const first = new Date(now.getFullYear(), now.getMonth(), 1);
+    return toDateString(first);
+  });
+  const [toDate, setToDate] = useState(() => toDateString(now));
   const [calculation, setCalculation] = useState<SalaryCalculation | null>(
     null,
   );
   const [isCalculating, setIsCalculating] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  /** The period as the API takes it — a month pair or an explicit range. */
+  function periodQuery(): string {
+    return mode === "month"
+      ? `year=${year}&month=${month}`
+      : `from=${fromDate}&to=${toDate}`;
+  }
+
+  function periodBody(): Record<string, string | number> {
+    return mode === "month" ? { year, month } : { fromDate, toDate };
+  }
 
   async function handleCalculate() {
     setError(null);
@@ -67,7 +87,7 @@ export function CalculatePayslipCard({
 
     try {
       const result = await apiRequest<SalaryCalculation>(
-        `/api/salary/calculate?staffId=${staffId}&year=${year}&month=${month}`,
+        `/api/salary/calculate?staffId=${staffId}&${periodQuery()}`,
       );
       setCalculation(result);
     } catch (submitError) {
@@ -88,7 +108,7 @@ export function CalculatePayslipCard({
     try {
       await apiRequest("/api/salary/payslips", {
         method: "POST",
-        body: JSON.stringify({ staffId, year, month }),
+        body: JSON.stringify({ staffId, ...periodBody() }),
       });
       router.refresh();
     } catch (submitError) {
@@ -138,9 +158,66 @@ export function CalculatePayslipCard({
           </Alert>
         ) : null}
 
+        <div className="flex flex-col gap-3" hidden={payReadiness !== "ready"}>
+          <div className="flex items-center gap-1 text-sm">
+            {(["month", "range"] as const).map((option) => (
+              <Button
+                key={option}
+                type="button"
+                size="sm"
+                variant={mode === option ? "secondary" : "ghost"}
+                onClick={() => {
+                  setMode(option);
+                  setCalculation(null);
+                  setError(null);
+                }}
+              >
+                {option === "month" ? "Whole month" : "Date range"}
+              </Button>
+            ))}
+          </div>
+
+          {mode === "range" ? (
+            <div className="flex flex-wrap items-end gap-2">
+              <div className="flex flex-col gap-1">
+                <span className="text-muted-foreground text-xs">From</span>
+                <DatePicker
+                  id="payroll-from"
+                  value={fromDate}
+                  onChange={(next) => {
+                    setFromDate(next);
+                    setCalculation(null);
+                  }}
+                />
+              </div>
+              <div className="flex flex-col gap-1">
+                <span className="text-muted-foreground text-xs">To</span>
+                <DatePicker
+                  id="payroll-to"
+                  value={toDate}
+                  onChange={(next) => {
+                    setToDate(next);
+                    setCalculation(null);
+                  }}
+                />
+              </div>
+
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleCalculate}
+                disabled={isCalculating}
+              >
+                {isCalculating ? <Spinner /> : null}
+                Calculate
+              </Button>
+            </div>
+          ) : null}
+        </div>
+
         <div
           className="flex flex-wrap items-center gap-2"
-          hidden={payReadiness !== "ready"}
+          hidden={payReadiness !== "ready" || mode !== "month"}
         >
           <Select
             value={String(month)}

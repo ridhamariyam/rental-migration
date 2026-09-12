@@ -343,8 +343,13 @@ async function approvedLeaveDates(
 export type SalaryCalculation = {
   staffId: string;
   staffName: string;
-  periodYear: number;
-  periodMonth: number;
+  /** Set only when the period is exactly one whole calendar month — what
+   * lets a payslip be labelled "September 2026" instead of two dates. */
+  periodYear: number | null;
+  periodMonth: number | null;
+  /** The days asked for. `payStart`/`periodEnd` below are what was
+   * actually priced after clamping to today, the joining date and the pay
+   * configuration. */
   periodStart: string;
   periodEnd: string;
   /** The first day actually priced — the latest of the period start, the
@@ -386,6 +391,20 @@ export type SalaryCalculation = {
   averageMinutesPerDay: number;
 };
 
+/** The `{year, month}` a range covers when it is exactly one whole
+ * calendar month, else nulls — see `SalaryCalculation.periodYear`. */
+function wholeMonthOf(
+  start: string,
+  end: string,
+): { year: number | null; month: number | null } {
+  const year = Number(start.slice(0, 4));
+  const month = Number(start.slice(5, 7));
+  const bounds = monthBounds(year, month);
+  return bounds.start === start && bounds.end === end
+    ? { year, month }
+    : { year: null, month: null };
+}
+
 /**
  * What one staff member earned in one calendar month, from the hours they
  * actually worked (doc §18).
@@ -421,16 +440,42 @@ export type SalaryCalculation = {
  * Never persisted by itself; `generatePayslip` is what turns this into a
  * stable record.
  */
+/**
+ * The calendar-month shorthand for `calculateSalaryForRange` — most payroll
+ * still runs monthly, and a month is just the range from its 1st to its
+ * last day.
+ */
 export async function calculateSalary(
   actor: TenantSessionUser,
   staffId: string,
   year: number,
   month: number,
 ): Promise<SalaryCalculation> {
+  const { start, end } = monthBounds(year, month);
+  return calculateSalaryForRange(actor, staffId, {
+    fromDate: start,
+    toDate: end,
+  });
+}
+
+export async function calculateSalaryForRange(
+  actor: TenantSessionUser,
+  staffId: string,
+  range: { fromDate: string; toDate: string },
+): Promise<SalaryCalculation> {
   assertCanView(actor, staffId);
   const staff = await requireTenantStaff(actor.shopId, staffId);
 
-  const { start: periodStart, end: fullPeriodEnd } = monthBounds(year, month);
+  const periodStart = range.fromDate;
+  const fullPeriodEnd = range.toDate;
+
+  if (fullPeriodEnd < periodStart) {
+    throw new AppError("The end date cannot be before the start date", 400);
+  }
+
+  // A range that happens to be exactly one calendar month keeps the
+  // month labelling the payslip history reads by.
+  const { year, month } = wholeMonthOf(periodStart, fullPeriodEnd);
 
   // Never walk into days that have not happened yet. Every day with no
   // attendance row counts as an absence, so previewing the current month
@@ -650,32 +695,28 @@ function withAverageMinutesPerDay<
 /** Persists a calculation so payroll history is stable — regenerating for
  * the same period recalculates and overwrites the same row (never a
  * duplicate), matching the legacy backend's upsert-by-period behaviour. */
-export async function generatePayslip(
+export async function generatePayslipForRange(
   actor: TenantSessionUser,
   staffId: string,
-  year: number,
-  month: number,
+  range: { fromDate: string; toDate: string },
 ): Promise<PayslipItem> {
   if (!hasPermission(actor.role, Permission.SALARY_MANAGE)) {
     throw AppError.forbidden("You do not have permission to do this");
   }
 
-  // A payslip is a record of a finished month. Previewing the current
-  // month is useful (and clamped to today by `calculateSalary`), but
-  // persisting that preview would pay out a partial month as if it were
-  // complete (RQ-09).
-  const now = new Date();
-  const periodIsOpen =
-    year > now.getFullYear() ||
-    (year === now.getFullYear() && month >= now.getMonth() + 1);
-  if (periodIsOpen) {
+  // A payslip is a record of a period that has finished. Previewing a
+  // period still running is useful (and clamped to today by the
+  // calculation), but persisting that preview would pay out a partial
+  // period as if it were complete (RQ-09).
+  const today = toDateString(new Date());
+  if (range.toDate >= today) {
     throw new AppError(
-      "This month has not finished yet — a payslip can only be generated once the period is closed",
+      "This period has not finished yet — a payslip can only be generated once the last day has passed",
       400,
     );
   }
 
-  const calculation = await calculateSalary(actor, staffId, year, month);
+  const calculation = await calculateSalaryForRange(actor, staffId, range);
 
   const [existing] = await db
     .select({ id: salaryPayslips.id })
@@ -683,8 +724,8 @@ export async function generatePayslip(
     .where(
       and(
         eq(salaryPayslips.staffId, staffId),
-        eq(salaryPayslips.periodYear, year),
-        eq(salaryPayslips.periodMonth, month),
+        eq(salaryPayslips.periodStart, range.fromDate),
+        eq(salaryPayslips.periodEnd, range.toDate),
       ),
     )
     .limit(1);
@@ -692,8 +733,10 @@ export async function generatePayslip(
   const values = {
     shopId: actor.shopId,
     staffId,
-    periodYear: year,
-    periodMonth: month,
+    periodStart: range.fromDate,
+    periodEnd: range.toDate,
+    periodYear: calculation.periodYear,
+    periodMonth: calculation.periodMonth,
     baseSalary: calculation.monthlySalary,
     workingDays: calculation.workingDays,
     presentDays: calculation.presentDays,
@@ -736,6 +779,8 @@ export async function generatePayslip(
       id: salaryPayslips.id,
       shopId: salaryPayslips.shopId,
       staffId: salaryPayslips.staffId,
+      periodStart: salaryPayslips.periodStart,
+      periodEnd: salaryPayslips.periodEnd,
       periodYear: salaryPayslips.periodYear,
       periodMonth: salaryPayslips.periodMonth,
       baseSalary: salaryPayslips.baseSalary,
@@ -770,6 +815,20 @@ export async function generatePayslip(
   return withAverageMinutesPerDay(item);
 }
 
+/** Calendar-month shorthand for `generatePayslipForRange`. */
+export async function generatePayslip(
+  actor: TenantSessionUser,
+  staffId: string,
+  year: number,
+  month: number,
+): Promise<PayslipItem> {
+  const { start, end } = monthBounds(year, month);
+  return generatePayslipForRange(actor, staffId, {
+    fromDate: start,
+    toDate: end,
+  });
+}
+
 export type PayslipListResult = {
   items: PayslipItem[];
   total: number;
@@ -777,6 +836,71 @@ export type PayslipListResult = {
   pageSize: number;
   totalPages: number;
 };
+
+/**
+ * One payslip for the payslip document/print view. Scoped the same way the
+ * list is: your own always, anyone else's only with `SALARY_MANAGE`, and
+ * never another tenant's.
+ */
+export async function getPayslipById(
+  actor: TenantSessionUser,
+  id: string,
+): Promise<PayslipItem | null> {
+  const [row] = await db
+    .select({
+      id: salaryPayslips.id,
+      shopId: salaryPayslips.shopId,
+      staffId: salaryPayslips.staffId,
+      periodStart: salaryPayslips.periodStart,
+      periodEnd: salaryPayslips.periodEnd,
+      periodYear: salaryPayslips.periodYear,
+      periodMonth: salaryPayslips.periodMonth,
+      baseSalary: salaryPayslips.baseSalary,
+      workingDays: salaryPayslips.workingDays,
+      presentDays: salaryPayslips.presentDays,
+      absentDays: salaryPayslips.absentDays,
+      approvedLeaveDays: salaryPayslips.approvedLeaveDays,
+      incompleteDays: salaryPayslips.incompleteDays,
+      weeklyOffDay: salaryPayslips.weeklyOffDay,
+      standardHoursPerDay: salaryPayslips.standardHoursPerDay,
+      overtimeRatePerHour: salaryPayslips.overtimeRatePerHour,
+      hourlyRate: salaryPayslips.hourlyRate,
+      regularMinutes: salaryPayslips.regularMinutes,
+      basePay: salaryPayslips.basePay,
+      overtimePay: salaryPayslips.overtimePay,
+      overtimeMinutes: salaryPayslips.overtimeMinutes,
+      shortfallMinutes: salaryPayslips.shortfallMinutes,
+      netAmount: salaryPayslips.netAmount,
+      totalWorkedMinutes: salaryPayslips.totalWorkedMinutes,
+      note: salaryPayslips.note,
+      generatedById: salaryPayslips.generatedById,
+      generatedAt: salaryPayslips.generatedAt,
+      createdAt: salaryPayslips.createdAt,
+      updatedAt: salaryPayslips.updatedAt,
+      staffFirstName: users.firstName,
+      staffLastName: users.lastName,
+    })
+    .from(salaryPayslips)
+    .innerJoin(users, eq(salaryPayslips.staffId, users.id))
+    .where(
+      and(
+        eq(salaryPayslips.id, id),
+        eq(salaryPayslips.shopId, actor.shopId),
+      ),
+    )
+    .limit(1);
+
+  if (!row) return null;
+
+  if (
+    row.staffId !== actor.id &&
+    !hasPermission(actor.role, Permission.SALARY_MANAGE)
+  ) {
+    return null;
+  }
+
+  return withAverageMinutesPerDay(row);
+}
 
 export async function listPayslips(
   actor: TenantSessionUser,
@@ -800,6 +924,8 @@ export async function listPayslips(
         id: salaryPayslips.id,
         shopId: salaryPayslips.shopId,
         staffId: salaryPayslips.staffId,
+        periodStart: salaryPayslips.periodStart,
+        periodEnd: salaryPayslips.periodEnd,
         periodYear: salaryPayslips.periodYear,
         periodMonth: salaryPayslips.periodMonth,
         baseSalary: salaryPayslips.baseSalary,

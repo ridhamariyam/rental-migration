@@ -1,3 +1,6 @@
+import Link from "next/link";
+import { FileTextIcon } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import {
   Empty,
   EmptyDescription,
@@ -26,26 +29,11 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { formatMinutes, formatMoney } from "@/lib/format";
+import { formatMinutes, formatMoney, formatPayrollPeriod } from "@/lib/format";
 import type { PayslipListQuery } from "@/lib/validation/salary";
 import type { TenantSessionUser } from "@/server/auth/guard";
 import { listPayslips } from "@/server/salary/service";
 import { ReceiptTextIcon } from "lucide-react";
-
-const MONTH_LABELS = [
-  "Jan",
-  "Feb",
-  "Mar",
-  "Apr",
-  "May",
-  "Jun",
-  "Jul",
-  "Aug",
-  "Sep",
-  "Oct",
-  "Nov",
-  "Dec",
-];
 
 export async function PayslipsTable({
   actor,
@@ -96,14 +84,23 @@ export async function PayslipsTable({
             title={
               showStaffColumn
                 ? `${payslip.staffFirstName} ${payslip.staffLastName}`
-                : `${MONTH_LABELS[payslip.periodMonth - 1]} ${payslip.periodYear}`
+                : formatPayrollPeriod(payslip)
+            }
+            action={
+              <Button
+                variant="outline"
+                size="sm"
+                nativeButton={false}
+                render={<Link href={`${basePath}/payslips/${payslip.id}`} />}
+              >
+                <FileTextIcon />
+                Open
+              </Button>
             }
             meta={
               <>
                 {formatMoney(payslip.netAmount)} ·{" "}
-                {showStaffColumn
-                  ? `${MONTH_LABELS[payslip.periodMonth - 1]} ${payslip.periodYear} · `
-                  : ""}
+                {showStaffColumn ? `${formatPayrollPeriod(payslip)} · ` : ""}
                 {formatMinutes(payslip.regularMinutes)} @{" "}
                 {formatMoney(payslip.hourlyRate)}/hr
                 {payslip.overtimeMinutes > 0
@@ -138,7 +135,7 @@ export async function PayslipsTable({
               <TableHead className="text-muted-foreground h-11 px-4 text-xs font-medium tracking-wide uppercase">
                 Extra hours
               </TableHead>
-              <TableHead className="text-muted-foreground h-11 px-4 text-xs font-medium tracking-wide uppercase">
+              <TableHead className="text-muted-foreground hidden h-11 px-4 text-xs font-medium tracking-wide uppercase xl:table-cell">
                 Rates
               </TableHead>
               <TableHead className="text-muted-foreground h-11 px-4 text-xs font-medium tracking-wide uppercase">
@@ -146,6 +143,9 @@ export async function PayslipsTable({
               </TableHead>
               <TableHead className="text-muted-foreground h-11 px-4 text-xs font-medium tracking-wide uppercase">
                 Net amount
+              </TableHead>
+              <TableHead className="h-11 px-4">
+                <span className="sr-only">Actions</span>
               </TableHead>
             </TableRow>
           </TableHeader>
@@ -158,7 +158,7 @@ export async function PayslipsTable({
                   </TableCell>
                 ) : null}
                 <TableCell className="px-4 py-3 text-sm">
-                  {MONTH_LABELS[payslip.periodMonth - 1]} {payslip.periodYear}
+                  {formatPayrollPeriod(payslip)}
                 </TableCell>
                 <TableCell className="text-muted-foreground px-4 py-3 text-sm">
                   {payslip.presentDays + payslip.approvedLeaveDays} /{" "}
@@ -172,7 +172,7 @@ export async function PayslipsTable({
                     ? formatMinutes(payslip.overtimeMinutes)
                     : "—"}
                 </TableCell>
-                <TableCell className="text-muted-foreground px-4 py-3 text-sm">
+                <TableCell className="text-muted-foreground hidden px-4 py-3 text-sm xl:table-cell">
                   {formatMoney(payslip.hourlyRate)}/hr
                   {payslip.overtimeRatePerHour
                     ? ` · ${formatMoney(payslip.overtimeRatePerHour)}/hr extra`
@@ -186,6 +186,21 @@ export async function PayslipsTable({
                 </TableCell>
                 <TableCell className="px-4 py-3 text-sm font-medium">
                   {formatMoney(payslip.netAmount)}
+                </TableCell>
+                <TableCell className="px-4 py-3 text-right">
+                  {/* The payslip as a document — printable, and saved as a
+                      PDF from the same dialog. */}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    nativeButton={false}
+                    render={
+                      <Link href={`${basePath}/payslips/${payslip.id}`} />
+                    }
+                  >
+                    <FileTextIcon />
+                    Open
+                  </Button>
                 </TableCell>
               </TableRow>
             ))}

@@ -16,7 +16,11 @@ import assert from "node:assert/strict";
 import { db, resetDatabase, seedShop, seedStaff } from "@/test/db";
 import { attendances, salaries, staffLeaves, users } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
-import { calculateSalary } from "@/server/salary/service";
+import {
+  calculateSalary,
+  calculateSalaryForRange,
+  generatePayslipForRange,
+} from "@/server/salary/service";
 
 /** A month that has certainly closed, so nothing is clamped to today. */
 function closedMonth(): { year: number; month: number; days: number } {
@@ -249,5 +253,96 @@ test("a staff member with no hourly rate configured is refused, not paid zero", 
   await assert.rejects(
     () => calculateSalary(fixture.admin, staff.id, period.year, period.month),
     /no hourly rate is configured/i,
+  );
+});
+
+test("a payroll period can be any range of dates, not just a month", async () => {
+  await resetDatabase();
+  const { fixture, staff } = await setup();
+  const period = closedMonth();
+
+  // Three worked days spread across the month; only the middle two fall
+  // inside the fortnight being paid.
+  await workDay(fixture.shopId, staff.id, fixture.outletId, iso(period.year, period.month, 2), 8);
+  await workDay(fixture.shopId, staff.id, fixture.outletId, iso(period.year, period.month, 9), 8);
+  await workDay(fixture.shopId, staff.id, fixture.outletId, iso(period.year, period.month, 12), 6);
+
+  const fortnight = await calculateSalaryForRange(fixture.admin, staff.id, {
+    fromDate: iso(period.year, period.month, 8),
+    toDate: iso(period.year, period.month, 14),
+  });
+
+  assert.equal(fortnight.periodStart, iso(period.year, period.month, 8));
+  assert.equal(fortnight.periodEnd, iso(period.year, period.month, 14));
+  assert.equal(
+    fortnight.periodYear,
+    null,
+    "a part-month range has no month to be labelled by",
+  );
+  assert.equal(fortnight.regularMinutes, 14 * 60, "only the 8h and 6h days");
+  assert.equal(fortnight.basePay, "1400.00", "14h × 100");
+
+  // The same month as a whole still totals all three days.
+  const whole = await calculateSalary(
+    fixture.admin,
+    staff.id,
+    period.year,
+    period.month,
+  );
+  assert.equal(whole.regularMinutes, 22 * 60);
+  assert.equal(whole.periodMonth, period.month, "a whole month keeps its label");
+});
+
+test("a payslip is stored against its exact range and regenerating overwrites it", async () => {
+  await resetDatabase();
+  const { fixture, staff } = await setup();
+  const period = closedMonth();
+  const range = {
+    fromDate: iso(period.year, period.month, 1),
+    toDate: iso(period.year, period.month, 10),
+  };
+
+  await workDay(fixture.shopId, staff.id, fixture.outletId, iso(period.year, period.month, 3), 8);
+
+  const first = await generatePayslipForRange(fixture.admin, staff.id, range);
+  assert.equal(first.periodStart, range.fromDate);
+  assert.equal(first.periodEnd, range.toDate);
+  assert.equal(first.netAmount, "800.00");
+
+  // A correction to the attendance, then the same period run again.
+  await workDay(fixture.shopId, staff.id, fixture.outletId, iso(period.year, period.month, 4), 8);
+  const second = await generatePayslipForRange(fixture.admin, staff.id, range);
+
+  assert.equal(second.id, first.id, "the same period updates its own payslip");
+  assert.equal(second.netAmount, "1600.00");
+});
+
+test("a period that has not finished cannot be turned into a payslip", async () => {
+  await resetDatabase();
+  const { fixture, staff } = await setup();
+  const today = new Date().toISOString().slice(0, 10);
+
+  await assert.rejects(
+    () =>
+      generatePayslipForRange(fixture.admin, staff.id, {
+        fromDate: today,
+        toDate: today,
+      }),
+    /has not finished yet/i,
+  );
+});
+
+test("an end date before the start date is refused", async () => {
+  await resetDatabase();
+  const { fixture, staff } = await setup();
+  const period = closedMonth();
+
+  await assert.rejects(
+    () =>
+      calculateSalaryForRange(fixture.admin, staff.id, {
+        fromDate: iso(period.year, period.month, 10),
+        toDate: iso(period.year, period.month, 2),
+      }),
+    /end date cannot be before the start date/i,
   );
 });

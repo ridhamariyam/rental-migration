@@ -1,8 +1,15 @@
 import { requireTenantUser } from "@/server/auth/guard";
 import { Permission } from "@/lib/auth/permissions";
 import { apiError, apiSuccess } from "@/lib/errors/api-response";
-import { generatePayslipSchema, payslipListQuerySchema } from "@/lib/validation/salary";
-import { generatePayslip, listPayslips } from "@/server/salary/service";
+import {
+  generatePayslipSchema,
+  payslipListQuerySchema,
+  resolvePayrollRange,
+} from "@/lib/validation/salary";
+import {
+  generatePayslipForRange,
+  listPayslips,
+} from "@/server/salary/service";
 
 /** Payslip history — not gated by a single fixed permission at the route
  * level, `listPayslips()` scopes the list to the caller's own payslips
@@ -25,13 +32,18 @@ export async function GET(request: Request) {
   }
 }
 
-/** Persists a month's calculation as a stable payroll record — owner-only. */
+/** Persists a period's calculation as a stable payroll record — owner-only.
+ * The period may be a month or an explicit date range. */
 export async function POST(request: Request) {
   try {
     const user = await requireTenantUser(Permission.SALARY_MANAGE);
 
     const body = generatePayslipSchema.parse(await request.json());
-    const payslip = await generatePayslip(user, body.staffId, body.year, body.month);
+    const payslip = await generatePayslipForRange(
+      user,
+      body.staffId,
+      resolvePayrollRange(body),
+    );
 
     return apiSuccess(payslip, "Payslip generated", 201);
   } catch (error) {

@@ -946,6 +946,12 @@ async function main() {
       await db.insert(salaryPayslips).values({
         shopId: SHOP_ID,
         staffId: staffMember.id,
+        // A payroll period is a date range now; a month-shaped one keeps
+        // its year/month labels too.
+        periodStart: `${periodYear}-${String(periodMonth).padStart(2, "0")}-01`,
+        periodEnd: new Date(Date.UTC(periodYear, periodMonth, 0))
+          .toISOString()
+          .slice(0, 10),
         periodYear,
         periodMonth,
         baseSalary: money(baseSalary),
