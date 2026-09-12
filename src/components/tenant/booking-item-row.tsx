@@ -9,7 +9,13 @@ import {
   type UseFormSetValue,
   type UseFormTrigger,
 } from "react-hook-form";
-import { AlertCircleIcon, CheckCircle2Icon, Trash2Icon } from "lucide-react";
+import {
+  AlertCircleIcon,
+  CheckCircle2Icon,
+  PackageIcon,
+  PencilIcon,
+  Trash2Icon,
+} from "lucide-react";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -19,9 +25,10 @@ import { Field, FieldError, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import { Spinner } from "@/components/ui/spinner";
+import { ConfirmActionButton } from "@/components/tenant/confirm-action-button";
 import { ItemPicker } from "@/components/tenant/item-picker";
 import { ApiClientError, apiRequest } from "@/lib/api-client";
-import { formatMoney, toDateString } from "@/lib/format";
+import { formatDate, formatMoney, toDateString } from "@/lib/format";
 import type { CreateBookingInput } from "@/lib/validation/bookings";
 import type { VariationSearchResult } from "@/server/variations/service";
 
@@ -50,13 +57,18 @@ export type BookingItemQuote = {
 const QUOTE_DEBOUNCE_MS = 400;
 
 /**
- * One \"cart line\" in the booking form — its own item, dates, quantity
+ * One "cart line" in the booking form — its own item, dates, quantity
  * and deposit, with a live availability/price preview. Discount/additional
  * cost/advance are order-level now (see `BookingForm`), not per line.
  * Quote state is reported up to `BookingForm` (via `onQuoteChange`, keyed
  * by the field-array row's own stable id) so the order summary panel can
  * add every line into one reviewable total instead of showing a separate
  * price card per row.
+ *
+ * A line renders in one of two states: open, which is the fields; or, once
+ * it has an item and a price, collapsed to a one-line summary with Edit
+ * and Remove. Only one line is open at a time — a cart of four items was
+ * otherwise four identical open forms stacked inside two nested boxes.
  */
 export function BookingItemRow({
   index,
@@ -72,6 +84,8 @@ export function BookingItemRow({
   onRemove,
   disabled,
   onQuoteChange,
+  expanded,
+  onEdit,
 }: {
   index: number;
   itemKey: string;
@@ -91,6 +105,11 @@ export function BookingItemRow({
   onRemove: () => void;
   disabled?: boolean;
   onQuoteChange: (key: string, quote: BookingItemQuote | null) => void;
+  /** Whether this line is the one being edited. A line that is done
+   * collapses to a summary so the form is a list of what has been added,
+   * not a stack of identical open forms. */
+  expanded: boolean;
+  onEdit: () => void;
 }) {
   const [quote, setQuote] = useState<BookingItemQuote | null>(null);
   const [quoteLoading, setQuoteLoading] = useState(false);
@@ -152,31 +171,100 @@ export function BookingItemRow({
 
     return () => clearTimeout(timeout);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [
-    selectedItemId,
-    fromDate,
-    toDate,
-    quantity,
-    itemKey,
-  ]);
+  }, [selectedItemId, fromDate, toDate, quantity, itemKey]);
+
+  // Collapsed: what was added, in one line. No border of its own — the
+  // Items panel around it is the only box this needs.
+  if (!expanded && selectedItem) {
+    return (
+      <div className="flex items-center gap-3 py-3">
+        <span className="bg-primary/10 text-primary flex size-9 shrink-0 items-center justify-center rounded-lg">
+          <PackageIcon className="size-4" aria-hidden="true" />
+        </span>
+
+        <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+          <p className="truncate text-sm font-medium">
+            {selectedItem.productName}
+            {selectedItem.color || selectedItem.size ? (
+              <span className="text-muted-foreground font-normal">
+                {" "}
+                —{" "}
+                {[selectedItem.color, selectedItem.size]
+                  .filter(Boolean)
+                  .join(", ")}
+              </span>
+            ) : null}
+          </p>
+          {/* Price first: the line truncates on a phone, and the amount is
+              what someone is checking when they glance back at the cart. */}
+          <p className="text-muted-foreground truncate text-xs">
+            {quote ? `${formatMoney(quote.totalReceivable)} · ` : ""}
+            {quantity && Number(quantity) > 1 ? `${quantity} × · ` : ""}
+            {fromDate ? formatDate(fromDate) : "—"} →{" "}
+            {toDate ? formatDate(toDate) : "—"}
+          </p>
+          {quote && !quote.available ? (
+            <p className="text-destructive text-xs font-medium">
+              {quote.reason}
+            </p>
+          ) : null}
+        </div>
+
+        <div className="flex shrink-0 items-center gap-1">
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            disabled={disabled}
+            onClick={onEdit}
+          >
+            <PencilIcon className="size-3.5" />
+            Edit
+          </Button>
+          {canRemove ? (
+            <ConfirmActionButton
+              ariaLabel={`Remove ${selectedItem.productName}`}
+              title="Remove this item from the booking?"
+              description={`${selectedItem.productName} and its dates come off this order. Nothing has been saved yet, so it is only this line that goes.`}
+              onConfirm={onRemove}
+              disabled={disabled}
+              icon={<Trash2Icon className="text-muted-foreground size-3.5" />}
+            />
+          ) : null}
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div className="flex flex-col gap-4 rounded-lg border p-4">
+    <div className="flex flex-col gap-4 py-3">
       <div className="flex items-start justify-between gap-3">
         <span className="text-muted-foreground text-xs font-medium tracking-wide uppercase">
           Item {index + 1}
         </span>
         {canRemove ? (
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon-sm"
-            aria-label={`Remove item ${index + 1}`}
-            disabled={disabled}
-            onClick={onRemove}
-          >
-            <Trash2Icon className="text-muted-foreground size-3.5" />
-          </Button>
+          selectedItem ? (
+            <ConfirmActionButton
+              ariaLabel={`Remove item ${index + 1}`}
+              title="Remove this item from the booking?"
+              description={`${selectedItem.productName} and its dates come off this order.`}
+              onConfirm={onRemove}
+              disabled={disabled}
+              icon={<Trash2Icon className="text-muted-foreground size-3.5" />}
+            />
+          ) : (
+            /* An empty line has nothing to lose — asking would be noise. */
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              aria-label={`Remove item ${index + 1}`}
+              disabled={disabled}
+              onClick={onRemove}
+            >
+              <Trash2Icon className="text-muted-foreground size-3.5" />
+            </Button>
+          )
         ) : null}
       </div>
 

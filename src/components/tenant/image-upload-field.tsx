@@ -1,5 +1,6 @@
 "use client";
 
+import { ConfirmActionButton } from "@/components/tenant/confirm-action-button";
 import { useRef, useState } from "react";
 import Image from "next/image";
 import { CameraIcon, ImageIcon, UploadIcon, XIcon } from "lucide-react";
@@ -158,16 +159,14 @@ export function ImageUploadField({
             </DropdownMenu>
 
             {value ? (
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon-sm"
-                aria-label="Remove image"
+              <ConfirmActionButton
+                ariaLabel="Remove image"
+                title="Remove this photo?"
+                description="The photo comes off this form. You can upload or take another one."
+                onConfirm={() => onChange("")}
                 disabled={disabled || isUploading}
-                onClick={() => onChange("")}
-              >
-                <XIcon />
-              </Button>
+                icon={<XIcon />}
+              />
             ) : null}
           </div>
           <p className="text-muted-foreground text-xs">
