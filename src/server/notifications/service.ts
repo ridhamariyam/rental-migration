@@ -925,6 +925,11 @@ async function buildOwnerItemContext(
       ownershipType: productVariations.ownershipType,
       ownerName: productVariations.ownerName,
       ownerPhone: productVariations.ownerPhone,
+      // An owner linked to a customer on file may have no free-text phone
+      // at all — that record is then the only place their number lives.
+      ownerCustomerFirstName: customers.firstName,
+      ownerCustomerLastName: customers.lastName,
+      ownerCustomerPhone: customers.phone,
     })
     .from(bookingItems)
     .innerJoin(bookings, eq(bookingItems.bookingId, bookings.id))
@@ -935,18 +940,30 @@ async function buildOwnerItemContext(
       eq(bookingItems.variationId, productVariations.id),
     )
     .leftJoin(outlets, eq(bookingItems.outletId, outlets.id))
+    .leftJoin(customers, eq(productVariations.ownerCustomerId, customers.id))
     .where(and(eq(bookingItems.id, itemId), eq(bookingItems.bookingId, bookingId)))
     .limit(1);
 
   if (!row) throw AppError.notFound("Booking item not found");
-  if (row.ownershipType !== "customer_owned" || !row.ownerPhone) return null;
+  if (row.ownershipType !== "customer_owned") return null;
 
-  const recipientName = row.ownerName || "Owner";
+  // Free-text phone first (it is what the item was configured with), then
+  // the linked customer record. Linking a customer as the owner and
+  // leaving the phone field blank is a normal way to fill the form, and it
+  // used to mean the owner was never told their item had gone out.
+  const ownerPhone = row.ownerPhone || row.ownerCustomerPhone;
+  if (!ownerPhone) return null;
+
+  const recipientName =
+    row.ownerName ||
+    (row.ownerCustomerFirstName
+      ? `${row.ownerCustomerFirstName} ${row.ownerCustomerLastName}`
+      : "Owner");
 
   return {
     shopId: row.booking.shopId,
     recipientPhone: normalizeWhatsAppPhone(
-      row.ownerPhone,
+      ownerPhone,
       env.WHATSAPP_DEFAULT_COUNTRY_CODE,
     ),
     recipientName,

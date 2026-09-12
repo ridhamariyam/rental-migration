@@ -1,5 +1,6 @@
 import { Suspense } from "react";
 import { redirect } from "next/navigation";
+import { OwnerItemsCard } from "@/components/tenant/owner-items-card";
 import { SettlementFilters } from "@/components/tenant/settlement-filters";
 import { SettlementStatsTiles } from "@/components/tenant/settlement-stats-tiles";
 import { SettlementsTable } from "@/components/tenant/settlements-table";
@@ -61,6 +62,13 @@ export default async function RevenueSharePage({
       </div>
 
       <SettlementStatsTiles summary={summary} />
+
+      {/* The register first, the money ledger second: an owner's item is
+          visible here from the moment it is listed, while a settlement row
+          only exists once a rental has come back. */}
+      <Suspense fallback={null}>
+        <OwnerItemsCard actor={actor} outletId={query.outletId} q={query.q} />
+      </Suspense>
 
       <div className="bg-card ring-foreground/10 overflow-hidden rounded-xl shadow-xs ring-1">
         <div className="flex flex-col gap-3 border-b p-4 sm:flex-row sm:items-center">

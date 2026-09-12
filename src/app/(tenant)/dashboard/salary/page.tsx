@@ -16,6 +16,7 @@ import { hasPermission, Permission } from "@/lib/auth/permissions";
 import { tenantPaths } from "@/lib/tenant-paths";
 import { payslipListQuerySchema } from "@/lib/validation/salary";
 import { listPayableStaffForSelect } from "@/server/staff/service";
+import { getPayReadiness } from "@/server/salary/service";
 import type { TenantSessionUser } from "@/server/auth/guard";
 import { UsersIcon } from "lucide-react";
 
@@ -59,7 +60,11 @@ export default async function SalaryPage({
 
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
           <div className="lg:col-span-1">
-            <SalaryConfigCard actor={actor} staffId={user.id} canManage={false} />
+            <SalaryConfigCard
+              actor={actor}
+              staffId={user.id}
+              canManage={false}
+            />
           </div>
           <div className="bg-card ring-foreground/10 overflow-hidden rounded-xl shadow-xs ring-1 lg:col-span-2">
             <div className="border-b p-4">
@@ -93,6 +98,12 @@ export default async function SalaryPage({
     staffId,
   });
 
+  // Read once here rather than letting the Calculate button discover it:
+  // "no hourly rate configured" is a setup step, not an error.
+  const payReadiness = staffId
+    ? await getPayReadiness(actor, staffId)
+    : "ready";
+
   return (
     <main className="flex flex-1 flex-col gap-6 p-6">
       <div className="flex flex-col gap-1">
@@ -115,8 +126,7 @@ export default async function SalaryPage({
             </EmptyMedia>
             <EmptyTitle>Choose a staff member</EmptyTitle>
             <EmptyDescription>
-              Pick someone above to configure their pay or generate a
-              payslip.
+              Pick someone above to configure their pay or generate a payslip.
             </EmptyDescription>
           </EmptyHeader>
         </Empty>
@@ -124,7 +134,12 @@ export default async function SalaryPage({
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
           <div className="flex flex-col gap-4 lg:col-span-1">
             <SalaryConfigCard actor={actor} staffId={staffId} canManage />
-            <CalculatePayslipCard key={staffId} staffId={staffId} canGenerate />
+            <CalculatePayslipCard
+              key={staffId}
+              staffId={staffId}
+              canGenerate
+              payReadiness={payReadiness}
+            />
           </div>
           <div className="bg-card ring-foreground/10 overflow-hidden rounded-xl shadow-xs ring-1 lg:col-span-2">
             <div className="border-b p-4">

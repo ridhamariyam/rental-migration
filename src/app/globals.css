@@ -191,3 +191,74 @@
 [data-sidebar="content"]::-webkit-scrollbar-thumb:hover {
   background-color: var(--primary);
 }
+
+/**
+ * Printing an invoice.
+ *
+ * The dashboard shell is a fixed-height flex layout whose content scrolls
+ * inside `SidebarInset`; printed as-is that yields one clipped screen with
+ * the sidebar down the side. So on print the chrome is removed outright
+ * (rather than hidden behind a positioning trick, which left the document
+ * inset by the sidebar's width) and every scroll container is allowed to
+ * flow across as many sheets as the invoice needs.
+ *
+ * `print-color-adjust` keeps the banner and the red "balance due":
+ * browsers drop background colours when printing unless asked not to.
+ */
+@media print {
+  html,
+  body {
+    height: auto !important;
+    overflow: visible !important;
+    background: #fff !important;
+  }
+
+  /* App chrome: the sidebar, its spacer, and the sticky top bar. */
+  [data-slot="sidebar"],
+  [data-slot="sidebar-gap"],
+  [data-slot="sidebar-container"],
+  [data-slot="sidebar-rail"],
+  [data-slot="sidebar-trigger"] {
+    display: none !important;
+  }
+
+  [data-slot="sidebar-wrapper"],
+  [data-slot="sidebar-inset"],
+  [data-slot="sidebar-inset"] > div,
+  main {
+    display: block !important;
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    /* `main` is `max-w-3xl mx-auto` on screen — on paper the sheet is the
+       measure, so let the document use all of it. */
+    width: 100% !important;
+    max-width: none !important;
+    overflow: visible !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    box-shadow: none !important;
+    border-radius: 0 !important;
+  }
+
+  .print-document {
+    width: 100% !important;
+    max-width: none !important;
+    margin: 0 !important;
+    border: none !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    --tw-ring-shadow: 0 0 #0000 !important;
+  }
+
+  .print-document,
+  .print-document * {
+    overflow: visible !important;
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+
+  @page {
+    margin: 12mm;
+  }
+}

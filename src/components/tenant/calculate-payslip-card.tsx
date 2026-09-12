@@ -41,9 +41,14 @@ const YEAR_OPTIONS = [now.getFullYear(), now.getFullYear() - 1];
 export function CalculatePayslipCard({
   staffId,
   canGenerate,
+  payReadiness = "ready",
 }: {
   staffId: string;
   canGenerate: boolean;
+  /** Whether pay can be calculated at all. Pressing Calculate without an
+   * hourly rate can only ever return an error, so when it is missing this
+   * card says so up front and points at the fix instead. */
+  payReadiness?: "none" | "no_rate" | "ready";
 }) {
   const router = useRouter();
   const [year, setYear] = useState(now.getFullYear());
@@ -106,6 +111,21 @@ export function CalculatePayslipCard({
         </CardTitle>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
+        {payReadiness !== "ready" ? (
+          <div className="border-border/60 bg-muted/40 flex flex-col gap-1 rounded-lg border p-4">
+            <p className="text-sm font-medium">
+              {payReadiness === "none"
+                ? "No pay configured for this staff member yet"
+                : "This staff member has no hourly rate yet"}
+            </p>
+            <p className="text-muted-foreground text-sm">
+              {payReadiness === "none"
+                ? "Add a pay configuration above — an hourly rate, the standard hours in a day, and the weekly off — then their salary can be calculated from the hours they actually worked."
+                : "Their pay was configured before this shop moved to hourly pay. Edit the configuration above (or add a new one) and set an hourly rate; every payslip already generated keeps the figures it was priced at."}
+            </p>
+          </div>
+        ) : null}
+
         {error ? (
           <Alert
             variant="destructive"
@@ -118,7 +138,10 @@ export function CalculatePayslipCard({
           </Alert>
         ) : null}
 
-        <div className="flex flex-wrap items-center gap-2">
+        <div
+          className="flex flex-wrap items-center gap-2"
+          hidden={payReadiness !== "ready"}
+        >
           <Select
             value={String(month)}
             onValueChange={(next) => setMonth(Number(next))}
