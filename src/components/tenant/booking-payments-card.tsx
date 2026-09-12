@@ -22,6 +22,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { PaymentDetailsSummary } from "@/components/tenant/payment-details-summary";
 import { PaymentStatusBadge } from "@/components/tenant/payment-status-badge";
 import {
   RecordPaymentDialog,
@@ -155,6 +156,12 @@ export function BookingPaymentsCard({
         ) : null}
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
+        {/* Total / paid / balance / status first — the fuller
+            rent-vs-deposit breakdown under it answers "made up of what",
+            which is a different (and rarer) question than "how much is
+            left". */}
+        <PaymentDetailsSummary summary={summary} />
+
         <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm sm:grid-cols-4">
           <div className="flex flex-col gap-0.5">
             <span className="text-muted-foreground text-xs">

@@ -38,6 +38,7 @@ export default async function ProductsPage({
   }
 
   const canManage = hasPermission(user.role, Permission.PRODUCT_MANAGE);
+  const canDelete = hasPermission(user.role, Permission.RECORD_DELETE);
 
   const rawParams = await searchParams;
   const justCreated = rawParams.created === "1";
@@ -100,7 +101,11 @@ export default async function ProductsPage({
           key={JSON.stringify(query)}
           fallback={<ProductsTableSkeleton />}
         >
-          <ProductsTable shopId={user.shopId} query={query} />
+          <ProductsTable
+            shopId={user.shopId}
+            query={query}
+            canDelete={canDelete}
+          />
         </Suspense>
       </div>
     </main>

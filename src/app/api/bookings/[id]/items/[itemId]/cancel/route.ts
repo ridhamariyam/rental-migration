@@ -21,7 +21,7 @@ export async function POST(
       refundReference: body.refundReference,
     });
 
-    dispatchAfterResponse([itemId]);
+    dispatchAfterResponse(id);
 
     return apiSuccess(item, "Item cancelled");
   } catch (error) {

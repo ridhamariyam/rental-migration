@@ -27,6 +27,16 @@ export const AuditAction = {
   PAYMENT_RECORDED: "payment.recorded",
   PAYMENT_REFUNDED: "payment.refunded",
   SHOP_UPDATED: "shop.updated",
+  // Permanent removals (owner-only, `Permission.RECORD_DELETE`). A record
+  // that is gone leaves no other trace, so the audit row *is* the trace —
+  // each carries the deleted row's identifying fields in `before`.
+  BOOKING_DELETED: "booking.deleted",
+  PRODUCT_DELETED: "product.deleted",
+  VARIATION_DELETED: "variation.deleted",
+  CUSTOMER_DELETED: "customer.deleted",
+  OUTLET_DELETED: "outlet.deleted",
+  STAFF_DELETED: "staff.deleted",
+  CATEGORY_DELETED: "category.deleted",
 } as const;
 
 export type AuditActionValue = (typeof AuditAction)[keyof typeof AuditAction];

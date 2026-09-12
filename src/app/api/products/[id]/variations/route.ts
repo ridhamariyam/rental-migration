@@ -1,4 +1,4 @@
-import { requireTenantUser } from "@/server/auth/guard";
+import { outletScopeFor, requireTenantUser } from "@/server/auth/guard";
 import { hasPermission, Permission } from "@/lib/auth/permissions";
 import { AppError } from "@/lib/errors/app-error";
 import { apiError, apiSuccess } from "@/lib/errors/api-response";
@@ -50,8 +50,15 @@ export async function POST(
       body.buyingPrice = undefined;
     }
     // Same guarantee for outlet scope — an outlet-scoped actor's picker
-    // never offers another outlet, but a hand-crafted request could.
-    if (user.outletId && body.outletIds.some((outletId) => outletId !== user.outletId)) {
+    // never offers another outlet, but a hand-crafted request could. Scope
+    // comes from `outletScopeFor` (role-based), never the raw `outletId`
+    // column: an admin assigned to a branch is not outlet-scoped and may
+    // stock every outlet.
+    const scopedOutletId = outletScopeFor(user);
+    if (
+      scopedOutletId &&
+      body.outletIds.some((outletId) => outletId !== scopedOutletId)
+    ) {
       throw AppError.forbidden("You can only add items to your own outlet");
     }
     const created = await createVariation(user.shopId, id, body);

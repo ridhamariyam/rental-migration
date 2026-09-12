@@ -8,6 +8,7 @@ import {
   MoreHorizontalIcon,
   PencilIcon,
   ShirtIcon,
+  Trash2Icon,
 } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
@@ -27,6 +28,7 @@ import {
 } from "@/components/ui/select";
 import { TableCell, TableRow } from "@/components/ui/table";
 import { BarcodeDisplay } from "@/components/tenant/barcode-display";
+import { DeleteVariationDialog } from "@/components/tenant/delete-variation-dialog";
 import { EditVariationDialog } from "@/components/tenant/edit-variation-dialog";
 import { ApiClientError, apiRequest } from "@/lib/api-client";
 import { formatMoney } from "@/lib/format";
@@ -54,17 +56,21 @@ export function VariationRow({
   productName,
   outlets,
   canViewCost,
+  canDelete = false,
   layout = "table",
 }: {
   variation: VariationListItem;
   productName: string;
   outlets: { id: string; name: string; code: string }[];
   canViewCost: boolean;
+  /** Owner-only (`Permission.RECORD_DELETE`). */
+  canDelete?: boolean;
   layout?: "table" | "card";
 }) {
   const router = useRouter();
   const [editOpen, setEditOpen] = useState(false);
   const [barcodeOpen, setBarcodeOpen] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
   const [isTogglingAvailability, setIsTogglingAvailability] = useState(false);
   const [isChangingStatus, setIsChangingStatus] = useState(false);
 
@@ -254,6 +260,15 @@ export function VariationRow({
           <BarcodeIcon />
           Barcode
         </DropdownMenuItem>
+        {canDelete ? (
+          <DropdownMenuItem
+            variant="destructive"
+            onClick={() => setDeleteOpen(true)}
+          >
+            <Trash2Icon />
+            Delete
+          </DropdownMenuItem>
+        ) : null}
       </DropdownMenuContent>
     </DropdownMenu>
   );
@@ -266,6 +281,11 @@ export function VariationRow({
         variation={variation}
         outlets={outlets}
         canViewCost={canViewCost}
+      />
+      <DeleteVariationDialog
+        open={deleteOpen}
+        onOpenChange={setDeleteOpen}
+        variation={variation}
       />
       <BarcodeDisplay
         open={barcodeOpen}

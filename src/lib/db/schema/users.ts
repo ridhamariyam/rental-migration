@@ -1,5 +1,6 @@
 import {
   boolean,
+  date,
   pgTable,
   text,
   timestamp,
@@ -46,6 +47,13 @@ export const users = pgTable(
     //: True immediately after a tenant admin/staff account is provisioned
     //: with a temporary password — the app must force a reset before
     //: allowing any other access. See Phase 5/7 in plan.md.
+    //: The day this person started. Payroll never pays for a day before
+    //: it (`calculateSalary` starts its walk here), so a mid-month joiner
+    //: is not scored absent for the first half of the month. Null on
+    //: accounts created before the field existed and on customer rows —
+    //: payroll then falls back to the salary configuration's own
+    //: effective date.
+    joinedOn: date("joined_on"),
     mustChangePassword: boolean("must_change_password")
       .notNull()
       .default(false),

@@ -21,7 +21,7 @@ export async function POST(
       refundReference: body.refundReference,
     });
 
-    dispatchAfterResponse([id]);
+    dispatchAfterResponse(id);
 
     return apiSuccess(booking, "Booking cancelled");
   } catch (error) {

@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Controller, useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { AlertCircleIcon, PlusIcon } from "lucide-react";
+import { AlertCircleIcon, PencilIcon, PlusIcon } from "lucide-react";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -21,6 +21,7 @@ import {
 } from "@/components/ui/dialog";
 import {
   Field,
+  FieldDescription,
   FieldError,
   FieldGroup,
   FieldLabel,
@@ -41,6 +42,7 @@ import {
   createSalarySchema,
   type CreateSalaryInput,
 } from "@/lib/validation/salary";
+import type { Salary } from "@/lib/db/schema";
 
 const WEEKDAY_OPTIONS = [
   { value: "none", label: "None (works every day)" },
@@ -53,48 +55,63 @@ const WEEKDAY_OPTIONS = [
   { value: "6", label: "Saturday" },
 ];
 
-export function AddSalaryDialog({ staffId }: { staffId: string }) {
+/**
+ * Creates a pay configuration, or edits an existing one when `salary` is
+ * passed. Editing matters because a configuration is a dated record, not a
+ * setting: a typo in today's rate has to be correctable in place, while a
+ * genuine raise is still a *new* row so last month's payslip keeps pricing
+ * against the rate that was actually in force (see `getEffectiveSalary`).
+ */
+export function AddSalaryDialog({
+  staffId,
+  salary,
+}: {
+  staffId: string;
+  salary?: Salary;
+}) {
   const router = useRouter();
+  const isEditing = Boolean(salary);
   const [open, setOpen] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
 
+  const emptyValues: CreateSalaryInput = {
+    staffId,
+    hourlyRate: salary?.hourlyRate ?? "",
+    amount: salary?.amount ?? "",
+    weeklyOffDay: salary?.weeklyOffDay ?? 0,
+    standardHoursPerDay: salary ? Number(salary.standardHoursPerDay) : 8,
+    overtimeRatePerHour: salary?.overtimeRatePerHour ?? "",
+    effectiveDate: salary?.effectiveDate ?? toDateString(new Date()),
+    note: salary?.note ?? "",
+  };
+
   const form = useForm<CreateSalaryInput>({
     resolver: zodResolver(createSalarySchema),
-    defaultValues: {
-      staffId,
-      amount: "",
-      weeklyOffDay: 0,
-      standardHoursPerDay: 8,
-      overtimeRatePerHour: "",
-      effectiveDate: toDateString(new Date()),
-      note: "",
-    },
+    defaultValues: emptyValues,
   });
 
   const onSubmit = form.handleSubmit(async (values) => {
     setFormError(null);
 
     try {
-      await apiRequest("/api/salary", {
-        method: "POST",
-        body: JSON.stringify(values),
-      });
+      await apiRequest(
+        isEditing ? `/api/salary/${salary!.id}` : "/api/salary",
+        {
+          method: isEditing ? "PATCH" : "POST",
+          body: JSON.stringify(values),
+        },
+      );
       setOpen(false);
-      form.reset({
-        staffId,
-        amount: "",
-        weeklyOffDay: 0,
-        standardHoursPerDay: 8,
-        overtimeRatePerHour: "",
-        effectiveDate: toDateString(new Date()),
-        note: "",
-      });
+      form.reset(isEditing ? values : emptyValues);
       router.refresh();
     } catch (error) {
       if (error instanceof ApiClientError && error.fieldErrors.length > 0) {
         for (const fieldError of error.fieldErrors) {
-          if (fieldError.field === "amount") {
-            form.setError("amount", { message: fieldError.message });
+          if (
+            fieldError.field === "amount" ||
+            fieldError.field === "hourlyRate"
+          ) {
+            form.setError(fieldError.field, { message: fieldError.message });
           }
         }
         return;
@@ -117,23 +134,28 @@ export function AddSalaryDialog({ staffId }: { staffId: string }) {
         if (!next) setFormError(null);
       }}
     >
-      <DialogTrigger render={<Button size="sm" variant="outline" />}>
-        <PlusIcon />
-        Configure pay
+      <DialogTrigger
+        render={<Button size="sm" variant={isEditing ? "ghost" : "outline"} />}
+      >
+        {isEditing ? <PencilIcon /> : <PlusIcon />}
+        {isEditing ? "Edit" : "Configure pay"}
       </DialogTrigger>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Configure pay</DialogTitle>
+          <DialogTitle>
+            {isEditing ? "Edit pay configuration" : "Configure pay"}
+          </DialogTitle>
           <DialogDescription>
-            Takes effect from the date below — earlier months keep pricing
-            against whatever was in force then.
+            Pay is hours actually worked × the hourly rate. Takes effect from
+            the date below — earlier months keep pricing against whatever was in
+            force then.
           </DialogDescription>
         </DialogHeader>
 
         <form
           onSubmit={onSubmit}
           noValidate
-          className="flex flex-col flex-1 overflow-hidden min-h-0"
+          className="flex min-h-0 flex-1 flex-col overflow-hidden"
           id="add-salary-form"
         >
           <DialogBody>
@@ -151,19 +173,22 @@ export function AddSalaryDialog({ staffId }: { staffId: string }) {
 
             <FieldGroup>
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <Field data-invalid={!!form.formState.errors.amount}>
-                  <FieldLabel htmlFor="salary-amount">
-                    Monthly amount
+                <Field data-invalid={!!form.formState.errors.hourlyRate}>
+                  <FieldLabel htmlFor="salary-hourly-rate">
+                    Hourly rate
                   </FieldLabel>
                   <Input
-                    id="salary-amount"
+                    id="salary-hourly-rate"
                     inputMode="decimal"
                     placeholder="0.00"
                     disabled={isSubmitting}
-                    aria-invalid={!!form.formState.errors.amount}
-                    {...form.register("amount")}
+                    aria-invalid={!!form.formState.errors.hourlyRate}
+                    {...form.register("hourlyRate")}
                   />
-                  <FieldError errors={[form.formState.errors.amount]} />
+                  <FieldDescription>
+                    Every approved hour worked is paid at this rate.
+                  </FieldDescription>
+                  <FieldError errors={[form.formState.errors.hourlyRate]} />
                 </Field>
                 <Field
                   data-invalid={!!form.formState.errors.standardHoursPerDay}
@@ -199,7 +224,9 @@ export function AddSalaryDialog({ staffId }: { staffId: string }) {
                     name="weeklyOffDay"
                     render={({ field }) => (
                       <Select
-                        value={field.value === null ? "none" : String(field.value)}
+                        value={
+                          field.value === null ? "none" : String(field.value)
+                        }
                         onValueChange={(next) =>
                           field.onChange(next === "none" ? null : Number(next))
                         }
@@ -229,7 +256,7 @@ export function AddSalaryDialog({ staffId }: { staffId: string }) {
                   data-invalid={!!form.formState.errors.overtimeRatePerHour}
                 >
                   <FieldLabel htmlFor="salary-overtime-rate">
-                    Overtime rate/hour (optional)
+                    Extra worktime rate/hour
                   </FieldLabel>
                   <Input
                     id="salary-overtime-rate"
@@ -239,11 +266,34 @@ export function AddSalaryDialog({ staffId }: { staffId: string }) {
                     aria-invalid={!!form.formState.errors.overtimeRatePerHour}
                     {...form.register("overtimeRatePerHour")}
                   />
+                  <FieldDescription>
+                    Paid for hours beyond the standard day. Leave blank to
+                    record extra hours without paying for them.
+                  </FieldDescription>
                   <FieldError
                     errors={[form.formState.errors.overtimeRatePerHour]}
                   />
                 </Field>
               </div>
+
+              <Field data-invalid={!!form.formState.errors.amount}>
+                <FieldLabel htmlFor="salary-amount">
+                  Monthly salary (optional)
+                </FieldLabel>
+                <Input
+                  id="salary-amount"
+                  inputMode="decimal"
+                  placeholder="0.00"
+                  disabled={isSubmitting}
+                  aria-invalid={!!form.formState.errors.amount}
+                  {...form.register("amount")}
+                />
+                <FieldDescription>
+                  Reference only — what the role is quoted at. Pay is never
+                  derived from it.
+                </FieldDescription>
+                <FieldError errors={[form.formState.errors.amount]} />
+              </Field>
 
               <Field data-invalid={!!form.formState.errors.effectiveDate}>
                 <FieldLabel htmlFor="salary-effective">
@@ -287,11 +337,7 @@ export function AddSalaryDialog({ staffId }: { staffId: string }) {
             >
               Cancel
             </Button>
-            <Button
-              type="submit"
-              disabled={isSubmitting}
-              className="min-w-28"
-            >
+            <Button type="submit" disabled={isSubmitting} className="min-w-28">
               {isSubmitting ? (
                 <>
                   <Spinner />

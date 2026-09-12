@@ -10,6 +10,8 @@ import {
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { DashboardAnalyticsSection } from "@/components/tenant/dashboard-analytics-section";
+import { DashboardOperationsTiles } from "@/components/tenant/dashboard-operations-tiles";
+import { DashboardOperationsTilesSkeleton } from "@/components/tenant/dashboard-operations-tiles-skeleton";
 import { DashboardStatsTiles } from "@/components/tenant/dashboard-stats-tiles";
 import { DashboardStatsTilesSkeleton } from "@/components/tenant/dashboard-stats-tiles-skeleton";
 import { OnboardingChecklist } from "@/components/tenant/onboarding-checklist";
@@ -92,7 +94,7 @@ export default async function TenantDashboardPage() {
               variant="outline"
               nativeButton={false}
               render={<Link href={link.href} />}
-              className="h-8 px-3 text-xs gap-1.5"
+              className="h-8 gap-1.5 px-3 text-xs"
             >
               <link.icon className="size-3.5" />
               {link.label}
@@ -108,6 +110,11 @@ export default async function TenantDashboardPage() {
           </Suspense>
           <Suspense fallback={<DashboardStatsTilesSkeleton />}>
             <DashboardStatsTiles actor={user as TenantSessionUser} />
+          </Suspense>
+          {/* Work to do, not money earned — each tile opens the bookings
+              list already filtered to the rows it counted. */}
+          <Suspense fallback={<DashboardOperationsTilesSkeleton />}>
+            <DashboardOperationsTiles actor={user as TenantSessionUser} />
           </Suspense>
           <Suspense fallback={<RevenueTrendSectionSkeleton />}>
             <DashboardAnalyticsSection actor={user as TenantSessionUser} />
@@ -139,4 +146,3 @@ export default async function TenantDashboardPage() {
     </main>
   );
 }
-

@@ -104,12 +104,13 @@ export async function PayslipsTable({
                 {showStaffColumn
                   ? `${MONTH_LABELS[payslip.periodMonth - 1]} ${payslip.periodYear} · `
                   : ""}
-                {payslip.presentDays + payslip.approvedLeaveDays}/
-                {payslip.workingDays} days ·{" "}
-                {formatMinutes(payslip.totalWorkedMinutes)}
+                {formatMinutes(payslip.regularMinutes)} @{" "}
+                {formatMoney(payslip.hourlyRate)}/hr
                 {payslip.overtimeMinutes > 0
-                  ? ` · ${formatMinutes(payslip.overtimeMinutes)} OT`
-                  : ""}
+                  ? ` + ${formatMinutes(payslip.overtimeMinutes)} extra`
+                  : ""}{" "}
+                · {payslip.presentDays + payslip.approvedLeaveDays}/
+                {payslip.workingDays} days
               </>
             }
           />
@@ -132,13 +133,16 @@ export async function PayslipsTable({
                 Present / Working
               </TableHead>
               <TableHead className="text-muted-foreground h-11 px-4 text-xs font-medium tracking-wide uppercase">
-                Total hours
+                Regular hours
               </TableHead>
               <TableHead className="text-muted-foreground h-11 px-4 text-xs font-medium tracking-wide uppercase">
-                Avg / day
+                Extra hours
               </TableHead>
               <TableHead className="text-muted-foreground h-11 px-4 text-xs font-medium tracking-wide uppercase">
-                Overtime
+                Rates
+              </TableHead>
+              <TableHead className="text-muted-foreground h-11 px-4 text-xs font-medium tracking-wide uppercase">
+                Base + extra pay
               </TableHead>
               <TableHead className="text-muted-foreground h-11 px-4 text-xs font-medium tracking-wide uppercase">
                 Net amount
@@ -161,17 +165,24 @@ export async function PayslipsTable({
                   {payslip.workingDays}
                 </TableCell>
                 <TableCell className="text-muted-foreground px-4 py-3 text-sm">
-                  {formatMinutes(payslip.totalWorkedMinutes)}
-                </TableCell>
-                <TableCell className="text-muted-foreground px-4 py-3 text-sm">
-                  {payslip.presentDays > 0
-                    ? formatMinutes(payslip.averageMinutesPerDay)
-                    : "—"}
+                  {formatMinutes(payslip.regularMinutes)}
                 </TableCell>
                 <TableCell className="text-muted-foreground px-4 py-3 text-sm">
                   {payslip.overtimeMinutes > 0
-                    ? `${formatMinutes(payslip.overtimeMinutes)} · ${formatMoney(payslip.overtimePay)}`
+                    ? formatMinutes(payslip.overtimeMinutes)
                     : "—"}
+                </TableCell>
+                <TableCell className="text-muted-foreground px-4 py-3 text-sm">
+                  {formatMoney(payslip.hourlyRate)}/hr
+                  {payslip.overtimeRatePerHour
+                    ? ` · ${formatMoney(payslip.overtimeRatePerHour)}/hr extra`
+                    : ""}
+                </TableCell>
+                <TableCell className="text-muted-foreground px-4 py-3 text-sm">
+                  {formatMoney(payslip.basePay)}
+                  {payslip.overtimeMinutes > 0
+                    ? ` + ${formatMoney(payslip.overtimePay)}`
+                    : ""}
                 </TableCell>
                 <TableCell className="px-4 py-3 text-sm font-medium">
                   {formatMoney(payslip.netAmount)}

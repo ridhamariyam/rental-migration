@@ -1,7 +1,7 @@
 import { Suspense } from "react";
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { PlusIcon } from "lucide-react";
+import { PlusIcon, XIcon } from "lucide-react";
 import { BookingFilters } from "@/components/tenant/booking-filters";
 import { BookingStatsTiles } from "@/components/tenant/booking-stats-tiles";
 import { BookingsTable } from "@/components/tenant/bookings-table";
@@ -20,6 +20,17 @@ export const metadata = {
 export const dynamic = "force-dynamic";
 
 type SearchParams = Promise<Record<string, string | string[] | undefined>>;
+
+/** Human wording for the dashboard's `?view=` cuts, so the banner reads
+ * as a sentence rather than echoing the parameter. */
+const VIEW_LABELS: Record<string, string> = {
+  upcoming: "upcoming bookings — pickup still ahead",
+  pickup_today: "bookings going out today",
+  return_today: "bookings due back today",
+  overdue: "overdue returns",
+  pending_payment: "bookings with a balance still owed",
+  completed: "completed bookings",
+};
 
 export default async function BookingsPage({
   searchParams,
@@ -44,6 +55,7 @@ export default async function BookingsPage({
     q: rawParams.q,
     status: rawParams.status,
     customerId: rawParams.customerId,
+    view: rawParams.view,
   });
 
   const stats = await getBookingStats(user.shopId, user);
@@ -71,6 +83,26 @@ export default async function BookingsPage({
 
       <BookingStatsTiles stats={stats} />
 
+      {/* Arriving from a dashboard tile, the list is filtered to something
+          no control on this page shows — so say which cut is in force, and
+          give it a way out. */}
+      {query.view !== "all" ? (
+        <div className="border-primary/25 bg-primary/5 flex flex-wrap items-center justify-between gap-3 rounded-lg border px-4 py-3">
+          <p className="text-sm font-medium">
+            Showing {VIEW_LABELS[query.view]}
+          </p>
+          <Button
+            size="sm"
+            variant="outline"
+            nativeButton={false}
+            render={<Link href={tenantPaths.bookings} />}
+          >
+            <XIcon />
+            Clear filter
+          </Button>
+        </div>
+      ) : null}
+
       <div className="bg-card ring-foreground/10 overflow-hidden rounded-xl shadow-xs ring-1">
         <div className="flex flex-col gap-3 border-b p-4 sm:flex-row sm:items-center">
           <BookingFilters
@@ -83,7 +115,12 @@ export default async function BookingsPage({
           key={JSON.stringify(query)}
           fallback={<BookingsTableSkeleton />}
         >
-          <BookingsTable shopId={user.shopId} query={query} viewer={user} />
+          <BookingsTable
+            shopId={user.shopId}
+            query={query}
+            viewer={user}
+            canDelete={hasPermission(user.role, Permission.RECORD_DELETE)}
+          />
         </Suspense>
       </div>
     </main>

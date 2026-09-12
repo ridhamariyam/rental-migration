@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { ContactIcon, EyeIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { DeleteRecordButton } from "@/components/tenant/delete-record-button";
 import { Badge } from "@/components/ui/badge";
 import {
   Empty,
@@ -55,9 +56,12 @@ function customersHref(query: CustomerListQuery, page: number): string {
 export async function CustomersTable({
   shopId,
   query,
+  canDelete = false,
 }: {
   shopId: string;
   query: CustomerListQuery;
+  /** Owner-only (`Permission.RECORD_DELETE`). */
+  canDelete?: boolean;
 }) {
   const { items, total, page, totalPages } = await listCustomers(shopId, query);
   const hasFilters = Boolean(query.q) || query.status !== "all";
@@ -128,17 +132,27 @@ export async function CustomersTable({
                 </>
               }
               action={
-                <Button
-                  variant="outline"
-                  size="sm"
-                  nativeButton={false}
-                  render={
-                    <Link href={`${tenantPaths.customers}/${customer.id}`} />
-                  }
-                >
-                  <EyeIcon />
-                  View
-                </Button>
+                <div className="flex items-center gap-1">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    nativeButton={false}
+                    render={
+                      <Link href={`${tenantPaths.customers}/${customer.id}`} />
+                    }
+                  >
+                    <EyeIcon />
+                    View
+                  </Button>
+                  {canDelete ? (
+                    <DeleteRecordButton
+                      endpoint={`/api/customers/${customer.id}`}
+                      title={`Delete ${name}?`}
+                      description="The customer record is removed for good. A customer with bookings cannot be deleted — archive them instead."
+                      confirmLabel="Delete"
+                    />
+                  ) : null}
+                </div>
               }
             />
           );

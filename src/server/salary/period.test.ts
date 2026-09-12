@@ -31,6 +31,7 @@ async function staffWithSalary() {
     shopId: fixture.shopId,
     staffId: staff.id,
     amount: "30000.00",
+    hourlyRate: "150.00",
     effectiveDate: "2020-01-01",
     standardHoursPerDay: "8.00",
     weeklyOffDay: 0,

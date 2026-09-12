@@ -22,7 +22,7 @@ export async function POST(
     const body = returnBookingSchema.parse(await request.json());
     const result = await returnBooking(user, id, itemId, body);
 
-    dispatchAfterResponse([itemId]);
+    dispatchAfterResponse(id);
 
     return apiSuccess(result, "Item returned");
   } catch (error) {

@@ -82,7 +82,11 @@ export default async function CustomersPage({
           key={JSON.stringify(query)}
           fallback={<CustomersTableSkeleton />}
         >
-          <CustomersTable shopId={user.shopId} query={query} />
+          <CustomersTable
+            shopId={user.shopId}
+            query={query}
+            canDelete={hasPermission(user.role, Permission.RECORD_DELETE)}
+          />
         </Suspense>
       </div>
     </main>

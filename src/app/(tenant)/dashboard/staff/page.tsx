@@ -82,7 +82,11 @@ export default async function StaffPage({
         </div>
 
         <Suspense key={JSON.stringify(query)} fallback={<StaffTableSkeleton />}>
-          <StaffTable actor={user as TenantSessionUser} query={query} />
+          <StaffTable
+            actor={user as TenantSessionUser}
+            query={query}
+            canDelete={hasPermission(user.role, Permission.RECORD_DELETE)}
+          />
         </Suspense>
       </div>
     </main>

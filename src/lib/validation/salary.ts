@@ -15,15 +15,21 @@ const noteSchema = z
   .optional();
 
 /**
- * Salary configuration for a staff member (doc §18). `weeklyOffDay` is
- * `0`–`6` (Sunday–Saturday) for the one day/week that's never a working
- * day, or `null` for no weekly off — this is what makes the working-days
- * count for a given month come out to 26 or 27 automatically instead of a
- * manually-typed static number (see `calculateSalary`).
+ * Pay configuration for a staff member (doc §18).
+ *
+ * `hourlyRate` is the basis of every payslip — pay is approved hours
+ * actually worked × this rate, so it is required and is never derived
+ * from `amount`. `amount` is now only the monthly figure the shop quotes
+ * the role at (optional, reference only): dividing it by the working
+ * hours to reach an hourly rate is exactly the model this replaced.
+ *
+ * `weeklyOffDay` is `0`–`6` (Sunday–Saturday) for the one day a week
+ * that is never a working day, or `null` for no weekly off.
  */
 export const createSalarySchema = z.object({
   staffId: uuidSchema,
-  amount: positiveMoneySchema,
+  hourlyRate: positiveMoneySchema,
+  amount: optionalMoneySchema,
   // Deliberately `z.number()`, not `z.coerce.number()` — the form fields
   // are `type="number"` inputs registered with `valueAsNumber: true`
   // (`add-salary-dialog.tsx`), so they're already real `number`s by the
@@ -41,6 +47,8 @@ export const createSalarySchema = z.object({
     .number("Must be a number")
     .min(1, "Must be at least 1")
     .max(24, "Must be at most 24"),
+  /** Extra-worktime rate: what an hour beyond `standardHoursPerDay` is
+   * paid at. Left blank, extra hours are recorded but not paid. */
   overtimeRatePerHour: optionalMoneySchema,
   effectiveDate: z.iso.date("Enter a valid date"),
   note: noteSchema,

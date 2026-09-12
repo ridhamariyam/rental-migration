@@ -19,7 +19,7 @@ export async function POST(
     const body = bookingItemSchema.parse(await request.json());
     const created = await addBookingItem(user, id, body);
 
-    dispatchAfterResponse([created.id]);
+    dispatchAfterResponse(id);
 
     return apiSuccess(created, "Item added", 201);
   } catch (error) {

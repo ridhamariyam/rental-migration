@@ -3,7 +3,10 @@ import "server-only";
 import { and, count, desc, eq, ilike, or } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { AppError } from "@/lib/errors/app-error";
-import { customers, users } from "@/lib/db/schema";
+import { Permission, hasPermission } from "@/lib/auth/permissions";
+import type { TenantSessionUser } from "@/server/auth/guard";
+import { AuditAction, recordAudit } from "@/server/audit/service";
+import { bookings, customers, users } from "@/lib/db/schema";
 import type {
   CustomerFormInput,
   CustomerListQuery,
@@ -244,6 +247,57 @@ export async function createCustomer(
     }
     throw error;
   }
+}
+
+/**
+ * Permanently removes a customer. Owner-only, and refused once they have
+ * any booking — those orders are the shop's own sales history and must
+ * keep naming a real customer. Archiving (the status toggle) is what
+ * "stopped dealing with them" means; this is for a duplicate or a
+ * mistyped walk-in entered twice.
+ */
+export async function deleteCustomer(
+  actor: TenantSessionUser,
+  id: string,
+): Promise<void> {
+  if (!hasPermission(actor.role, Permission.RECORD_DELETE)) {
+    throw AppError.forbidden("You do not have permission to do this");
+  }
+
+  const existing = await getCustomerById(actor.shopId, id);
+  if (!existing) {
+    throw AppError.notFound("Customer not found");
+  }
+
+  const [{ value: bookingCount }] = await db
+    .select({ value: count() })
+    .from(bookings)
+    .where(eq(bookings.customerId, id));
+
+  if (bookingCount > 0) {
+    throw new AppError(
+      `This customer has ${bookingCount} booking${bookingCount === 1 ? "" : "s"} — archive them instead so that history stays readable`,
+      409,
+    );
+  }
+
+  await recordAudit(db, {
+    shopId: actor.shopId,
+    userId: actor.id,
+    action: AuditAction.CUSTOMER_DELETED,
+    entityType: "customer",
+    entityId: id,
+    summary: `Customer ${existing.firstName} ${existing.lastName} deleted`,
+    before: {
+      firstName: existing.firstName,
+      lastName: existing.lastName,
+      phone: existing.phone,
+    },
+  });
+
+  await db
+    .delete(customers)
+    .where(and(eq(customers.id, id), eq(customers.shopId, actor.shopId)));
 }
 
 export async function updateCustomer(

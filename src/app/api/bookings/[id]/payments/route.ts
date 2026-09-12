@@ -22,7 +22,7 @@ export async function POST(
     const body = recordPaymentSchema.parse(await request.json());
     const result = await recordPayment(user, id, body);
 
-    dispatchAfterResponse([id]);
+    dispatchAfterResponse(id);
 
     return apiSuccess(result, "Payment recorded", 201);
   } catch (error) {

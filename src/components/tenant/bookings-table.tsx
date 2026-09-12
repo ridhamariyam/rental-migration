@@ -2,6 +2,7 @@ import Link from "next/link";
 import { CalendarClockIcon, EyeIcon } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { DeleteRecordButton } from "@/components/tenant/delete-record-button";
 import {
   Empty,
   EmptyDescription,
@@ -59,10 +60,13 @@ export async function BookingsTable({
   shopId,
   query,
   viewer,
+  canDelete = false,
 }: {
   shopId: string;
   query: BookingListQuery;
   viewer: Pick<TenantSessionUser, "id" | "role" | "outletId">;
+  /** Owner-only (`Permission.RECORD_DELETE`). */
+  canDelete?: boolean;
 }) {
   const { items, total, page, totalPages } = await listBookings(
     shopId,
@@ -150,17 +154,27 @@ export async function BookingsTable({
                 </>
               }
               action={
-                <Button
-                  variant="outline"
-                  size="sm"
-                  nativeButton={false}
-                  render={
-                    <Link href={`${tenantPaths.bookings}/${booking.id}`} />
-                  }
-                >
-                  <EyeIcon />
-                  View
-                </Button>
+                <div className="flex items-center gap-1">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    nativeButton={false}
+                    render={
+                      <Link href={`${tenantPaths.bookings}/${booking.id}`} />
+                    }
+                  >
+                    <EyeIcon />
+                    View
+                  </Button>
+                  {canDelete ? (
+                    <DeleteRecordButton
+                      endpoint={`/api/bookings/${booking.id}`}
+                      title={`Delete ${booking.bookingNumber}?`}
+                      description="The order, its items, its payment ledger and its queued messages are removed for good. An order whose items are still out with the customer has to be returned or cancelled first."
+                      confirmLabel="Delete booking"
+                    />
+                  ) : null}
+                </div>
               }
             />
           );
@@ -191,6 +205,9 @@ export async function BookingsTable({
               </TableHead>
               <TableHead className="text-muted-foreground h-11 px-4 text-xs font-medium tracking-wide uppercase">
                 Status
+              </TableHead>
+              <TableHead className="h-11 px-4">
+                <span className="sr-only">Actions</span>
               </TableHead>
             </TableRow>
           </TableHeader>
@@ -317,6 +334,32 @@ export async function BookingsTable({
 
                   <TableCell className="px-4 py-3">
                     <BookingStatusBadge status={booking.status} />
+                  </TableCell>
+
+                  <TableCell className="px-4 py-3">
+                    <div className="flex items-center justify-end gap-1">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        nativeButton={false}
+                        render={
+                          <Link
+                            href={`${tenantPaths.bookings}/${booking.id}`}
+                          />
+                        }
+                      >
+                        <EyeIcon />
+                        View
+                      </Button>
+                      {canDelete ? (
+                        <DeleteRecordButton
+                          endpoint={`/api/bookings/${booking.id}`}
+                          title={`Delete ${booking.bookingNumber}?`}
+                          description="The order, its items, its payment ledger and its queued messages are removed for good. An order whose items are still out with the customer has to be returned or cancelled first."
+                          confirmLabel="Delete booking"
+                        />
+                      ) : null}
+                    </div>
                   </TableCell>
                 </TableRow>
               );

@@ -3,6 +3,7 @@ import Image from "next/image";
 import { EyeIcon, ShirtIcon } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { DeleteRecordButton } from "@/components/tenant/delete-record-button";
 import {
   Empty,
   EmptyDescription,
@@ -45,9 +46,13 @@ function productsHref(query: ProductListQuery, page: number): string {
 export async function ProductsTable({
   shopId,
   query,
+  canDelete = false,
 }: {
   shopId: string;
   query: ProductListQuery;
+  /** Owner-only (`Permission.RECORD_DELETE`) — the row's delete control is
+   * not rendered at all for anyone else. */
+  canDelete?: boolean;
 }) {
   const { items, total, page, totalPages } = await listProducts(shopId, query);
   const hasFilters =
@@ -137,16 +142,25 @@ export async function ProductsTable({
               </div>
             </div>
 
-            <Button
-              variant="outline"
-              size="sm"
-              nativeButton={false}
-              className="shrink-0"
-              render={<Link href={`${tenantPaths.products}/${product.id}`} />}
-            >
-              <EyeIcon />
-              View
-            </Button>
+            <div className="flex shrink-0 items-center gap-1">
+              <Button
+                variant="outline"
+                size="sm"
+                nativeButton={false}
+                render={<Link href={`${tenantPaths.products}/${product.id}`} />}
+              >
+                <EyeIcon />
+                View
+              </Button>
+              {canDelete ? (
+                <DeleteRecordButton
+                  endpoint={`/api/products/${product.id}`}
+                  title={`Delete "${product.name}"?`}
+                  description="The listing and its physical items are removed for good. Products that appear on past bookings cannot be deleted — deactivate those instead."
+                  confirmLabel="Delete product"
+                />
+              ) : null}
+            </div>
           </li>
         ))}
       </ul>
@@ -221,18 +235,28 @@ export async function ProductsTable({
                     </Badge>
                   )}
                 </TableCell>
-                <TableCell className="px-4 py-3 text-right">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    nativeButton={false}
-                    render={
-                      <Link href={`${tenantPaths.products}/${product.id}`} />
-                    }
-                  >
-                    <EyeIcon />
-                    View
-                  </Button>
+                <TableCell className="px-4 py-3">
+                  <div className="flex items-center justify-end gap-1">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      nativeButton={false}
+                      render={
+                        <Link href={`${tenantPaths.products}/${product.id}`} />
+                      }
+                    >
+                      <EyeIcon />
+                      View
+                    </Button>
+                    {canDelete ? (
+                      <DeleteRecordButton
+                        endpoint={`/api/products/${product.id}`}
+                        title={`Delete "${product.name}"?`}
+                        description="The listing and its physical items are removed for good. Products that appear on past bookings cannot be deleted — deactivate those instead."
+                        confirmLabel="Delete product"
+                      />
+                    ) : null}
+                  </div>
                 </TableCell>
               </TableRow>
             ))}

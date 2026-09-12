@@ -13,7 +13,15 @@ import {
 } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { AppError } from "@/lib/errors/app-error";
-import { categories, productVariations, products } from "@/lib/db/schema";
+import { Permission, hasPermission } from "@/lib/auth/permissions";
+import type { TenantSessionUser } from "@/server/auth/guard";
+import { AuditAction, recordAudit } from "@/server/audit/service";
+import {
+  bookingItems,
+  categories,
+  productVariations,
+  products,
+} from "@/lib/db/schema";
 import { requireActiveOutlet } from "@/server/outlets/service";
 import {
   insertVariations,
@@ -380,6 +388,58 @@ function namespaceItemErrors(error: unknown): unknown {
       message: fieldError.message,
     })),
   );
+}
+
+/**
+ * Permanently removes a catalogue entry and its physical items. Owner-only.
+ *
+ * Refused once any of its items has ever been booked: those booking lines
+ * name this product, and deleting it would leave finished rentals pointing
+ * at nothing. Deactivating the product is the answer for "we don't rent
+ * this any more" — this is for a listing entered by mistake.
+ */
+export async function deleteProduct(
+  actor: TenantSessionUser,
+  id: string,
+): Promise<void> {
+  if (!hasPermission(actor.role, Permission.RECORD_DELETE)) {
+    throw AppError.forbidden("You do not have permission to do this");
+  }
+
+  const existing = await getProductById(actor.shopId, id);
+  if (!existing) {
+    throw AppError.notFound("Product not found");
+  }
+
+  const [{ value: bookedCount }] = await db
+    .select({ value: count() })
+    .from(bookingItems)
+    .where(eq(bookingItems.productId, id));
+
+  if (bookedCount > 0) {
+    throw new AppError(
+      `This product appears on ${bookedCount} booking${bookedCount === 1 ? "" : "s"} — deactivate it instead so that history stays readable`,
+      409,
+    );
+  }
+
+  await recordAudit(db, {
+    shopId: actor.shopId,
+    userId: actor.id,
+    action: AuditAction.PRODUCT_DELETED,
+    entityType: "product",
+    entityId: id,
+    summary: `Product "${existing.name}" deleted`,
+    before: {
+      name: existing.name,
+      categoryId: existing.categoryId,
+      variationCount: existing.variationCount,
+    },
+  });
+
+  await db
+    .delete(products)
+    .where(and(eq(products.id, id), eq(products.shopId, actor.shopId)));
 }
 
 export async function updateProduct(
