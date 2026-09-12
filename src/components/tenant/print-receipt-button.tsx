@@ -13,7 +13,7 @@ export function PrintReceiptButton() {
       className="print:hidden"
     >
       <PrinterIcon />
-      Print receipt
+      Print invoice
     </Button>
   );
 }

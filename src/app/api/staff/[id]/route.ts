@@ -3,7 +3,11 @@ import { Permission } from "@/lib/auth/permissions";
 import { AppError } from "@/lib/errors/app-error";
 import { apiError, apiSuccess } from "@/lib/errors/api-response";
 import { updateStaffSchema } from "@/lib/validation/staff";
-import { getStaffById, updateStaff } from "@/server/staff/service";
+import {
+  deleteStaff,
+  getStaffById,
+  updateStaff,
+} from "@/server/staff/service";
 
 export async function GET(
   request: Request,
@@ -36,6 +40,27 @@ export async function PATCH(
     const staff = await updateStaff(user, id, body);
 
     return apiSuccess(staff, "Staff member updated");
+  } catch (error) {
+    return apiError(error);
+  }
+}
+
+/**
+ * Permanent removal, owner-only (`Permission.RECORD_DELETE`). The service
+ * decides whether this particular row may go — it refuses whenever
+ * deleting would strand history that something else still depends on.
+ */
+export async function DELETE(
+  request: Request,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  try {
+    const user = await requireTenantUser(Permission.RECORD_DELETE);
+
+    const { id } = await params;
+    await deleteStaff(user, id);
+
+    return apiSuccess(null, "Staff account deleted");
   } catch (error) {
     return apiError(error);
   }

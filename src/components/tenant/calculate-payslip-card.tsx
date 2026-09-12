@@ -48,7 +48,9 @@ export function CalculatePayslipCard({
   const router = useRouter();
   const [year, setYear] = useState(now.getFullYear());
   const [month, setMonth] = useState(now.getMonth() + 1);
-  const [calculation, setCalculation] = useState<SalaryCalculation | null>(null);
+  const [calculation, setCalculation] = useState<SalaryCalculation | null>(
+    null,
+  );
   const [isCalculating, setIsCalculating] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -165,13 +167,78 @@ export function CalculatePayslipCard({
         {calculation ? (
           <>
             <Separator />
+
+            {/* Laid out as the arithmetic actually runs: hours, then the
+                rates they are paid at, then the two pay lines that make up
+                the net — so the number at the bottom can be checked by
+                reading upward. */}
             <div className="flex flex-col gap-2 text-sm">
               <div className="flex items-center justify-between">
-                <span className="text-muted-foreground">Base salary</span>
+                <span className="text-muted-foreground">Regular hours</span>
                 <span className="font-medium">
-                  {formatMoney(calculation.baseSalary)}
+                  {formatMinutes(calculation.regularMinutes)}
                 </span>
               </div>
+              <div className="flex items-center justify-between">
+                <span className="text-muted-foreground">
+                  Extra / overtime hours
+                </span>
+                <span className="font-medium">
+                  {formatMinutes(calculation.overtimeMinutes)}
+                </span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-muted-foreground">Hourly rate</span>
+                <span className="font-medium">
+                  {formatMoney(calculation.hourlyRate)}/hr
+                </span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-muted-foreground">
+                  Extra worktime rate
+                </span>
+                <span className="font-medium">
+                  {calculation.overtimeRatePerHour
+                    ? `${formatMoney(calculation.overtimeRatePerHour)}/hr`
+                    : "Not paid"}
+                </span>
+              </div>
+
+              <Separator />
+
+              <div className="flex items-center justify-between">
+                <span className="text-muted-foreground">
+                  Base pay ({formatMinutes(calculation.regularMinutes)} ×{" "}
+                  {formatMoney(calculation.hourlyRate)})
+                </span>
+                <span className="font-medium">
+                  {formatMoney(calculation.basePay)}
+                </span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-muted-foreground">
+                  Overtime pay
+                  {calculation.overtimeRatePerHour
+                    ? ` (${formatMinutes(calculation.overtimeMinutes)} × ${formatMoney(calculation.overtimeRatePerHour)})`
+                    : ""}
+                </span>
+                <span className="font-medium">
+                  {formatMoney(calculation.overtimePay)}
+                </span>
+              </div>
+
+              <Separator />
+
+              <div className="flex items-center justify-between text-base">
+                <span className="font-semibold">Net payable</span>
+                <span className="font-semibold">
+                  {formatMoney(calculation.netAmount)}
+                </span>
+              </div>
+
+              <Separator />
+
+              {/* The attendance the figures above were read from. */}
               <div className="flex items-center justify-between">
                 <span className="text-muted-foreground">
                   Working days ({calculation.standardHoursPerDay}h/day)
@@ -184,7 +251,7 @@ export function CalculatePayslipCard({
               </div>
               <div className="flex items-center justify-between">
                 <span className="text-muted-foreground">
-                  Approved leave days
+                  Approved leave days (paid)
                 </span>
                 <span className="font-medium">
                   {calculation.approvedLeaveDays}
@@ -205,57 +272,26 @@ export function CalculatePayslipCard({
                 </div>
               ) : null}
               <div className="flex items-center justify-between">
-                <span className="text-muted-foreground">Total hours worked</span>
+                <span className="text-muted-foreground">
+                  Total hours worked
+                </span>
                 <span className="font-medium">
                   {formatMinutes(calculation.totalWorkedMinutes)}
                 </span>
               </div>
-              {calculation.shortfallMinutes > 0 ? (
-                <div className="flex items-center justify-between">
-                  <span className="text-muted-foreground">
-                    Shortfall (cut from pay)
-                  </span>
-                  <span className="font-medium">
-                    {formatMinutes(calculation.shortfallMinutes)}
-                  </span>
-                </div>
+              {calculation.payStart > calculation.periodStart ? (
+                <p className="text-muted-foreground text-xs">
+                  Paid from {calculation.payStart} — the days before it fall
+                  outside this staff member&rsquo;s joining date or pay
+                  configuration, and are not counted absent.
+                </p>
               ) : null}
-              {calculation.overtimeMinutes > 0 ? (
-                <div className="flex items-center justify-between">
-                  <span className="text-muted-foreground">
-                    Overtime hours
-                  </span>
-                  <span className="font-medium">
-                    {formatMinutes(calculation.overtimeMinutes)}
-                  </span>
-                </div>
+              {calculation.monthlySalary ? (
+                <p className="text-muted-foreground text-xs">
+                  Quoted at {formatMoney(calculation.monthlySalary)}/month for
+                  reference — pay above is hours worked × hourly rate.
+                </p>
               ) : null}
-              <div className="flex items-center justify-between">
-                <span className="text-muted-foreground">Hourly rate</span>
-                <span className="font-medium">
-                  {formatMoney(calculation.hourlyRate)}/hr
-                </span>
-              </div>
-              <Separator />
-              <div className="flex items-center justify-between">
-                <span className="text-muted-foreground">Base pay</span>
-                <span className="font-medium">
-                  {formatMoney(calculation.basePay)}
-                </span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-muted-foreground">Overtime pay</span>
-                <span className="font-medium">
-                  {formatMoney(calculation.overtimePay)}
-                </span>
-              </div>
-              <Separator />
-              <div className="flex items-center justify-between text-base">
-                <span className="font-semibold">Net payable</span>
-                <span className="font-semibold">
-                  {formatMoney(calculation.netAmount)}
-                </span>
-              </div>
             </div>
 
             {canGenerate ? (

@@ -30,6 +30,7 @@ export function VariationsCard({
   outlets,
   canManage,
   canViewCost,
+  canDelete = false,
 }: {
   productId: string;
   productName: string;
@@ -37,6 +38,8 @@ export function VariationsCard({
   outlets: { id: string; name: string; code: string }[];
   canManage: boolean;
   canViewCost: boolean;
+  /** Owner-only (`Permission.RECORD_DELETE`). */
+  canDelete?: boolean;
 }) {
   const [addOpen, setAddOpen] = useState(false);
 
@@ -102,6 +105,7 @@ export function VariationsCard({
                   productName={productName}
                   outlets={outlets}
                   canViewCost={canViewCost}
+                  canDelete={canDelete}
                 />
               ))}
             </ul>

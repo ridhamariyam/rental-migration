@@ -17,18 +17,24 @@ import { dispatchNotificationsForBooking } from "@/server/notifications/service"
  * This is an optimisation, never the delivery guarantee — anything that
  * fails or is scheduled for later is still picked up by
  * `dispatchDueNotifications` via the cron worker.
+ *
+ * Takes the **booking** id, never a booking *item* id: notifications are
+ * claimed per order (`dispatchNotificationsForBooking`). Six of the eight
+ * call sites used to hand it the item ids they happened to have on hand,
+ * which matched nothing — so a just-placed order's "Booking confirmed"
+ * message sat queued until the next cron tick instead of going out with
+ * the response. The single-id signature is what keeps that mistake from
+ * being expressible.
  */
-export function dispatchAfterResponse(bookingIds: string[]): void {
+export function dispatchAfterResponse(bookingId: string): void {
   after(async () => {
-    for (const bookingId of bookingIds) {
-      try {
-        await dispatchNotificationsForBooking(bookingId);
-      } catch (error) {
-        console.error(
-          `[notifications] immediate dispatch for booking ${bookingId} failed:`,
-          error instanceof Error ? error.message : error,
-        );
-      }
+    try {
+      await dispatchNotificationsForBooking(bookingId);
+    } catch (error) {
+      console.error(
+        `[notifications] immediate dispatch for booking ${bookingId} failed:`,
+        error instanceof Error ? error.message : error,
+      );
     }
   });
 }

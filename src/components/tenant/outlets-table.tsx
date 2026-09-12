@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Building2Icon, EyeIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { DeleteRecordButton } from "@/components/tenant/delete-record-button";
 import { Badge } from "@/components/ui/badge";
 import {
   ListCardRow,
@@ -55,9 +56,12 @@ function outletsHref(query: OutletListQuery, page: number): string {
 export async function OutletsTable({
   shopId,
   query,
+  canDelete = false,
 }: {
   shopId: string;
   query: OutletListQuery;
+  /** Owner-only (`Permission.RECORD_DELETE`). */
+  canDelete?: boolean;
 }) {
   const { items, total, page, totalPages } = await listOutlets(shopId, query);
   const hasFilters = Boolean(query.q) || query.status !== "all";
@@ -121,15 +125,25 @@ export async function OutletsTable({
               </>
             }
             action={
-              <Button
-                variant="outline"
-                size="sm"
-                nativeButton={false}
-                render={<Link href={`${tenantPaths.outlets}/${outlet.id}`} />}
-              >
-                <EyeIcon />
-                View
-              </Button>
+              <div className="flex items-center gap-1">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  nativeButton={false}
+                  render={<Link href={`${tenantPaths.outlets}/${outlet.id}`} />}
+                >
+                  <EyeIcon />
+                  View
+                </Button>
+                {canDelete ? (
+                  <DeleteRecordButton
+                    endpoint={`/api/outlets/${outlet.id}`}
+                    title={`Delete ${outlet.name}?`}
+                    description="The outlet is removed for good. One that still has staff, stock or bookings cannot be deleted — deactivate it instead."
+                    confirmLabel="Delete"
+                  />
+                ) : null}
+              </div>
             }
           />
         ))}

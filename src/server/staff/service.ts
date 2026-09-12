@@ -5,9 +5,19 @@ import { db } from "@/lib/db/client";
 import { destroyAllSessionsForUser } from "@/lib/auth/session";
 import { hashPassword } from "@/lib/auth/password";
 import { generateTemporaryPassword } from "@/lib/auth/temporary-password";
-import { canAssignRole } from "@/lib/auth/permissions";
+import {
+  canAssignRole,
+  hasPermission,
+  Permission,
+} from "@/lib/auth/permissions";
 import { AppError } from "@/lib/errors/app-error";
-import { outlets, users } from "@/lib/db/schema";
+import {
+  attendances,
+  bookings,
+  outlets,
+  salaryPayslips,
+  users,
+} from "@/lib/db/schema";
 import { requireActiveOutlet } from "@/server/outlets/service";
 import { AuditAction, recordAudit } from "@/server/audit/service";
 import { resolveOutletScope, type TenantSessionUser } from "@/server/auth/guard";
@@ -108,6 +118,7 @@ export async function listStaff(
         phone: users.phone,
         passwordHash: users.passwordHash,
         avatarUrl: users.avatarUrl,
+        joinedOn: users.joinedOn,
         mustChangePassword: users.mustChangePassword,
         isActive: users.isActive,
         createdAt: users.createdAt,
@@ -247,6 +258,7 @@ export async function getStaffById(
       phone: users.phone,
       passwordHash: users.passwordHash,
       avatarUrl: users.avatarUrl,
+      joinedOn: users.joinedOn,
       mustChangePassword: users.mustChangePassword,
       isActive: users.isActive,
       createdAt: users.createdAt,
@@ -324,6 +336,7 @@ export async function createStaff(
         lastName: input.lastName,
         email: input.email,
         phone: input.phone || null,
+        joinedOn: input.joinedOn || null,
         passwordHash,
         mustChangePassword: true,
       })
@@ -378,6 +391,7 @@ export async function updateStaff(
       phone: input.phone || null,
       role: input.role,
       outletId: input.outletId,
+      joinedOn: input.joinedOn || null,
       updatedAt: new Date(),
     })
     .where(and(eq(users.id, id), eq(users.shopId, actor.shopId)))
@@ -410,6 +424,72 @@ export async function updateStaff(
  * user currently holds, rather than waiting for their token to expire
  * naturally.
  */
+/**
+ * Permanently removes a staff account. Owner-only, refused for your own
+ * account and for anyone who has left a trail worth keeping — attendance,
+ * payslips, or bookings they handled. Deactivating is what "they left"
+ * means (it keeps their history and frees their login); this is for an
+ * account created by mistake.
+ */
+export async function deleteStaff(
+  actor: TenantSessionUser,
+  id: string,
+): Promise<void> {
+  if (!hasPermission(actor.role, Permission.RECORD_DELETE)) {
+    throw AppError.forbidden("You do not have permission to do this");
+  }
+  if (id === actor.id) {
+    throw new AppError("You cannot delete your own account", 400);
+  }
+
+  const existing = await getStaffById(actor.shopId, id);
+  if (!existing) {
+    throw AppError.notFound("Staff member not found");
+  }
+
+  const [[attendanceRow], [payslipRow], [handledRow]] = await Promise.all([
+    db.select({ value: count() }).from(attendances).where(eq(attendances.staffId, id)),
+    db
+      .select({ value: count() })
+      .from(salaryPayslips)
+      .where(eq(salaryPayslips.staffId, id)),
+    db.select({ value: count() }).from(bookings).where(eq(bookings.handledById, id)),
+  ]);
+
+  const blockers: string[] = [];
+  if (attendanceRow.value > 0)
+    blockers.push(`${attendanceRow.value} attendance record(s)`);
+  if (payslipRow.value > 0) blockers.push(`${payslipRow.value} payslip(s)`);
+  if (handledRow.value > 0) blockers.push(`${handledRow.value} booking(s) handled`);
+
+  if (blockers.length > 0) {
+    throw new AppError(
+      `This account has ${blockers.join(", ")} — deactivate it instead so that history stays readable`,
+      409,
+    );
+  }
+
+  await recordAudit(db, {
+    shopId: actor.shopId,
+    outletId: existing.outletId,
+    userId: actor.id,
+    action: AuditAction.STAFF_DELETED,
+    entityType: "user",
+    entityId: id,
+    summary: `Staff account ${existing.firstName} ${existing.lastName} deleted`,
+    before: {
+      firstName: existing.firstName,
+      lastName: existing.lastName,
+      email: existing.email,
+      role: existing.role,
+    },
+  });
+
+  await db
+    .delete(users)
+    .where(and(eq(users.id, id), eq(users.shopId, actor.shopId)));
+}
+
 export async function setStaffStatus(
   actor: TenantSessionUser,
   id: string,

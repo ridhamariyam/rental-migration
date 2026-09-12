@@ -3,7 +3,11 @@ import { Permission } from "@/lib/auth/permissions";
 import { AppError } from "@/lib/errors/app-error";
 import { apiError, apiSuccess } from "@/lib/errors/api-response";
 import { updateOutletSchema } from "@/lib/validation/outlets";
-import { getOutletById, updateOutlet } from "@/server/outlets/service";
+import {
+  deleteOutlet,
+  getOutletById,
+  updateOutlet,
+} from "@/server/outlets/service";
 
 export async function GET(
   request: Request,
@@ -36,6 +40,27 @@ export async function PATCH(
     const outlet = await updateOutlet(user.shopId, id, body);
 
     return apiSuccess(outlet, "Outlet updated");
+  } catch (error) {
+    return apiError(error);
+  }
+}
+
+/**
+ * Permanent removal, owner-only (`Permission.RECORD_DELETE`). The service
+ * decides whether this particular row may go — it refuses whenever
+ * deleting would strand history that something else still depends on.
+ */
+export async function DELETE(
+  request: Request,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  try {
+    const user = await requireTenantUser(Permission.RECORD_DELETE);
+
+    const { id } = await params;
+    await deleteOutlet(user, id);
+
+    return apiSuccess(null, "Outlet deleted");
   } catch (error) {
     return apiError(error);
   }

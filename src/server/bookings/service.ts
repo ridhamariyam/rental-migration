@@ -1,6 +1,17 @@
 import "server-only";
 
-import { and, asc, count, desc, eq, ilike, inArray, ne, or, sql } from "drizzle-orm";
+import {
+  and,
+  asc,
+  count,
+  desc,
+  eq,
+  ilike,
+  inArray,
+  ne,
+  or,
+  sql,
+} from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { AppError } from "@/lib/errors/app-error";
 import {
@@ -28,7 +39,7 @@ import {
   subtractMoneyNonNegative,
   ZERO_MONEY,
 } from "@/lib/money";
-import { formatMoney } from "@/lib/format";
+import { formatMoney, toDateString } from "@/lib/format";
 import { Permission, hasPermission } from "@/lib/auth/permissions";
 import { outletScopeFor, type TenantSessionUser } from "@/server/auth/guard";
 import { AuditAction, recordAudit } from "@/server/audit/service";
@@ -132,12 +143,194 @@ function staffScopeCondition(
  * the old per-line dedup/group-total logic is gone entirely, since an
  * order genuinely is one row now.
  */
+/** Item statuses that mean "out with the customer, not back yet". */
+const OUT_WITH_CUSTOMER = ["rented", "return_pending", "overdue"] as const;
+
+/** Item statuses that mean "agreed but not yet handed over". */
+const NOT_YET_PICKED_UP = ["draft", "confirmed", "pickup_pending"] as const;
+
+/**
+ * The dashboard's operational cuts, as a condition on the *order* — each
+ * is "this order has at least one item that …", because pickup and return
+ * dates live on items while the list is a list of orders. An order with
+ * one item due back today belongs in "Return today" even if its other
+ * item runs to next week.
+ */
+function bookingViewCondition(view: BookingListQuery["view"] | undefined) {
+  // `undefined` as well as `"all"` means "no cut": the schema always
+  // supplies a value, but a hand-built query object (tests, an internal
+  // caller) must not silently land in whichever branch happens to be last.
+  if (!view || view === "all") return undefined;
+
+  const today = toDateString(new Date());
+
+  if (view === "pending_payment") {
+    return and(
+      inArray(bookings.paymentStatus, ["unpaid", "partial"]),
+      ne(bookings.status, "cancelled"),
+    );
+  }
+
+  if (view === "completed") {
+    return eq(bookings.status, "returned");
+  }
+
+  const itemCondition =
+    view === "upcoming"
+      ? and(
+          inArray(bookingItems.status, NOT_YET_PICKED_UP),
+          sql`${bookingItems.fromDate} > ${today}`,
+        )
+      : view === "pickup_today"
+        ? and(
+            inArray(bookingItems.status, NOT_YET_PICKED_UP),
+            eq(bookingItems.fromDate, today),
+          )
+        : view === "return_today"
+          ? and(
+              inArray(bookingItems.status, OUT_WITH_CUSTOMER),
+              eq(bookingItems.toDate, today),
+            )
+          : // overdue: still out, and its return date has passed
+            and(
+              inArray(bookingItems.status, OUT_WITH_CUSTOMER),
+              sql`${bookingItems.toDate} < ${today}`,
+            );
+
+  return inArray(
+    bookings.id,
+    db
+      .select({ id: bookingItems.bookingId })
+      .from(bookingItems)
+      .where(itemCondition),
+  );
+}
+
+export const BOOKING_VIEWS = [
+  "upcoming",
+  "pickup_today",
+  "return_today",
+  "overdue",
+  "pending_payment",
+  "completed",
+] as const;
+
+export type BookingView = (typeof BOOKING_VIEWS)[number];
+
+/**
+ * How many orders sit in each of the dashboard's operational cuts, using
+ * the very same conditions the list filters by — so a tile reading "3" and
+ * the list it links to can never disagree. Scoped exactly like
+ * `listBookings`: a staff account counts only what it can see.
+ */
+export async function getBookingViewCounts(
+  shopId: string,
+  actor: Pick<TenantSessionUser, "id" | "role" | "outletId">,
+): Promise<Record<BookingView, number>> {
+  const scope = staffScopeCondition(actor);
+
+  const counts = await Promise.all(
+    BOOKING_VIEWS.map(async (view) => {
+      const conditions = [eq(bookings.shopId, shopId)];
+      if (scope) conditions.push(scope);
+      const viewCondition = bookingViewCondition(view);
+      if (viewCondition) conditions.push(viewCondition);
+
+      const [row] = await db
+        .select({ value: count() })
+        .from(bookings)
+        .where(and(...conditions));
+
+      return [view, row?.value ?? 0] as const;
+    }),
+  );
+
+  return Object.fromEntries(counts) as Record<BookingView, number>;
+}
+
+/**
+ * Permanently removes an order and everything hanging off it (its items,
+ * its payment ledger, its queued notifications and any owner settlements
+ * — all `on delete cascade`). Owner-only.
+ *
+ * Refused while any item is out with a customer: the order is then the
+ * only record that the shop's stock is in someone else's hands, and no
+ * amount of "are you sure" makes losing that safe. Cancel the order (or
+ * return the items) first — cancellation keeps the history, which is what
+ * a normal "this booking is over" needs. Deleting is for the mistakes:
+ * a test order, a duplicate, a booking entered against the wrong customer.
+ */
+export async function deleteBooking(
+  actor: TenantSessionUser,
+  bookingId: string,
+): Promise<void> {
+  if (!hasPermission(actor.role, Permission.RECORD_DELETE)) {
+    throw AppError.forbidden("You do not have permission to do this");
+  }
+
+  const [order] = await db
+    .select({
+      id: bookings.id,
+      bookingNumber: bookings.bookingNumber,
+      status: bookings.status,
+      totalAmount: bookings.totalAmount,
+      paymentStatus: bookings.paymentStatus,
+    })
+    .from(bookings)
+    .where(and(eq(bookings.id, bookingId), eq(bookings.shopId, actor.shopId)))
+    .limit(1);
+
+  if (!order) {
+    throw AppError.notFound("Booking not found");
+  }
+
+  const [outItem] = await db
+    .select({ id: bookingItems.id })
+    .from(bookingItems)
+    .where(
+      and(
+        eq(bookingItems.bookingId, bookingId),
+        inArray(bookingItems.status, OUT_WITH_CUSTOMER),
+      ),
+    )
+    .limit(1);
+
+  if (outItem) {
+    throw new AppError(
+      "This booking still has items out with the customer — return or cancel it first",
+      409,
+    );
+  }
+
+  // Written before the delete: `recordAudit` references nothing on the
+  // booking row, and after the cascade there would be nothing left to
+  // describe it with.
+  await recordAudit(db, {
+    shopId: actor.shopId,
+    userId: actor.id,
+    action: AuditAction.BOOKING_DELETED,
+    entityType: "booking",
+    entityId: order.id,
+    summary: `${order.bookingNumber} deleted (${order.status}, ${formatMoney(order.totalAmount)})`,
+    before: {
+      bookingNumber: order.bookingNumber,
+      status: order.status,
+      paymentStatus: order.paymentStatus,
+      totalAmount: order.totalAmount,
+    },
+  });
+
+  await db
+    .delete(bookings)
+    .where(and(eq(bookings.id, bookingId), eq(bookings.shopId, actor.shopId)));
+}
+
 export async function listBookings(
   shopId: string,
   query: BookingListQuery,
   actor: Pick<TenantSessionUser, "id" | "role" | "outletId">,
 ): Promise<BookingListResult> {
-  const { page, pageSize, q, status, customerId } = query;
+  const { page, pageSize, q, status, customerId, view } = query;
 
   const conditions = [eq(bookings.shopId, shopId)];
 
@@ -164,6 +357,11 @@ export async function listBookings(
 
   if (customerId) {
     conditions.push(eq(bookings.customerId, customerId));
+  }
+
+  const viewCondition = bookingViewCondition(view);
+  if (viewCondition) {
+    conditions.push(viewCondition);
   }
 
   const where = and(...conditions);
@@ -225,7 +423,9 @@ export async function listBookings(
             // The booked copy's own photo, falling back to the catalogue
             // cover for items added before photos moved onto the item
             // itself.
-            productImage: sql<string | null>`coalesce(${productVariations.image}, ${products.image})`,
+            productImage: sql<
+              string | null
+            >`coalesce(${productVariations.image}, ${products.image})`,
             variationColor: productVariations.color,
             variationSize: productVariations.size,
             quantity: bookingItems.quantity,
@@ -408,7 +608,9 @@ const bookingItemDetailColumns = {
   productName: products.name,
   // The booked copy's own photo, falling back to the catalogue cover for
   // items added before photos moved onto the item itself.
-  productImage: sql<string | null>`coalesce(${productVariations.image}, ${products.image})`,
+  productImage: sql<
+    string | null
+  >`coalesce(${productVariations.image}, ${products.image})`,
   variationSku: productVariations.sku,
   variationBarcode: productVariations.barcode,
   variationColor: productVariations.color,
@@ -437,19 +639,21 @@ export async function getBookingItems(
   bookingId: string,
   actor: Pick<TenantSessionUser, "id" | "role" | "outletId">,
 ): Promise<BookingItemDetail[]> {
-  return bookingItemDetailBaseQuery()
-    .where(
-      and(
-        eq(bookingItems.shopId, shopId),
-        eq(bookingItems.bookingId, bookingId),
-        staffScopeCondition(actor),
-      ),
-    )
-    // Items created together in one order share the exact same
-    // `createdAt` (one multi-row INSERT) — `id` breaks the tie so "Item 1"/
-    // "Item 2" numbering on the detail page stays stable across reloads
-    // instead of visually swapping at random.
-    .orderBy(asc(bookingItems.createdAt), asc(bookingItems.id));
+  return (
+    bookingItemDetailBaseQuery()
+      .where(
+        and(
+          eq(bookingItems.shopId, shopId),
+          eq(bookingItems.bookingId, bookingId),
+          staffScopeCondition(actor),
+        ),
+      )
+      // Items created together in one order share the exact same
+      // `createdAt` (one multi-row INSERT) — `id` breaks the tie so "Item 1"/
+      // "Item 2" numbering on the detail page stays stable across reloads
+      // instead of visually swapping at random.
+      .orderBy(asc(bookingItems.createdAt), asc(bookingItems.id))
+  );
 }
 
 export async function getBookingItemById(
@@ -766,7 +970,10 @@ export async function createBooking(
   const orderAdditionalCost = input.additionalCost || ZERO_MONEY;
   if (isNegativeMoney(orderAdditionalCost)) {
     throw new AppError("Additional cost cannot be negative", 400, [
-      { field: "additionalCost", message: "Additional cost cannot be negative" },
+      {
+        field: "additionalCost",
+        message: "Additional cost cannot be negative",
+      },
     ]);
   }
   const orderAdditionalCostReason =
@@ -784,7 +991,10 @@ export async function createBooking(
   const orderDeposit = input.securityDeposit || defaultDepositTotal;
   if (isNegativeMoney(orderDeposit)) {
     throw new AppError("Security deposit cannot be negative", 400, [
-      { field: "securityDeposit", message: "Security deposit cannot be negative" },
+      {
+        field: "securityDeposit",
+        message: "Security deposit cannot be negative",
+      },
     ]);
   }
 
@@ -802,7 +1012,10 @@ export async function createBooking(
   }
   if (compareMoney(orderAdvance, orderTotalReceivable) > 0) {
     throw new AppError("Advance cannot exceed the amount due", 400, [
-      { field: "advanceAmount", message: "Advance cannot exceed the amount due" },
+      {
+        field: "advanceAmount",
+        message: "Advance cannot exceed the amount due",
+      },
     ]);
   }
 
@@ -816,10 +1029,7 @@ export async function createBooking(
       // capacity against what is committed *now*. Both steps have to be
       // in here: the lock without the re-check would still let the second
       // request through on a stale read taken before it waited.
-      await lockVariationsForUpdate(
-        tx,
-        [...requestsByVariation.keys()],
-      );
+      await lockVariationsForUpdate(tx, [...requestsByVariation.keys()]);
 
       for (const { variation, requests } of requestsByVariation.values()) {
         await assertCapacityAvailable(tx, variation, requests);
@@ -865,7 +1075,12 @@ export async function createBooking(
 
       for (const item of createdItems) {
         await queueBookingLifecycleNotifications(tx, order, item);
-        await queueOwnerBookingNotification(tx, order, item.id, "owner_item_booked");
+        await queueOwnerBookingNotification(
+          tx,
+          order,
+          item.id,
+          "owner_item_booked",
+        );
       }
 
       // Order-level advance — recorded the moment the order is created,
@@ -1048,7 +1263,9 @@ async function recomputeOrderTotal(
     // instead of owing the customer a refund (RQ-08).
     securityDeposit = ZERO_MONEY;
   } else if (!order.securityDepositOverridden) {
-    const variationIds = [...new Set(activeItems.map((item) => item.variationId))];
+    const variationIds = [
+      ...new Set(activeItems.map((item) => item.variationId)),
+    ];
     const variationRows =
       variationIds.length > 0
         ? await tx
@@ -1159,7 +1376,11 @@ export async function updateBookingItem(
     );
   }
 
-  const variation = await resolveVariation(actor.shopId, item.variationId, undefined);
+  const variation = await resolveVariation(
+    actor.shopId,
+    item.variationId,
+    undefined,
+  );
 
   const quote = quoteRental(
     variation,
@@ -1280,7 +1501,12 @@ export async function addBookingItem(
     await recomputeOrderTotal(tx, bookingId);
 
     await queueBookingLifecycleNotifications(tx, order, created);
-    await queueOwnerBookingNotification(tx, order, created.id, "owner_item_booked");
+    await queueOwnerBookingNotification(
+      tx,
+      order,
+      created.id,
+      "owner_item_booked",
+    );
 
     return created;
   });
@@ -1344,10 +1570,13 @@ export async function cancelBookingItem(
     const siblings = await tx
       .select({ status: bookingItems.status })
       .from(bookingItems)
-      .where(and(eq(bookingItems.bookingId, bookingId), ne(bookingItems.id, itemId)));
+      .where(
+        and(eq(bookingItems.bookingId, bookingId), ne(bookingItems.id, itemId)),
+      );
 
     const nothingLeftActive = siblings.every(
-      (sibling) => sibling.status === "cancelled" || sibling.status === "returned",
+      (sibling) =>
+        sibling.status === "cancelled" || sibling.status === "returned",
     );
 
     if (nothingLeftActive) {
@@ -1366,7 +1595,12 @@ export async function cancelBookingItem(
       });
     }
 
-    await queueOwnerBookingNotification(tx, order, itemId, "owner_item_cancelled");
+    await queueOwnerBookingNotification(
+      tx,
+      order,
+      itemId,
+      "owner_item_cancelled",
+    );
 
     return updated;
   });
@@ -1424,7 +1658,10 @@ export async function cancelBookingOrder(
     // itself doesn't retroactively un-hand-over a physical item.
     const cancelledItemIds: string[] = [];
     for (const item of items) {
-      if (item.status !== "cancelled" && canTransition(item.status, "cancelled")) {
+      if (
+        item.status !== "cancelled" &&
+        canTransition(item.status, "cancelled")
+      ) {
         await tx
           .update(bookingItems)
           .set({
@@ -1473,8 +1710,10 @@ export async function cancelBookingOrder(
       .where(eq(bookings.id, id))
       .limit(1);
 
-    if (compareMoney(settlement.refunded, ZERO_MONEY) > 0 ||
-        compareMoney(settlement.depositReturned, ZERO_MONEY) > 0) {
+    if (
+      compareMoney(settlement.refunded, ZERO_MONEY) > 0 ||
+      compareMoney(settlement.depositReturned, ZERO_MONEY) > 0
+    ) {
       await recordAudit(tx, {
         shopId: actor.shopId,
         outletId: items[0]?.outletId ?? null,
@@ -1497,7 +1736,12 @@ export async function cancelBookingOrder(
     // No customer-facing "booking cancelled" WhatsApp template exists yet
     // (see `NOTIFICATION_EVENTS`) — only the item owner is notified.
     for (const itemId of cancelledItemIds) {
-      await queueOwnerBookingNotification(tx, updated, itemId, "owner_item_cancelled");
+      await queueOwnerBookingNotification(
+        tx,
+        updated,
+        itemId,
+        "owner_item_cancelled",
+      );
     }
 
     return settled ?? recomputed;

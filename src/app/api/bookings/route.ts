@@ -35,7 +35,7 @@ export async function POST(request: Request) {
     const body = createBookingSchema.parse(await request.json());
     const { booking, items } = await createBooking(user, body);
 
-    dispatchAfterResponse(items.map((item) => item.id));
+    dispatchAfterResponse(booking.id);
 
     return apiSuccess(
       { booking, items },

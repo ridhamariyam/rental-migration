@@ -8,9 +8,11 @@ import { AlertCircleIcon, MailIcon, UserIcon } from "lucide-react";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { DatePicker } from "@/components/ui/date-picker";
 import { Input } from "@/components/ui/input";
 import {
   Field,
+  FieldDescription,
   FieldError,
   FieldGroup,
   FieldLabel,
@@ -76,6 +78,7 @@ export function AddStaffForm({
       phone: "",
       role: (assignableRoles[0] as "manager" | "staff") ?? "staff",
       outletId: outlets[0]?.id ?? "",
+      joinedOn: "",
     },
     mode: "onTouched",
     reValidateMode: "onChange",
@@ -225,6 +228,31 @@ export function AddStaffForm({
             )}
           />
           <FieldError errors={[form.formState.errors.phone]} />
+        </Field>
+
+        <Field data-invalid={!!form.formState.errors.joinedOn}>
+          <FieldLabel htmlFor="joinedOn">Joining date (optional)</FieldLabel>
+          <Controller
+            control={form.control}
+            name="joinedOn"
+            render={({ field }) => (
+              <DatePicker
+                id="joinedOn"
+                value={field.value ?? ""}
+                onChange={(next) => {
+                  field.onChange(next);
+                  setFormError(null);
+                }}
+                disabled={isSubmitting}
+                invalid={!!form.formState.errors.joinedOn}
+              />
+            )}
+          />
+          <FieldDescription>
+            Payroll pays nothing before this date, so a mid-month joiner is not
+            counted absent for the days before they started.
+          </FieldDescription>
+          <FieldError errors={[form.formState.errors.joinedOn]} />
         </Field>
 
         <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">

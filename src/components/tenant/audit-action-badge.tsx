@@ -23,6 +23,13 @@ const ACTION_META: Record<string, { label: string; tone: "neutral" | "positive" 
   [AuditAction.PAYMENT_RECORDED]: { label: "Payment recorded", tone: "positive" },
   [AuditAction.PAYMENT_REFUNDED]: { label: "Payment refunded", tone: "negative" },
   [AuditAction.SHOP_UPDATED]: { label: "Business settings updated", tone: "neutral" },
+  [AuditAction.BOOKING_DELETED]: { label: "Booking deleted", tone: "negative" },
+  [AuditAction.PRODUCT_DELETED]: { label: "Product deleted", tone: "negative" },
+  [AuditAction.VARIATION_DELETED]: { label: "Item deleted", tone: "negative" },
+  [AuditAction.CUSTOMER_DELETED]: { label: "Customer deleted", tone: "negative" },
+  [AuditAction.OUTLET_DELETED]: { label: "Outlet deleted", tone: "negative" },
+  [AuditAction.STAFF_DELETED]: { label: "Staff deleted", tone: "negative" },
+  [AuditAction.CATEGORY_DELETED]: { label: "Category deleted", tone: "negative" },
 };
 
 const TONE_CLASSES: Record<string, string> = {

@@ -36,6 +36,23 @@ export const bookingListQuerySchema = z.object({
     .catch(undefined),
   status: z.enum(BOOKING_STATUS_FILTER_VALUES).catch("all"),
   customerId: z.string().trim().optional().catch(undefined),
+  /** The operational cuts the dashboard tiles link to — answers about
+   * *dates and money* that a plain status filter cannot express ("what
+   * goes out today", "what is late back", "who still owes"). Kept as its
+   * own parameter rather than more `status` values because it composes
+   * with them: `?view=overdue&status=rented` is a sensible thing to ask.
+   */
+  view: z
+    .enum([
+      "all",
+      "upcoming",
+      "pickup_today",
+      "return_today",
+      "overdue",
+      "pending_payment",
+      "completed",
+    ])
+    .catch("all"),
 });
 
 export type BookingListQuery = z.infer<typeof bookingListQuerySchema>;

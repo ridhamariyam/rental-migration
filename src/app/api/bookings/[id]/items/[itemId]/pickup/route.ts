@@ -21,7 +21,7 @@ export async function POST(
     const body = confirmPickupSchema.parse(await request.json());
     const result = await confirmPickup(user, id, itemId, body);
 
-    dispatchAfterResponse([itemId]);
+    dispatchAfterResponse(id);
 
     return apiSuccess(result, "Pickup confirmed");
   } catch (error) {

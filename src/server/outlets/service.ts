@@ -3,7 +3,10 @@ import "server-only";
 import { and, count, desc, eq, ilike, inArray, or } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { AppError } from "@/lib/errors/app-error";
-import { outlets, users } from "@/lib/db/schema";
+import { Permission, hasPermission } from "@/lib/auth/permissions";
+import type { TenantSessionUser } from "@/server/auth/guard";
+import { AuditAction, recordAudit } from "@/server/audit/service";
+import { bookingItems, outlets, productVariations, users } from "@/lib/db/schema";
 import type {
   CreateOutletInput,
   OutletListQuery,
@@ -244,6 +247,67 @@ export async function createOutlet(
     }
     throw error;
   }
+}
+
+/**
+ * Permanently removes an outlet. Owner-only, and refused while anything
+ * still points at it — staff assigned, stock held, or bookings taken
+ * there. Deactivating is what closing a branch means; this is for one
+ * created by mistake.
+ */
+export async function deleteOutlet(
+  actor: TenantSessionUser,
+  id: string,
+): Promise<void> {
+  if (!hasPermission(actor.role, Permission.RECORD_DELETE)) {
+    throw AppError.forbidden("You do not have permission to do this");
+  }
+
+  const existing = await getOutletById(actor.shopId, id);
+  if (!existing) {
+    throw AppError.notFound("Outlet not found");
+  }
+
+  const [[staffRow], [stockRow], [bookingRow]] = await Promise.all([
+    db
+      .select({ value: count() })
+      .from(users)
+      .where(and(eq(users.outletId, id), eq(users.shopId, actor.shopId))),
+    db
+      .select({ value: count() })
+      .from(productVariations)
+      .where(eq(productVariations.outletId, id)),
+    db
+      .select({ value: count() })
+      .from(bookingItems)
+      .where(eq(bookingItems.outletId, id)),
+  ]);
+
+  const blockers: string[] = [];
+  if (staffRow.value > 0) blockers.push(`${staffRow.value} staff assigned`);
+  if (stockRow.value > 0) blockers.push(`${stockRow.value} item(s) stocked`);
+  if (bookingRow.value > 0) blockers.push(`${bookingRow.value} booking line(s)`);
+
+  if (blockers.length > 0) {
+    throw new AppError(
+      `This outlet still has ${blockers.join(", ")} — deactivate it instead`,
+      409,
+    );
+  }
+
+  await recordAudit(db, {
+    shopId: actor.shopId,
+    userId: actor.id,
+    action: AuditAction.OUTLET_DELETED,
+    entityType: "outlet",
+    entityId: id,
+    summary: `Outlet "${existing.name}" (${existing.code}) deleted`,
+    before: { name: existing.name, code: existing.code },
+  });
+
+  await db
+    .delete(outlets)
+    .where(and(eq(outlets.id, id), eq(outlets.shopId, actor.shopId)));
 }
 
 export async function updateOutlet(

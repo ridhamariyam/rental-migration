@@ -1,4 +1,4 @@
-import { requireTenantUser } from "@/server/auth/guard";
+import { outletScopeFor, requireTenantUser } from "@/server/auth/guard";
 import { hasPermission, Permission } from "@/lib/auth/permissions";
 import { AppError } from "@/lib/errors/app-error";
 import { apiError, apiSuccess } from "@/lib/errors/api-response";
@@ -58,9 +58,14 @@ export async function POST(request: Request) {
     if (!hasPermission(user.role, Permission.PRODUCT_COST_VIEW)) {
       body.item.buyingPrice = undefined;
     }
+    // `outletScopeFor`, not `user.outletId`: only a manager/staff account is
+    // outlet-scoped. An admin may legitimately carry an `outletId` (their
+    // home branch) and must still be able to stock every outlet — reading
+    // the raw column locked owners out of their own other branches.
+    const scopedOutletId = outletScopeFor(user);
     if (
-      user.outletId &&
-      body.item.outletIds.some((outletId) => outletId !== user.outletId)
+      scopedOutletId &&
+      body.item.outletIds.some((outletId) => outletId !== scopedOutletId)
     ) {
       throw AppError.forbidden("You can only add items to your own outlet");
     }

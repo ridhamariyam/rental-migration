@@ -1,9 +1,13 @@
-import { requireTenantUser } from "@/server/auth/guard";
+import { outletScopeFor, requireTenantUser } from "@/server/auth/guard";
 import { hasPermission, Permission } from "@/lib/auth/permissions";
 import { AppError } from "@/lib/errors/app-error";
 import { apiError, apiSuccess } from "@/lib/errors/api-response";
 import { updateVariationSchema } from "@/lib/validation/variations";
-import { getVariationById, updateVariation } from "@/server/variations/service";
+import {
+  deleteVariation,
+  getVariationById,
+  updateVariation,
+} from "@/server/variations/service";
 
 export async function GET(
   request: Request,
@@ -43,12 +47,34 @@ export async function PATCH(
     }
     // Same guarantee for outlet scope — an outlet-scoped actor's picker
     // never offers another outlet, but a hand-crafted request could.
-    if (user.outletId && body.outletId !== user.outletId) {
+    const scopedOutletId = outletScopeFor(user);
+    if (scopedOutletId && body.outletId !== scopedOutletId) {
       throw AppError.forbidden("You can only move items to your own outlet");
     }
     const variation = await updateVariation(user.shopId, id, body);
 
     return apiSuccess(variation, "Item updated");
+  } catch (error) {
+    return apiError(error);
+  }
+}
+
+/**
+ * Permanent removal, owner-only (`Permission.RECORD_DELETE`). The service
+ * decides whether this particular row may go — it refuses whenever
+ * deleting would strand history that something else still depends on.
+ */
+export async function DELETE(
+  request: Request,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  try {
+    const user = await requireTenantUser(Permission.RECORD_DELETE);
+
+    const { id } = await params;
+    await deleteVariation(user, id);
+
+    return apiSuccess(null, "Item deleted");
   } catch (error) {
     return apiError(error);
   }

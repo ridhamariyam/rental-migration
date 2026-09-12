@@ -57,6 +57,7 @@ export default async function ProductDetailPage({
 
   const canManage = hasPermission(user.role, Permission.PRODUCT_MANAGE);
   const canViewCost = hasPermission(user.role, Permission.PRODUCT_COST_VIEW);
+  const canDelete = hasPermission(user.role, Permission.RECORD_DELETE);
   const { id } = await params;
   const { created } = await searchParams;
   const product = await getProductById(user.shopId, id);
@@ -251,6 +252,7 @@ export default async function ProductDetailPage({
         outlets={outlets}
         canManage={canManage}
         canViewCost={canViewCost}
+        canDelete={canDelete}
       />
     </main>
   );

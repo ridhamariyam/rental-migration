@@ -84,7 +84,11 @@ export default async function OutletsPage({
           key={JSON.stringify(query)}
           fallback={<OutletsTableSkeleton />}
         >
-          <OutletsTable shopId={user.shopId} query={query} />
+          <OutletsTable
+            shopId={user.shopId}
+            query={query}
+            canDelete={hasPermission(user.role, Permission.RECORD_DELETE)}
+          />
         </Suspense>
       </div>
     </main>

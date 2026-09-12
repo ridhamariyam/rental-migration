@@ -88,6 +88,13 @@ export enum Permission {
   // this screen. `ALL_PERMISSIONS` already covers `admin`/`super_admin`;
   // this is never added to `MANAGER_PERMISSIONS`/`STAFF_PERMISSIONS`.
   SHOP_MANAGE = "shop:manage",
+  /** Permanently removing a record rather than cancelling/deactivating it.
+   * Owner-only by construction: it is not in the staff or manager sets
+   * below, and `admin` holds every permission. Each delete still refuses
+   * on its own terms when removing the row would destroy history that
+   * something else depends on (money taken, stock out with a customer) —
+   * this only decides *who* may ask. */
+  RECORD_DELETE = "record:delete",
 }
 
 const ALL_PERMISSIONS = new Set(Object.values(Permission));

@@ -1,56 +1,46 @@
 import Link from "next/link";
+import Image from "next/image";
 import { notFound, redirect } from "next/navigation";
-import { ArrowLeftIcon } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
-import { Card, CardContent } from "@/components/ui/card";
-import { Separator } from "@/components/ui/separator";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+import { ArrowLeftIcon, ShirtIcon } from "lucide-react";
 import { PrintReceiptButton } from "@/components/tenant/print-receipt-button";
-import {
-  creditBreakdown,
-  outstandingBreakdown,
-} from "@/components/tenant/booking-payments-card";
+import { paymentState } from "@/components/tenant/payment-details-summary";
 import { getCurrentUser } from "@/lib/auth/session";
 import { hasPermission, Permission } from "@/lib/auth/permissions";
 import { tenantPaths } from "@/lib/tenant-paths";
-import { formatDate, formatMoney } from "@/lib/format";
+import { formatDate, formatDateTime, formatMoney } from "@/lib/format";
+import { compareMoney, ZERO_MONEY } from "@/lib/money";
 import { getReceipt } from "@/server/payments/service";
 
 type Params = Promise<{ id: string }>;
 
-const PAYMENT_TYPE_LABELS: Record<string, string> = {
-  advance: "Advance",
-  balance: "Balance",
-  security_deposit: "Security deposit",
-  damage_charge: "Damage charge",
-  refund: "Refund",
-  deposit_release: "Deposit refund",
-};
-
-const PAYMENT_METHOD_LABELS: Record<string, string> = {
-  cash: "Cash",
-  upi: "UPI",
-  card: "Card",
-  bank_transfer: "Bank transfer",
-  other: "Other",
-};
-
-const OUTFLOW_TYPES = new Set(["refund", "deposit_release"]);
-
 export const metadata = {
-  title: "Receipt — Rentique",
+  title: "Invoice — Rentique",
 };
 
-/** One combined receipt for the whole order — every item, one payment
- * ledger, one total. */
-export default async function BookingReceiptPage({
+/**
+ * What the shop hands (or sends) the customer: a printable invoice for the
+ * whole order.
+ *
+ * Laid out as a document rather than as dashboard cards — banner, who it
+ * is from, who it is for, the lines, the booking dates, the money, the
+ * terms — because that is what it has to look like once it is a PDF in a
+ * WhatsApp thread, with no app around it to give the numbers context.
+ *
+ * The internal rent/deposit breakdown deliberately does **not** appear
+ * here: a customer is owed four figures (what the goods cost, what is
+ * payable, what they have paid, what is left), and the booking detail page
+ * is where staff go for the ledger behind them.
+ */
+const TERMS = [
+  "No refund will be given after booking cancellation.",
+  "Products should be returned on the exact return date, without any damages.",
+  "Any damages must be paid by the customer.",
+  "Confirm your pickup and return dates before booking.",
+  "Make sure all your needs are clear before booking.",
+  "Security deposit (if applicable) will be refunded after return.",
+];
+
+export default async function BookingInvoicePage({
   params,
 }: {
   params: Params;
@@ -71,8 +61,34 @@ export default async function BookingReceiptPage({
     notFound();
   }
 
+  const state = paymentState(receipt.summary);
+  const billedItems = receipt.items.filter(
+    (item) => item.status !== "cancelled",
+  );
+
+  // The order's own pickup/return window: the earliest date anything goes
+  // out and the latest anything is due back, which is what the customer
+  // has to remember — per-line dates stay on the lines.
+  const pickupDate = billedItems.reduce<string | null>(
+    (earliest, item) =>
+      !earliest || item.fromDate < earliest ? item.fromDate : earliest,
+    null,
+  );
+  const returnDate = billedItems.reduce<string | null>(
+    (latest, item) => (!latest || item.toDate > latest ? item.toDate : latest),
+    null,
+  );
+
+  const hasDeposit =
+    compareMoney(receipt.charges.securityDeposit, ZERO_MONEY) > 0;
+  const hasDiscount =
+    compareMoney(receipt.charges.discountAmount, ZERO_MONEY) > 0;
+  const hasExtra = compareMoney(receipt.charges.additionalCost, ZERO_MONEY) > 0;
+  const hasDamage =
+    compareMoney(receipt.charges.damageChargeTotal, ZERO_MONEY) > 0;
+
   return (
-    <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-6 p-4 sm:p-6">
+    <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-4 p-4 sm:p-6">
       <div className="flex items-center justify-between gap-3 print:hidden">
         <Link
           href={`${tenantPaths.bookings}/${receipt.booking.id}`}
@@ -84,261 +100,267 @@ export default async function BookingReceiptPage({
         <PrintReceiptButton />
       </div>
 
-      <Card className="print:border-none print:shadow-none">
-        <CardContent className="flex flex-col gap-6 p-5 sm:p-8">
-          <div className="flex flex-wrap items-start justify-between gap-4">
-            <div className="flex flex-col gap-1">
-              <h1 className="text-lg font-semibold tracking-tight">
-                {receipt.shop.name}
-              </h1>
-              {receipt.shop.address ? (
-                <p className="text-muted-foreground text-sm">
-                  {receipt.shop.address}
-                </p>
+      {/* The document itself. Its own background and border rather than a
+          Card, so print keeps the banner and drops the app chrome. */}
+      <article className="bg-card ring-foreground/10 overflow-hidden rounded-xl shadow-xs ring-1 print:rounded-none print:shadow-none print:ring-0">
+        <header className="bg-primary text-primary-foreground flex items-center justify-end px-6 py-4 sm:px-8">
+          <h1 className="text-2xl font-bold tracking-[0.2em] uppercase sm:text-3xl">
+            Invoice
+          </h1>
+        </header>
+
+        <div className="flex flex-col gap-6 p-6 sm:p-8">
+          <div className="flex flex-wrap items-start justify-between gap-6">
+            <div className="flex items-start gap-3">
+              {receipt.shop.logoUrl ? (
+                <Image
+                  src={receipt.shop.logoUrl}
+                  alt=""
+                  width={56}
+                  height={56}
+                  className="size-14 rounded-md object-cover"
+                  unoptimized
+                />
               ) : null}
-              {receipt.shop.phone ? (
-                <p className="text-muted-foreground text-sm">
-                  {receipt.shop.phone}
+              <div className="flex flex-col gap-0.5">
+                <p className="text-primary text-base font-bold tracking-wide uppercase">
+                  {receipt.shop.name}
                 </p>
-              ) : null}
-            </div>
-            <div className="flex flex-col items-end gap-1">
-              <span className="text-muted-foreground text-xs tracking-wide uppercase">
-                Receipt
-              </span>
-              <span className="font-mono text-sm font-medium">
-                {receipt.booking.bookingNumber}
-              </span>
-              <span className="text-muted-foreground text-xs">
-                Created {formatDate(receipt.booking.createdAt, "long")}
-              </span>
-            </div>
-          </div>
-
-          <Separator />
-
-          <div className="flex flex-col gap-0.5 text-sm">
-            <span className="text-muted-foreground text-xs">Customer</span>
-            <span className="font-medium">{receipt.customer.name}</span>
-            <span className="text-muted-foreground">
-              {receipt.customer.phone}
-            </span>
-          </div>
-
-          <Separator />
-
-          <div className="flex flex-col gap-3">
-            <span className="text-muted-foreground text-xs tracking-wide uppercase">
-              {receipt.items.length > 1
-                ? `Items (${receipt.items.length})`
-                : "Item"}
-            </span>
-            <div className="flex flex-col gap-3 text-sm">
-              {receipt.items.map((item) => {
-                const itemLabel = [item.color, item.size]
-                  .filter(Boolean)
-                  .join(", ");
-                return (
-                  <div
-                    key={item.id}
-                    className="flex flex-wrap items-center justify-between gap-2"
-                  >
-                    <div className="flex flex-col gap-0.5">
-                      <span className="font-medium">
-                        {item.productName}
-                        {itemLabel ? ` (${itemLabel})` : ""}
-                        {item.quantity > 1 ? ` × ${item.quantity}` : ""}
-                      </span>
-                      <span className="text-muted-foreground text-xs">
-                        SKU {item.sku} · {formatDate(item.fromDate)} →{" "}
-                        {formatDate(item.toDate)}
-                        {Number(item.damageCharge) > 0
-                          ? ` · Damage ${formatMoney(item.damageCharge)}`
-                          : ""}
-                      </span>
-                    </div>
-                    <span className="font-medium">
-                      {formatMoney(item.grossRent)}
-                    </span>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-
-          <Separator />
-
-          <div className="flex flex-col gap-2 text-sm">
-            <div className="flex items-center justify-between">
-              <span className="text-muted-foreground">Rent (all items)</span>
-              <span className="font-medium">
-                {formatMoney(receipt.charges.grossRentTotal)}
-              </span>
-            </div>
-            {Number(receipt.charges.discountAmount) > 0 ? (
-              <div className="flex items-center justify-between">
-                <span className="text-muted-foreground">Discount</span>
-                <span className="font-medium">
-                  -{formatMoney(receipt.charges.discountAmount)}
-                </span>
+                {receipt.shop.address ? (
+                  <p className="text-muted-foreground text-sm">
+                    {receipt.shop.address}
+                  </p>
+                ) : null}
+                {receipt.shop.phone ? (
+                  <p className="text-muted-foreground text-sm">
+                    {receipt.shop.phone}
+                  </p>
+                ) : null}
+                {receipt.shop.email ? (
+                  <p className="text-muted-foreground text-sm">
+                    {receipt.shop.email}
+                  </p>
+                ) : null}
               </div>
-            ) : null}
-            {Number(receipt.charges.additionalCost) > 0 ? (
-              <div className="flex items-center justify-between">
-                <span className="text-muted-foreground">
-                  {receipt.charges.additionalCostReason
-                    ? `Additional cost — ${receipt.charges.additionalCostReason}`
-                    : "Additional cost"}
-                </span>
-                <span className="font-medium">
-                  {formatMoney(receipt.charges.additionalCost)}
-                </span>
-              </div>
-            ) : null}
-            {Number(receipt.charges.damageChargeTotal) > 0 ? (
-              <div className="flex items-center justify-between">
-                <span className="text-muted-foreground">Damage charge</span>
-                <span className="font-medium">
-                  {formatMoney(receipt.charges.damageChargeTotal)}
-                </span>
-              </div>
-            ) : null}
-            <div className="flex items-center justify-between">
-              <span className="text-muted-foreground">Rent payable</span>
-              <span className="font-medium">
-                {formatMoney(receipt.charges.totalAmount)}
-              </span>
             </div>
-            <div className="flex items-center justify-between">
-              <span className="text-muted-foreground">Security deposit</span>
-              <span className="font-medium">
-                {formatMoney(receipt.charges.securityDeposit)}
-              </span>
-            </div>
-            <Separator />
-            <div className="flex items-center justify-between text-base">
-              <span className="font-semibold">Total receivable</span>
-              <span className="font-semibold">
-                {formatMoney(receipt.summary.totalReceivable)}
-              </span>
-            </div>
-          </div>
 
-          <Separator />
-
-          <div className="flex flex-col gap-3">
-            <span className="text-muted-foreground text-xs tracking-wide uppercase">
-              Payments
-            </span>
-            {receipt.payments.length === 0 ? (
+            <div className="flex flex-col items-end gap-0.5 text-right">
+              <p className="text-primary text-xs font-semibold tracking-wide uppercase">
+                Bill to
+              </p>
+              <p className="text-base font-semibold">{receipt.customer.name}</p>
               <p className="text-muted-foreground text-sm">
-                No payments recorded yet.
+                {receipt.customer.phone}
               </p>
-            ) : (
-              <Table>
-                <TableHeader>
-                  <TableRow className="hover:bg-transparent">
-                    <TableHead className="text-muted-foreground h-8 px-0 text-xs font-medium tracking-wide uppercase">
-                      Date
-                    </TableHead>
-                    <TableHead className="text-muted-foreground h-8 text-xs font-medium tracking-wide uppercase">
-                      Type
-                    </TableHead>
-                    {/* A receipt stays a table on a phone — it is a
-                        document, not a list — so the method rides along
-                        under the type instead of adding a fourth column
-                        that pushes the whole thing off the screen. */}
-                    <TableHead className="text-muted-foreground hidden h-8 text-xs font-medium tracking-wide uppercase sm:table-cell">
-                      Method
-                    </TableHead>
-                    <TableHead className="text-muted-foreground h-8 text-right text-xs font-medium tracking-wide uppercase">
-                      Amount
-                    </TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {receipt.payments.map((payment) => {
-                    const isOutflow = OUTFLOW_TYPES.has(payment.paymentType);
-                    return (
-                      <TableRow key={payment.id}>
-                        <TableCell className="text-muted-foreground px-0 py-2 text-xs sm:text-sm sm:whitespace-nowrap">
-                          {formatDate(payment.createdAt)}
-                        </TableCell>
-                        <TableCell className="py-2 text-sm">
-                          <div className="flex flex-col items-start gap-1">
-                            {PAYMENT_TYPE_LABELS[payment.paymentType] ??
-                              payment.paymentType}
-                            <Badge
-                              variant="outline"
-                              className="font-normal sm:hidden"
-                            >
-                              {PAYMENT_METHOD_LABELS[payment.paymentMethod] ??
-                                payment.paymentMethod}
-                            </Badge>
-                          </div>
-                        </TableCell>
-                        <TableCell className="hidden py-2 sm:table-cell">
-                          <Badge variant="outline" className="font-normal">
-                            {PAYMENT_METHOD_LABELS[payment.paymentMethod] ??
-                              payment.paymentMethod}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="py-2 text-right text-sm font-medium">
-                          {isOutflow ? "-" : ""}
-                          {formatMoney(payment.amount)}
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })}
-                </TableBody>
-              </Table>
-            )}
-
-            {Number(receipt.summary.refunded) > 0 ||
-            Number(receipt.summary.depositReleased) > 0 ? (
-              <div className="flex flex-col gap-1 text-sm">
-                {Number(receipt.summary.refunded) > 0 ? (
-                  <div className="flex items-center justify-between">
-                    <span className="text-muted-foreground">Refunded</span>
-                    <span className="font-medium">
-                      -{formatMoney(receipt.summary.refunded)}
-                    </span>
-                  </div>
-                ) : null}
-                {Number(receipt.summary.depositReleased) > 0 ? (
-                  <div className="flex items-center justify-between">
-                    <span className="text-muted-foreground">
-                      Deposit returned
-                    </span>
-                    <span className="font-medium">
-                      -{formatMoney(receipt.summary.depositReleased)}
-                    </span>
-                  </div>
-                ) : null}
-              </div>
-            ) : null}
-
-            <Separator />
-
-            <div className="flex items-center justify-between text-base">
-              <span className="font-semibold">Outstanding</span>
-              <span className="font-semibold">
-                {formatMoney(receipt.summary.outstanding)}
-              </span>
+              {receipt.customer.location ? (
+                <p className="text-muted-foreground text-sm">
+                  {receipt.customer.location}
+                </p>
+              ) : null}
             </div>
-            {outstandingBreakdown(receipt.summary) ? (
-              <p className="text-muted-foreground -mt-2 text-xs">
-                {outstandingBreakdown(receipt.summary)}
-              </p>
-            ) : null}
-            {creditBreakdown(receipt.summary) ? (
-              <p className="-mt-2 text-xs text-amber-600 dark:text-amber-400">
-                {creditBreakdown(receipt.summary)} — a refund is owed.
-              </p>
-            ) : null}
           </div>
-        </CardContent>
-      </Card>
+
+          <dl className="grid grid-cols-2 gap-x-6 gap-y-1 text-sm sm:max-w-sm">
+            <dt className="text-muted-foreground text-xs font-semibold tracking-wide uppercase">
+              Invoice ID
+            </dt>
+            <dd className="font-mono font-medium">
+              {receipt.booking.bookingNumber}
+            </dd>
+            <dt className="text-muted-foreground text-xs font-semibold tracking-wide uppercase">
+              Date
+            </dt>
+            <dd className="font-medium">
+              {formatDateTime(receipt.booking.createdAt)}
+            </dd>
+          </dl>
+
+          {/* Items. A table on every width — it is a document, so the
+              columns stay put; only the padding and type tighten on a
+              phone. */}
+          <div className="overflow-hidden rounded-lg border">
+            <table className="w-full border-collapse text-sm">
+              <thead className="bg-muted/50">
+                <tr className="text-muted-foreground text-left text-xs font-semibold tracking-wide uppercase">
+                  <th className="w-10 px-2 py-2 sm:px-3">No</th>
+                  <th className="px-2 py-2 sm:px-3">Item</th>
+                  <th className="w-12 px-2 py-2 text-right sm:px-3">Qty</th>
+                  <th className="w-24 px-2 py-2 text-right sm:px-3">Amount</th>
+                </tr>
+              </thead>
+              <tbody>
+                {billedItems.map((item, index) => (
+                  <tr key={item.id} className="border-t">
+                    <td className="text-muted-foreground px-2 py-2.5 align-top sm:px-3">
+                      {index + 1}
+                    </td>
+                    <td className="px-2 py-2.5 sm:px-3">
+                      <div className="flex items-start gap-2.5">
+                        <span className="bg-muted flex size-9 shrink-0 items-center justify-center overflow-hidden rounded border">
+                          {item.image ? (
+                            <Image
+                              src={item.image}
+                              alt=""
+                              width={36}
+                              height={36}
+                              className="size-full object-cover"
+                              unoptimized
+                            />
+                          ) : (
+                            <ShirtIcon className="text-muted-foreground size-4" />
+                          )}
+                        </span>
+                        <div className="flex min-w-0 flex-col">
+                          <span className="font-medium">
+                            {item.productName}
+                            {item.color || item.size
+                              ? ` (${[item.color, item.size].filter(Boolean).join(", ")})`
+                              : ""}
+                          </span>
+                          <span className="text-muted-foreground text-xs">
+                            {item.categoryName
+                              ? `Category: ${item.categoryName} · `
+                              : ""}
+                            {item.totalDays} day
+                            {item.totalDays === 1 ? "" : "s"}
+                          </span>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-2 py-2.5 text-right align-top sm:px-3">
+                      {item.quantity}
+                    </td>
+                    <td className="px-2 py-2.5 text-right align-top font-medium sm:px-3">
+                      {formatMoney(item.grossRent)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
+            {/* Booking info — the two dates the customer is being asked to
+                keep to, which is what most of the phone calls are about. */}
+            <div className="flex flex-col gap-1">
+              <p className="text-primary text-xs font-semibold tracking-wide uppercase">
+                Booking info
+              </p>
+              <p className="text-sm">
+                <span className="text-muted-foreground">Pickup: </span>
+                {pickupDate ? formatDate(pickupDate, "long") : "—"}
+              </p>
+              <p className="text-sm">
+                <span className="text-muted-foreground">Return: </span>
+                {returnDate ? formatDate(returnDate, "long") : "—"}
+              </p>
+            </div>
+
+            <div className="flex flex-col gap-2 text-sm">
+              <div className="flex items-center justify-between">
+                <span className="text-muted-foreground text-xs font-semibold tracking-wide uppercase">
+                  Product cost
+                </span>
+                <span className="font-medium">
+                  {formatMoney(receipt.charges.grossRentTotal)}
+                </span>
+              </div>
+              {hasDiscount ? (
+                <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground">Discount</span>
+                  <span className="font-medium">
+                    -{formatMoney(receipt.charges.discountAmount)}
+                  </span>
+                </div>
+              ) : null}
+              {hasExtra ? (
+                <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground">
+                    {receipt.charges.additionalCostReason || "Extra charge"}
+                  </span>
+                  <span className="font-medium">
+                    {formatMoney(receipt.charges.additionalCost)}
+                  </span>
+                </div>
+              ) : null}
+              {hasDamage ? (
+                <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground">Damage charge</span>
+                  <span className="font-medium">
+                    {formatMoney(receipt.charges.damageChargeTotal)}
+                  </span>
+                </div>
+              ) : null}
+              {hasDeposit ? (
+                <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground">
+                    Security deposit
+                  </span>
+                  <span className="font-medium">
+                    {formatMoney(receipt.charges.securityDeposit)}
+                  </span>
+                </div>
+              ) : null}
+
+              <div className="border-t pt-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-primary text-base font-bold tracking-wide uppercase">
+                    Total payable
+                  </span>
+                  <span className="text-primary text-base font-bold">
+                    {formatMoney(state.totalAmount)}
+                  </span>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between">
+                <span className="font-semibold tracking-wide uppercase">
+                  Paid amount
+                </span>
+                <span className="font-semibold">
+                  {formatMoney(state.amountPaid)}
+                </span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span
+                  className={
+                    state.tone === "paid"
+                      ? "font-semibold tracking-wide uppercase"
+                      : "text-destructive font-semibold tracking-wide uppercase"
+                  }
+                >
+                  Balance due
+                </span>
+                <span
+                  className={
+                    state.tone === "paid"
+                      ? "font-semibold"
+                      : "text-destructive font-semibold"
+                  }
+                >
+                  {formatMoney(state.balanceAmount)}
+                </span>
+              </div>
+              <p className="text-muted-foreground text-right text-xs font-semibold tracking-wide">
+                {state.label}
+              </p>
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-1 border-t pt-4">
+            <p className="text-xs font-semibold tracking-wide uppercase">
+              Terms and <span className="text-primary">conditions</span>
+            </p>
+            <ul className="text-muted-foreground flex flex-col gap-0.5 text-xs">
+              {TERMS.map((term) => (
+                <li key={term}>- {term}</li>
+              ))}
+            </ul>
+          </div>
+        </div>
+
+        <footer className="bg-primary h-6" />
+      </article>
     </main>
   );
 }

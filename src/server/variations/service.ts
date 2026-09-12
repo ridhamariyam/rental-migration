@@ -1,12 +1,20 @@
 import "server-only";
 
-import { and, desc, eq, ilike, isNull, ne, or } from "drizzle-orm";
+import { and, count, desc, eq, ilike, isNull, ne, or } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { ZERO_MONEY } from "@/lib/money";
 import { AppError } from "@/lib/errors/app-error";
 import { generateBarcode, generateSku } from "@/lib/barcode";
-import { outlets, productVariations, products } from "@/lib/db/schema";
+import {
+  bookingItems,
+  outlets,
+  productVariations,
+  products,
+} from "@/lib/db/schema";
 import { requireActiveOutlet } from "@/server/outlets/service";
+import { Permission, hasPermission } from "@/lib/auth/permissions";
+import type { TenantSessionUser } from "@/server/auth/guard";
+import { AuditAction, recordAudit } from "@/server/audit/service";
 import type {
   CreateVariationInput,
   UpdateVariationInput,
@@ -412,6 +420,58 @@ export async function createVariation(
       }),
     ),
   );
+}
+
+/**
+ * Permanently removes one physical item. Owner-only.
+ *
+ * Refused once it has been booked — a booking line names this exact
+ * barcoded copy, and the rental history has to keep resolving. Retiring
+ * the item (status `retired`) is the answer for one that is lost, sold or
+ * worn out; this is for a row added by mistake.
+ */
+export async function deleteVariation(
+  actor: TenantSessionUser,
+  id: string,
+): Promise<void> {
+  if (!hasPermission(actor.role, Permission.RECORD_DELETE)) {
+    throw AppError.forbidden("You do not have permission to do this");
+  }
+
+  const existing = await getVariationById(actor.shopId, id);
+  if (!existing) {
+    throw AppError.notFound("Item not found");
+  }
+
+  const [{ value: bookedCount }] = await db
+    .select({ value: count() })
+    .from(bookingItems)
+    .where(eq(bookingItems.variationId, id));
+
+  if (bookedCount > 0) {
+    throw new AppError(
+      `This item appears on ${bookedCount} booking${bookedCount === 1 ? "" : "s"} — set it to retired instead so that history stays readable`,
+      409,
+    );
+  }
+
+  await recordAudit(db, {
+    shopId: actor.shopId,
+    userId: actor.id,
+    action: AuditAction.VARIATION_DELETED,
+    entityType: "variation",
+    entityId: id,
+    summary: `Item ${existing.sku} deleted`,
+    before: {
+      sku: existing.sku,
+      barcode: existing.barcode,
+      color: existing.color,
+      size: existing.size,
+      rentPrice: existing.rentPrice,
+    },
+  });
+
+  await db.delete(productVariations).where(eq(productVariations.id, id));
 }
 
 export async function updateVariation(

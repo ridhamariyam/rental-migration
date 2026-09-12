@@ -6,6 +6,7 @@ import { AppError } from "@/lib/errors/app-error";
 import {
   bookingItems,
   bookings,
+  categories,
   customers,
   payments,
   products,
@@ -646,11 +647,25 @@ export type BookingReceipt = {
     status: Booking["status"];
     createdAt: Date;
   };
-  shop: { id: string; name: string; address: string | null; phone: string | null };
-  customer: { id: string; name: string; phone: string };
+  shop: {
+    id: string;
+    name: string;
+    address: string | null;
+    phone: string | null;
+    email: string | null;
+    logoUrl: string | null;
+  };
+  customer: {
+    id: string;
+    name: string;
+    phone: string;
+    location: string | null;
+  };
   items: {
     id: string;
     productName: string;
+    categoryName: string | null;
+    image: string | null;
     sku: string;
     color: string | null;
     size: string | null;
@@ -702,9 +717,12 @@ export async function getReceipt(
       shopName: shops.name,
       shopAddress: shops.address,
       shopPhone: shops.phone,
+      shopEmail: shops.email,
+      shopLogoUrl: shops.logoUrl,
       customerFirstName: customers.firstName,
       customerLastName: customers.lastName,
       customerPhone: customers.phone,
+      customerLocation: customers.location,
     })
     .from(bookings)
     .innerJoin(shops, eq(bookings.shopId, shops.id))
@@ -721,6 +739,12 @@ export async function getReceipt(
       .select({
         id: bookingItems.id,
         productName: products.name,
+        categoryName: categories.name,
+        // The photo of the exact copy rented, falling back to the
+        // catalogue cover for products created before photos moved onto
+        // items (see `product-variations.ts`).
+        variationImage: productVariations.image,
+        productImage: products.image,
         variationSku: productVariations.sku,
         variationColor: productVariations.color,
         variationSize: productVariations.size,
@@ -739,6 +763,7 @@ export async function getReceipt(
         productVariations,
         eq(bookingItems.variationId, productVariations.id),
       )
+      .leftJoin(categories, eq(products.categoryId, categories.id))
       .where(eq(bookingItems.bookingId, bookingId))
       .orderBy(asc(bookingItems.createdAt), asc(bookingItems.id)),
     db
@@ -784,15 +809,20 @@ export async function getReceipt(
       name: row.shopName,
       address: row.shopAddress,
       phone: row.shopPhone,
+      email: row.shopEmail,
+      logoUrl: row.shopLogoUrl,
     },
     customer: {
       id: row.booking.customerId,
       name: `${row.customerFirstName} ${row.customerLastName}`,
       phone: row.customerPhone,
+      location: row.customerLocation,
     },
     items: itemRows.map((item) => ({
       id: item.id,
       productName: item.productName,
+      categoryName: item.categoryName,
+      image: item.variationImage ?? item.productImage,
       sku: item.variationSku,
       color: item.variationColor,
       size: item.variationSize,

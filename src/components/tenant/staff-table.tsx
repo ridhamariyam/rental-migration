@@ -4,6 +4,7 @@ import { EyeIcon, UsersIcon } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { DeleteRecordButton } from "@/components/tenant/delete-record-button";
 import {
   ListCardRow,
   ListCards,
@@ -60,9 +61,12 @@ function staffHref(query: StaffListQuery, page: number): string {
 export async function StaffTable({
   actor,
   query,
+  canDelete = false,
 }: {
   actor: TenantSessionUser;
   query: StaffListQuery;
+  /** Owner-only (`Permission.RECORD_DELETE`). */
+  canDelete?: boolean;
 }) {
   const { items, total, page, totalPages } = await listStaff(actor, query);
   const hasFilters =
@@ -133,15 +137,25 @@ export async function StaffTable({
                 </>
               }
               action={
-                <Button
-                  variant="outline"
-                  size="sm"
-                  nativeButton={false}
-                  render={<Link href={`${tenantPaths.staff}/${member.id}`} />}
-                >
-                  <EyeIcon />
-                  View
-                </Button>
+                <div className="flex items-center gap-1">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    nativeButton={false}
+                    render={<Link href={`${tenantPaths.staff}/${member.id}`} />}
+                  >
+                    <EyeIcon />
+                    View
+                  </Button>
+                  {canDelete ? (
+                    <DeleteRecordButton
+                      endpoint={`/api/staff/${member.id}`}
+                      title={`Delete ${name}?`}
+                      description="The account is removed for good. An account with attendance, payslips or bookings behind it cannot be deleted — deactivate it instead."
+                      confirmLabel="Delete"
+                    />
+                  ) : null}
+                </div>
               }
             />
           );

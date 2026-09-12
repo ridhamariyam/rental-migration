@@ -13,6 +13,7 @@ import {
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { DeleteRecordButton } from "@/components/tenant/delete-record-button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { AddBookingItemButton } from "@/components/tenant/add-booking-item-dialog";
 import { BookingStatusBadge } from "@/components/tenant/booking-status-badge";
@@ -35,7 +36,10 @@ import {
   getBookingItems,
   type BookingItemDetail,
 } from "@/server/bookings/service";
-import { listPaymentsForBooking, type PaymentSummary } from "@/server/payments/service";
+import {
+  listPaymentsForBooking,
+  type PaymentSummary,
+} from "@/server/payments/service";
 
 type Params = Promise<{ id: string }>;
 type SearchParams = Promise<Record<string, string | string[] | undefined>>;
@@ -43,7 +47,9 @@ type SearchParams = Promise<Record<string, string | string[] | undefined>>;
 export async function generateMetadata({ params }: { params: Params }) {
   const user = await getCurrentUser();
   const { id } = await params;
-  const booking = user?.shopId ? await getBookingById(user.shopId, id, user) : null;
+  const booking = user?.shopId
+    ? await getBookingById(user.shopId, id, user)
+    : null;
 
   return {
     title: booking
@@ -75,6 +81,7 @@ export default async function BookingDetailPage({
   const canViewPayments = hasPermission(user.role, Permission.PAYMENT_VIEW);
   const canRecordPayment = hasPermission(user.role, Permission.PAYMENT_RECORD);
   const canRefund = hasPermission(user.role, Permission.PAYMENT_REFUND);
+  const canDelete = hasPermission(user.role, Permission.RECORD_DELETE);
   const { id } = await params;
   const { created, count } = await searchParams;
   const booking = await getBookingById(user.shopId, id, user);
@@ -116,7 +123,9 @@ export default async function BookingDetailPage({
           barcode: item.variationBarcode,
           label: [
             item.productName,
-            [item.variationColor, item.variationSize].filter(Boolean).join(", "),
+            [item.variationColor, item.variationSize]
+              .filter(Boolean)
+              .join(", "),
           ]
             .filter(Boolean)
             .join(" — "),
@@ -172,12 +181,25 @@ export default async function BookingDetailPage({
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
+            {canDelete ? (
+              <DeleteRecordButton
+                variant="button"
+                label="Delete"
+                endpoint={`/api/bookings/${booking.id}`}
+                title={`Delete ${booking.bookingNumber}?`}
+                description="The order, its items, its payment ledger and its queued messages are removed for good. An order whose items are still out with the customer has to be returned or cancelled first."
+                confirmLabel="Delete booking"
+                redirectTo={tenantPaths.bookings}
+              />
+            ) : null}
             {canViewPayments ? (
               <Button
                 variant="outline"
                 nativeButton={false}
                 render={
-                  <Link href={`${tenantPaths.bookings}/${booking.id}/receipt`} />
+                  <Link
+                    href={`${tenantPaths.bookings}/${booking.id}/receipt`}
+                  />
                 }
               >
                 <ReceiptTextIcon />
@@ -212,7 +234,9 @@ export default async function BookingDetailPage({
         <Card className="lg:col-span-2">
           <CardHeader>
             <CardTitle className="text-base">
-              {hasMultipleItems ? `Items in this order (${items.length})` : "Item"}
+              {hasMultipleItems
+                ? `Items in this order (${items.length})`
+                : "Item"}
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -322,7 +346,10 @@ export default async function BookingDetailPage({
                 <span className="font-semibold">
                   {formatMoney(
                     summary?.totalReceivable ??
-                      String(Number(booking.totalAmount) + Number(booking.securityDeposit)),
+                      String(
+                        Number(booking.totalAmount) +
+                          Number(booking.securityDeposit),
+                      ),
                   )}
                 </span>
               </div>
@@ -443,7 +470,9 @@ function BookingItemRow({
     item.status !== "cancelled" &&
     canTransition(item.status, "cancelled");
   const canConfirmPickup =
-    canPickup && item.status !== "rented" && canTransition(item.status, "rented");
+    canPickup &&
+    item.status !== "rented" &&
+    canTransition(item.status, "rented");
   const canReturnItem =
     canReturn &&
     item.status !== "returned" &&
@@ -452,8 +481,10 @@ function BookingItemRow({
   const detailParts = [
     `${formatDate(item.fromDate, "long")} \u2192 ${formatDate(item.toDate, "long")} (${item.totalDays} day${item.totalDays === 1 ? "" : "s"})`,
   ];
-  if (item.pickedUpAt) detailParts.push(`Picked up ${formatDate(item.pickedUpAt)}`);
-  if (item.returnedAt) detailParts.push(`Returned ${formatDate(item.returnedAt)}`);
+  if (item.pickedUpAt)
+    detailParts.push(`Picked up ${formatDate(item.pickedUpAt)}`);
+  if (item.returnedAt)
+    detailParts.push(`Returned ${formatDate(item.returnedAt)}`);
 
   // Charges are shown as a compact ledger of only the lines that actually
   // apply to this item — a flat "±" sentence reads fine for one item but
@@ -481,7 +512,10 @@ function BookingItemRow({
         <div className="flex min-w-0 flex-col gap-1">
           <div className="flex flex-wrap items-center gap-2">
             <span className="bg-muted flex size-8 shrink-0 items-center justify-center rounded-lg">
-              <ShirtIcon className="text-muted-foreground size-4" aria-hidden="true" />
+              <ShirtIcon
+                className="text-muted-foreground size-4"
+                aria-hidden="true"
+              />
             </span>
             <span className="text-sm font-medium">
               {hasMultipleItems ? `Item ${index + 1} · ` : ""}
@@ -546,7 +580,10 @@ function BookingItemRow({
       {canViewPayments ? (
         <div className="border-border/60 bg-muted/20 flex flex-col gap-1.5 rounded-lg border px-3 py-2.5 text-xs sm:pl-11">
           {chargeLines.map((line) => (
-            <div key={line.label} className="flex items-center justify-between gap-3">
+            <div
+              key={line.label}
+              className="flex items-center justify-between gap-3"
+            >
               <span className="text-muted-foreground">{line.label}</span>
               <span>
                 {line.sign ?? ""}

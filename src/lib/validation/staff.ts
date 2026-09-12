@@ -43,6 +43,12 @@ export const createStaffSchema = z.object({
   phone: optionalPhoneSchema,
   role: staffRoleSchema,
   outletId: z.uuid("Choose an outlet"),
+  /** The day this person started — payroll pays nothing before it, so a
+   * mid-month joiner is not scored absent for the days they had not
+   * started yet (see `calculateSalary`). Optional: an account added
+   * before the field existed simply has none, and payroll then falls back
+   * to the pay configuration's effective date. */
+  joinedOn: z.iso.date("Enter a valid date").optional(),
 });
 
 export type CreateStaffInput = z.infer<typeof createStaffSchema>;
@@ -59,6 +65,7 @@ export const updateStaffSchema = z.object({
   phone: optionalPhoneSchema,
   role: staffRoleSchema,
   outletId: z.uuid("Choose an outlet"),
+  joinedOn: z.iso.date("Enter a valid date").optional(),
 });
 
 export type UpdateStaffInput = z.infer<typeof updateStaffSchema>;

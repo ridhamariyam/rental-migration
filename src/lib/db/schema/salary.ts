@@ -31,24 +31,41 @@ export const salaries = pgTable(
     staffId: uuid("staff_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
-    amount: numeric("amount", { precision: 12, scale: 2 }).notNull(),
+    //: Reference only since the move to the hours-worked model: what the
+    //: role is nominally worth per month, shown on the configuration and
+    //: useful for budgeting, but **never** divided into an hourly figure
+    //: (see `hourlyRate`). Nullable because a shop that pays purely by the
+    //: hour has no monthly number to state.
+    amount: numeric("amount", { precision: 12, scale: 2 }),
+    //: What one hour of approved, actually-worked time is paid at — the
+    //: basis of every payslip (`basePay = regular hours × this`). Entered
+    //: by the owner per staff member; deliberately never derived from
+    //: `amount ÷ standardHoursPerDay`, which would silently re-introduce
+    //: the monthly-salary model this replaced and price overtime against
+    //: a number nobody agreed to.
+    hourlyRate: numeric("hourly_rate", { precision: 12, scale: 2 })
+      .notNull()
+      .default("0.00"),
     // 0=Sunday…6=Saturday, the day that's never a working day when
     // deriving how many working days fall in a given calendar month
     // (naturally 26 or 27 depending on the month's length) — null means no
     // weekly off (every calendar day is a working day).
     weeklyOffDay: integer("weekly_off_day"),
-    // Hours a full working day is worth — the divisor for turning `amount`
-    // into a per-minute rate (see `calculateSalary`), not just a per-day
-    // one. Numeric so a shop can configure e.g. 8.5.
+    // Hours a full working day is worth. Not a pay divisor — it is the
+    // line between ordinary hours (paid at `hourlyRate`) and extra
+    // worktime (paid at `overtimeRatePerHour`), and what one day of
+    // approved leave is credited as. Numeric so a shop can configure 8.5.
     standardHoursPerDay: numeric("standard_hours_per_day", {
       precision: 4,
       scale: 2,
     })
       .notNull()
       .default("8.00"),
-    // Flat amount paid per hour worked beyond `standardHoursPerDay` on a
-    // given day. Null/0 disables overtime pay entirely (extra hours are
-    // simply not compensated, but not penalised either).
+    // What one hour of *extra worktime* is paid at — hours worked beyond
+    // `standardHoursPerDay` on a given day. Configured separately from
+    // `hourlyRate` so a shop can pay a premium (or the same rate) for
+    // extra time; null/0 leaves extra hours uncompensated rather than
+    // penalised.
     overtimeRatePerHour: numeric("overtime_rate_per_hour", {
       precision: 12,
       scale: 2,
@@ -89,7 +106,11 @@ export const salaryPayslips = pgTable(
       .references(() => users.id, { onDelete: "cascade" }),
     periodYear: integer("period_year").notNull(),
     periodMonth: integer("period_month").notNull(),
-    baseSalary: numeric("base_salary", { precision: 12, scale: 2 }).notNull(),
+    //: The monthly reference figure in force that month, if the shop
+    //: states one. Never used in the arithmetic — `basePay` comes from
+    //: hours × `hourlyRate` — kept so a payslip can still show what the
+    //: role was nominally worth.
+    baseSalary: numeric("base_salary", { precision: 12, scale: 2 }),
     // Working days actually computed for this specific period (weekly-off
     // days excluded), not a static config number — see `calculateSalary`.
     workingDays: integer("working_days").notNull(),
@@ -110,19 +131,24 @@ export const salaryPayslips = pgTable(
       precision: 12,
       scale: 2,
     }),
-    // `baseSalary / totalStandardMinutes * 60` — display-only reference
-    // rate, not itself used to derive `basePay` (that's one BigInt
-    // division over the whole period, not this rate times hours, to avoid
-    // compounding rounding — see `proRateMoney`).
+    // The configured rate this payslip was priced at, frozen here so a
+    // later raise never repriced a month already paid.
     hourlyRate: numeric("hourly_rate", { precision: 12, scale: 2 })
       .notNull()
       .default("0.00"),
+    // Approved ordinary minutes this period: time worked up to
+    // `standardHoursPerDay` each day, plus a standard day for each
+    // approved leave day. `basePay = regularMinutes ÷ 60 × hourlyRate`.
+    regularMinutes: integer("regular_minutes").notNull().default(0),
     basePay: numeric("base_pay", { precision: 12, scale: 2 })
       .notNull()
       .default("0.00"),
     overtimePay: numeric("overtime_pay", { precision: 12, scale: 2 })
       .notNull()
       .default("0.00"),
+    // Approved extra worktime: minutes beyond `standardHoursPerDay` on
+    // the days they were actually worked. `overtimePay = these ÷ 60 ×
+    // overtimeRatePerHour`.
     overtimeMinutes: integer("overtime_minutes").notNull().default(0),
     shortfallMinutes: integer("shortfall_minutes").notNull().default(0),
     netAmount: numeric("net_amount", { precision: 12, scale: 2 }).notNull(),

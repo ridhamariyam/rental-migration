@@ -1,5 +1,6 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { AddSalaryDialog } from "@/components/tenant/add-salary-dialog";
+import { DeleteRecordButton } from "@/components/tenant/delete-record-button";
 import {
   Empty,
   EmptyDescription,
@@ -42,7 +43,7 @@ export async function SalaryConfigCard({
               <EmptyTitle>No pay configured yet</EmptyTitle>
               <EmptyDescription>
                 {canManage
-                  ? "Add a monthly amount to start calculating salary."
+                  ? "Set an hourly rate to start calculating salary from hours worked."
                   : "Ask your owner to configure your pay."}
               </EmptyDescription>
             </EmptyHeader>
@@ -52,11 +53,11 @@ export async function SalaryConfigCard({
             {configs.map((config, index) => (
               <div
                 key={config.id}
-                className="flex items-center justify-between gap-4 py-3 first:pt-0 last:pb-0"
+                className="flex items-start justify-between gap-4 py-3 first:pt-0 last:pb-0"
               >
-                <div className="flex flex-col gap-0.5">
+                <div className="flex min-w-0 flex-col gap-0.5">
                   <span className="text-sm font-medium">
-                    {formatMoney(config.amount)} / month
+                    {formatMoney(config.hourlyRate)} / hour
                     {index === 0 ? (
                       <span className="text-primary ml-2 text-xs font-normal">
                         Current
@@ -64,12 +65,17 @@ export async function SalaryConfigCard({
                     ) : null}
                   </span>
                   <span className="text-muted-foreground text-xs">
-                    From {formatDate(config.effectiveDate)} ·{" "}
-                    {config.standardHoursPerDay}h/day ·{" "}
-                    {formatWeeklyOffDay(config.weeklyOffDay)} off
                     {config.overtimeRatePerHour
-                      ? ` · ${formatMoney(config.overtimeRatePerHour)}/hr overtime`
-                      : null}
+                      ? `${formatMoney(config.overtimeRatePerHour)}/hr extra worktime`
+                      : "Extra worktime unpaid"}{" "}
+                    · {config.standardHoursPerDay}h/day ·{" "}
+                    {formatWeeklyOffDay(config.weeklyOffDay)} off
+                  </span>
+                  <span className="text-muted-foreground text-xs">
+                    From {formatDate(config.effectiveDate)}
+                    {config.amount
+                      ? ` · ${formatMoney(config.amount)}/month quoted`
+                      : ""}
                   </span>
                   {config.note ? (
                     <span className="text-muted-foreground text-xs">
@@ -77,6 +83,21 @@ export async function SalaryConfigCard({
                     </span>
                   ) : null}
                 </div>
+
+                {/* Editable, not just addable: a dated configuration still
+                    has to be correctable in place when the rate was typed
+                    wrong — a raise is what earns a new row. */}
+                {canManage ? (
+                  <div className="flex shrink-0 items-center gap-1">
+                    <AddSalaryDialog staffId={staffId} salary={config} />
+                    <DeleteRecordButton
+                      endpoint={`/api/salary/${config.id}`}
+                      title="Delete this pay configuration?"
+                      description="It is removed for good. Payslips already generated keep the figures they were priced at, but any month that would have used this configuration can no longer be calculated until another one covers it."
+                      confirmLabel="Delete configuration"
+                    />
+                  </div>
+                ) : null}
               </div>
             ))}
           </div>
