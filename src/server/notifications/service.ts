@@ -371,6 +371,49 @@ export async function listWhatsappTemplates(shopId: string): Promise<WhatsappTem
     .orderBy(whatsappTemplates.name, whatsappTemplates.language);
 }
 
+/**
+ * Fixes up any notification rule still keyed on the pre-fix, buggy slot
+ * name (a NAMED template's bare `parameter_name`, e.g. "var_1") by
+ * rewriting it to the MSG91-correct key (e.g. "body_var_1") \u2014 see
+ * `Msg91Client.legacySlotAliases`. Runs on every template sync so
+ * deploying the `msg91.ts` fix self-heals existing rules instead of
+ * requiring every affected event's mapping to be manually re-saved.
+ * No-op once a rule has already been remapped or never used the old key.
+ */
+async function remapLegacyVariableSlots(
+  tx: NotificationTx,
+  templateId: string,
+  legacyAliases: Record<string, string>,
+): Promise<void> {
+  if (Object.keys(legacyAliases).length === 0) return;
+
+  const rules = await tx
+    .select({ id: notificationRules.id, variableMapping: notificationRules.variableMapping })
+    .from(notificationRules)
+    .where(eq(notificationRules.templateId, templateId));
+
+  for (const rule of rules) {
+    let changed = false;
+    const remapped: Record<string, string> = {};
+    for (const [slot, variable] of Object.entries(rule.variableMapping ?? {})) {
+      const correctedSlot = legacyAliases[slot];
+      if (correctedSlot && correctedSlot !== slot) {
+        remapped[correctedSlot] = variable;
+        changed = true;
+      } else {
+        remapped[slot] = variable;
+      }
+    }
+
+    if (changed) {
+      await tx
+        .update(notificationRules)
+        .set({ variableMapping: remapped, updatedAt: new Date() })
+        .where(eq(notificationRules.id, rule.id));
+    }
+  }
+}
+
 export async function syncWhatsappTemplates(
   shopId: string,
   whatsappNumberId?: string,
@@ -427,6 +470,7 @@ export async function syncWhatsappTemplates(
 
       if (existing) {
         await tx.update(whatsappTemplates).set(values).where(eq(whatsappTemplates.id, existing.id));
+        await remapLegacyVariableSlots(tx, existing.id, template.legacySlotAliases);
       } else {
         await tx.insert(whatsappTemplates).values(values);
       }

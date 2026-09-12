@@ -22,6 +22,14 @@ export type Msg91Template = {
   body: string | null;
   components: UnknownRecord;
   variableSlots: string[];
+  /**
+   * Maps a NAMED-parameter template's `parameter_name` (e.g. "var_1") to
+   * its correct MSG91 component key (e.g. "body_var_1") — lets callers
+   * translate rule mappings saved under the old, buggy
+   * `extractVariableSlots` key without a manual re-save. Empty for
+   * POSITIONAL templates, which never had a wrong key.
+   */
+  legacySlotAliases: Record<string, string>;
   raw: UnknownRecord;
 };
 
@@ -102,6 +110,24 @@ function extractDeclaredVariables(record: UnknownRecord): string[] | null {
   }
 
   return null;
+}
+
+/** Reverse of each declared variable's `parameter_name` -> the variable's own key. */
+function extractLegacySlotAliases(record: UnknownRecord): Record<string, string> {
+  const aliases: Record<string, string> = {};
+
+  const addFrom = (variableType: unknown) => {
+    for (const [key, meta] of Object.entries(asRecord(variableType))) {
+      const parameterName = stringValue(asRecord(meta).parameter_name);
+      if (parameterName && parameterName !== key) aliases[parameterName] = key;
+    }
+  };
+
+  addFrom(record.variable_type);
+  const languages = Array.isArray(record.languages) ? record.languages.map(asRecord) : [];
+  for (const language of languages) addFrom(language.variable_type);
+
+  return aliases;
 }
 
 export class Msg91Client {
@@ -213,6 +239,7 @@ export class Msg91Client {
           body,
           components,
           variableSlots: extractDeclaredVariables(record) ?? extractVariableSlots(body, components),
+          legacySlotAliases: extractLegacySlotAliases(record),
           raw: record,
         };
       })
