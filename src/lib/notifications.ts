@@ -48,7 +48,10 @@ export const NOTIFICATION_EVENT_LABELS: Record<NotificationEvent, string> = {
  * `bookingId + event + bookingItemId`). See
  * `src/server/notifications/service.ts`'s `queueBookingNotification`.
  */
-export const NOTIFICATION_EVENT_SCOPE: Record<NotificationEvent, "booking" | "item"> = {
+export const NOTIFICATION_EVENT_SCOPE: Record<
+  NotificationEvent,
+  "booking" | "item"
+> = {
   booking_confirmed: "booking",
   payment_received: "booking",
   feedback_request: "booking",
@@ -79,8 +82,16 @@ export const NOTIFICATION_VARIABLES = [
   "owner_name",
   "booking_number",
   //: One item's product name + size/color, e.g. "Lehanga (M, Red)" — see
-  //: `formatItemLabel` in `src/server/notifications/service.ts`.
+  //: `formatItemLabel` in `src/server/notifications/service.ts`. Set on the
+  //: item-scoped events (the pickup/return reminders).
   "item",
+  //: *Every* line of the order, e.g. "Lehenga (M) x2, Sherwani" — set on
+  //: the order-scoped events (booking confirmed, payment received), where
+  //: a single `item` would misrepresent a multi-item booking.
+  "items",
+  "item_count",
+  //: Alias of `outlet_name`, for templates that call it the branch.
+  "branch",
   "rental_amount",
   "advance_paid",
   "balance_amount",
@@ -97,7 +108,6 @@ export const NOTIFICATION_VARIABLES = [
 ] as const;
 
 export type NotificationVariable = (typeof NOTIFICATION_VARIABLES)[number];
-
 
 export function normalizeWhatsAppPhone(
   value: string,

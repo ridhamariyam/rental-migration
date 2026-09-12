@@ -12,6 +12,7 @@ import {
   isNull,
   lt,
   lte,
+  notInArray,
   or,
   sql,
 } from "drizzle-orm";
@@ -31,7 +32,6 @@ import {
   whatsappNumbers,
   whatsappTemplates,
   type Booking,
-  type BookingItem,
   type NotificationLog,
   type NotificationRule,
   type WhatsappNumber,
@@ -39,7 +39,12 @@ import {
 } from "@/lib/db/schema";
 import { env } from "@/lib/env";
 import { AppError } from "@/lib/errors/app-error";
-import { formatDate, formatMoney, parseDateString, toDateString } from "@/lib/format";
+import {
+  formatDate,
+  formatMoney,
+  parseDateString,
+  toDateString,
+} from "@/lib/format";
 import { addMoney, subtractMoneyNonNegative, ZERO_MONEY } from "@/lib/money";
 import {
   DEFAULT_ENABLED_NOTIFICATION_EVENTS,
@@ -61,7 +66,8 @@ const DEFAULT_REMINDER_HOUR = 10;
 
 type NotificationTx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 type DbOrTx = typeof db | NotificationTx;
-type RuleInput = (typeof updateNotificationRulesSchema._output)["rules"][number];
+type RuleInput =
+  (typeof updateNotificationRulesSchema._output)["rules"][number];
 
 export type NotificationRuleView = Omit<NotificationRule, "event"> & {
   event: NotificationEvent;
@@ -104,7 +110,10 @@ function addDays(date: Date, days: number): Date {
   return next;
 }
 
-function offsetDate(base: Date | null | undefined, minutes: number): Date | null {
+function offsetDate(
+  base: Date | null | undefined,
+  minutes: number,
+): Date | null {
   if (!base && minutes === 0) return null;
   const start = base ? new Date(base) : new Date();
   start.setMinutes(start.getMinutes() + minutes);
@@ -115,7 +124,12 @@ async function getDefaultNumber(shopId: string, database: DbOrTx = db) {
   const [number] = await database
     .select()
     .from(whatsappNumbers)
-    .where(and(eq(whatsappNumbers.shopId, shopId), eq(whatsappNumbers.isDefault, true)))
+    .where(
+      and(
+        eq(whatsappNumbers.shopId, shopId),
+        eq(whatsappNumbers.isDefault, true),
+      ),
+    )
     .limit(1);
 
   return number ?? null;
@@ -131,16 +145,16 @@ export async function ensureDefaultNotificationRules(
     .where(eq(notificationRules.shopId, shopId));
   const existingEvents = new Set(existing.map((row) => row.event));
 
-  const rows = NOTIFICATION_EVENTS.filter((event) => !existingEvents.has(event)).map(
-    (event) => ({
-      shopId,
-      event,
-      isEnabled: DEFAULT_ENABLED_NOTIFICATION_EVENTS.has(event),
-      scheduleOffsetMinutes: 0,
-      repeatLimit: event === "overdue_reminder" ? 3 : 0,
-      variableMapping: {},
-    }),
-  );
+  const rows = NOTIFICATION_EVENTS.filter(
+    (event) => !existingEvents.has(event),
+  ).map((event) => ({
+    shopId,
+    event,
+    isEnabled: DEFAULT_ENABLED_NOTIFICATION_EVENTS.has(event),
+    scheduleOffsetMinutes: 0,
+    repeatLimit: event === "overdue_reminder" ? 3 : 0,
+    variableMapping: {},
+  }));
 
   if (rows.length > 0) {
     // The select above is only an optimisation, never a guarantee: two
@@ -149,9 +163,12 @@ export async function ensureDefaultNotificationRules(
     // insert, colliding on `uq_notification_rules_shop_event` and failing
     // whichever transaction they were seeding. Let the unique index be the
     // arbiter instead of the read.
-    await database.insert(notificationRules).values(rows).onConflictDoNothing({
-      target: [notificationRules.shopId, notificationRules.event],
-    });
+    await database
+      .insert(notificationRules)
+      .values(rows)
+      .onConflictDoNothing({
+        target: [notificationRules.shopId, notificationRules.event],
+      });
   }
 }
 
@@ -178,8 +195,14 @@ export async function listNotificationRules(
       integratedNumber: whatsappNumbers.integratedNumber,
     })
     .from(notificationRules)
-    .leftJoin(whatsappTemplates, eq(notificationRules.templateId, whatsappTemplates.id))
-    .leftJoin(whatsappNumbers, eq(notificationRules.whatsappNumberId, whatsappNumbers.id))
+    .leftJoin(
+      whatsappTemplates,
+      eq(notificationRules.templateId, whatsappTemplates.id),
+    )
+    .leftJoin(
+      whatsappNumbers,
+      eq(notificationRules.whatsappNumberId, whatsappNumbers.id),
+    )
     // Excludes any pre-2026-09 rows for the now-retired events (see
     // `NOTIFICATION_EVENTS`'s doc comment) — the console should only ever
     // show the 10 events that actually have a template/queue path today.
@@ -230,7 +253,10 @@ export async function updateNotificationRules(
 
       if (rule.templateId) {
         const [template] = await tx
-          .select({ id: whatsappTemplates.id, status: whatsappTemplates.status })
+          .select({
+            id: whatsappTemplates.id,
+            status: whatsappTemplates.status,
+          })
           .from(whatsappTemplates)
           .where(
             and(
@@ -256,14 +282,21 @@ export async function updateNotificationRules(
           repeatLimit: rule.repeatLimit,
           updatedAt: new Date(),
         })
-        .where(and(eq(notificationRules.shopId, shopId), eq(notificationRules.event, rule.event)));
+        .where(
+          and(
+            eq(notificationRules.shopId, shopId),
+            eq(notificationRules.event, rule.event),
+          ),
+        );
     }
   });
 
   return listNotificationRules(shopId);
 }
 
-export async function listWhatsappNumbers(shopId: string): Promise<WhatsappNumber[]> {
+export async function listWhatsappNumbers(
+  shopId: string,
+): Promise<WhatsappNumber[]> {
   return db
     .select()
     .from(whatsappNumbers)
@@ -279,10 +312,19 @@ export async function syncWhatsappNumbers(
   const client = new Msg91Client();
   const fetched = await client.fetchNumbers();
   const target = integratedNumber
-    ? normalizeWhatsAppPhone(integratedNumber, env.WHATSAPP_DEFAULT_COUNTRY_CODE)
+    ? normalizeWhatsAppPhone(
+        integratedNumber,
+        env.WHATSAPP_DEFAULT_COUNTRY_CODE,
+      )
     : null;
   const numbers = target
-    ? fetched.filter((number) => normalizeWhatsAppPhone(number.integratedNumber, env.WHATSAPP_DEFAULT_COUNTRY_CODE) === target)
+    ? fetched.filter(
+        (number) =>
+          normalizeWhatsAppPhone(
+            number.integratedNumber,
+            env.WHATSAPP_DEFAULT_COUNTRY_CODE,
+          ) === target,
+      )
     : fetched;
 
   if (target && numbers.length === 0) {
@@ -304,7 +346,10 @@ export async function syncWhatsappNumbers(
         env.WHATSAPP_DEFAULT_COUNTRY_CODE,
       );
       const [existing] = await tx
-        .select({ id: whatsappNumbers.id, isDefault: whatsappNumbers.isDefault })
+        .select({
+          id: whatsappNumbers.id,
+          isDefault: whatsappNumbers.isDefault,
+        })
         .from(whatsappNumbers)
         .where(
           and(
@@ -328,7 +373,10 @@ export async function syncWhatsappNumbers(
       };
 
       if (existing) {
-        await tx.update(whatsappNumbers).set(values).where(eq(whatsappNumbers.id, existing.id));
+        await tx
+          .update(whatsappNumbers)
+          .set(values)
+          .where(eq(whatsappNumbers.id, existing.id));
       } else {
         await tx.insert(whatsappNumbers).values(values);
       }
@@ -363,7 +411,9 @@ export async function setDefaultWhatsappNumber(
   return { ...number, isDefault: true };
 }
 
-export async function listWhatsappTemplates(shopId: string): Promise<WhatsappTemplate[]> {
+export async function listWhatsappTemplates(
+  shopId: string,
+): Promise<WhatsappTemplate[]> {
   return db
     .select()
     .from(whatsappTemplates)
@@ -388,7 +438,10 @@ async function remapLegacyVariableSlots(
   if (Object.keys(legacyAliases).length === 0) return;
 
   const rules = await tx
-    .select({ id: notificationRules.id, variableMapping: notificationRules.variableMapping })
+    .select({
+      id: notificationRules.id,
+      variableMapping: notificationRules.variableMapping,
+    })
     .from(notificationRules)
     .where(eq(notificationRules.templateId, templateId));
 
@@ -423,13 +476,21 @@ export async function syncWhatsappTemplates(
         await db
           .select()
           .from(whatsappNumbers)
-          .where(and(eq(whatsappNumbers.id, whatsappNumberId), eq(whatsappNumbers.shopId, shopId)))
+          .where(
+            and(
+              eq(whatsappNumbers.id, whatsappNumberId),
+              eq(whatsappNumbers.shopId, shopId),
+            ),
+          )
           .limit(1)
       )[0]
     : await getDefaultNumber(shopId);
 
   if (!number) {
-    throw new AppError("Connect a WhatsApp number before syncing templates", 400);
+    throw new AppError(
+      "Connect a WhatsApp number before syncing templates",
+      400,
+    );
   }
 
   const now = new Date();
@@ -469,8 +530,15 @@ export async function syncWhatsappTemplates(
       };
 
       if (existing) {
-        await tx.update(whatsappTemplates).set(values).where(eq(whatsappTemplates.id, existing.id));
-        await remapLegacyVariableSlots(tx, existing.id, template.legacySlotAliases);
+        await tx
+          .update(whatsappTemplates)
+          .set(values)
+          .where(eq(whatsappTemplates.id, existing.id));
+        await remapLegacyVariableSlots(
+          tx,
+          existing.id,
+          template.legacySlotAliases,
+        );
       } else {
         await tx.insert(whatsappTemplates).values(values);
       }
@@ -490,8 +558,10 @@ export async function listNotificationLogs(
     // now-retired event should never resurface in the console.
     inArray(notificationLogs.event, NOTIFICATION_EVENTS),
   ];
-  if (query.status !== "all") conditions.push(eq(notificationLogs.status, query.status));
-  if (query.event !== "all") conditions.push(eq(notificationLogs.event, query.event));
+  if (query.status !== "all")
+    conditions.push(eq(notificationLogs.status, query.status));
+  if (query.event !== "all")
+    conditions.push(eq(notificationLogs.event, query.event));
   if (query.q) {
     const pattern = `%${query.q}%`;
     conditions.push(
@@ -564,7 +634,10 @@ export async function listNotificationLogs(
     total: totalRow[0]?.value ?? 0,
     page: query.page,
     pageSize: query.pageSize,
-    totalPages: Math.max(1, Math.ceil((totalRow[0]?.value ?? 0) / query.pageSize)),
+    totalPages: Math.max(
+      1,
+      Math.ceil((totalRow[0]?.value ?? 0) / query.pageSize),
+    ),
   };
 }
 
@@ -573,29 +646,40 @@ export async function getNotificationDashboard(
   query: NotificationListQuery,
 ): Promise<NotificationDashboard> {
   await ensureDefaultNotificationRules(shopId);
-  const [queued, sent, failed, numbers, templates, rules, logs] = await Promise.all([
-    db
-      .select({ value: count() })
-      .from(notificationLogs)
-      .where(and(eq(notificationLogs.shopId, shopId), eq(notificationLogs.status, "queued"))),
-    db
-      .select({ value: count() })
-      .from(notificationLogs)
-      .where(
-        and(
-          eq(notificationLogs.shopId, shopId),
-          inArray(notificationLogs.status, ["sent", "delivered", "read"]),
+  const [queued, sent, failed, numbers, templates, rules, logs] =
+    await Promise.all([
+      db
+        .select({ value: count() })
+        .from(notificationLogs)
+        .where(
+          and(
+            eq(notificationLogs.shopId, shopId),
+            eq(notificationLogs.status, "queued"),
+          ),
         ),
-      ),
-    db
-      .select({ value: count() })
-      .from(notificationLogs)
-      .where(and(eq(notificationLogs.shopId, shopId), eq(notificationLogs.status, "failed"))),
-    listWhatsappNumbers(shopId),
-    listWhatsappTemplates(shopId),
-    listNotificationRules(shopId),
-    listNotificationLogs(shopId, query),
-  ]);
+      db
+        .select({ value: count() })
+        .from(notificationLogs)
+        .where(
+          and(
+            eq(notificationLogs.shopId, shopId),
+            inArray(notificationLogs.status, ["sent", "delivered", "read"]),
+          ),
+        ),
+      db
+        .select({ value: count() })
+        .from(notificationLogs)
+        .where(
+          and(
+            eq(notificationLogs.shopId, shopId),
+            eq(notificationLogs.status, "failed"),
+          ),
+        ),
+      listWhatsappNumbers(shopId),
+      listWhatsappTemplates(shopId),
+      listNotificationRules(shopId),
+      listNotificationLogs(shopId, query),
+    ]);
 
   return {
     stats: {
@@ -615,8 +699,12 @@ function formatItemLabel(
   size: string | null,
   color: string | null,
 ): string {
-  const attrs = [size, color].filter((value): value is string => Boolean(value?.trim()));
-  return attrs.length > 0 ? `${productName} (${attrs.join(", ")})` : productName;
+  const attrs = [size, color].filter((value): value is string =>
+    Boolean(value?.trim()),
+  );
+  return attrs.length > 0
+    ? `${productName} (${attrs.join(", ")})`
+    : productName;
 }
 
 type NotificationTarget = {
@@ -643,21 +731,38 @@ async function resolveRuleTarget(
   const [rule] = await database
     .select()
     .from(notificationRules)
-    .where(and(eq(notificationRules.shopId, shopId), eq(notificationRules.event, event)))
+    .where(
+      and(
+        eq(notificationRules.shopId, shopId),
+        eq(notificationRules.event, event),
+      ),
+    )
     .limit(1);
-  if (!rule?.isEnabled || !rule.templateId || !rule.whatsappNumberId) return null;
+  if (!rule?.isEnabled || !rule.templateId || !rule.whatsappNumberId)
+    return null;
 
   const [number] = await database
     .select()
     .from(whatsappNumbers)
-    .where(and(eq(whatsappNumbers.id, rule.whatsappNumberId), eq(whatsappNumbers.shopId, shopId)))
+    .where(
+      and(
+        eq(whatsappNumbers.id, rule.whatsappNumberId),
+        eq(whatsappNumbers.shopId, shopId),
+      ),
+    )
     .limit(1);
   const [template] = await database
     .select()
     .from(whatsappTemplates)
-    .where(and(eq(whatsappTemplates.id, rule.templateId), eq(whatsappTemplates.shopId, shopId)))
+    .where(
+      and(
+        eq(whatsappTemplates.id, rule.templateId),
+        eq(whatsappTemplates.shopId, shopId),
+      ),
+    )
     .limit(1);
-  if (!number || !template || template.status.toLowerCase() !== "approved") return null;
+  if (!number || !template || template.status.toLowerCase() !== "approved")
+    return null;
 
   return { rule, number, template };
 }
@@ -679,7 +784,10 @@ async function insertNotificationLog(
   },
 ): Promise<NotificationLog> {
   const { rule, number, template } = target;
-  const components = buildTemplateComponents(rule.variableMapping, params.values);
+  const components = buildTemplateComponents(
+    rule.variableMapping,
+    params.values,
+  );
   const logId = randomUUID();
 
   const [log] = await database
@@ -735,19 +843,59 @@ async function buildOrderContext(
 
   if (!row) throw AppError.notFound("Booking not found");
 
-  const [firstItem] = await database
-    .select({ outletName: outlets.name })
+  // Every line of the order: the confirmation message has to be able to
+  // name what was actually booked, not just the order number, so the whole
+  // list is read here rather than the first row alone.
+  const itemRows = await database
+    .select({
+      productName: products.name,
+      color: productVariations.color,
+      size: productVariations.size,
+      quantity: bookingItems.quantity,
+      fromDate: bookingItems.fromDate,
+      toDate: bookingItems.toDate,
+      status: bookingItems.status,
+      damageCharge: bookingItems.damageCharge,
+      outletName: outlets.name,
+    })
     .from(bookingItems)
+    .innerJoin(products, eq(bookingItems.productId, products.id))
+    .innerJoin(
+      productVariations,
+      eq(bookingItems.variationId, productVariations.id),
+    )
     .leftJoin(outlets, eq(bookingItems.outletId, outlets.id))
     .where(eq(bookingItems.bookingId, bookingId))
-    .orderBy(asc(bookingItems.createdAt), asc(bookingItems.id))
-    .limit(1);
+    .orderBy(asc(bookingItems.createdAt), asc(bookingItems.id));
 
-  const damageRows = await database
-    .select({ damageCharge: bookingItems.damageCharge })
-    .from(bookingItems)
-    .where(eq(bookingItems.bookingId, bookingId));
-  const totalDamageCharge = damageRows.reduce(
+  const liveItems = itemRows.filter((item) => item.status !== "cancelled");
+  const firstItem = liveItems[0] ?? itemRows[0];
+
+  const itemList = liveItems
+    .map((item) => {
+      const variant = [item.color, item.size].filter(Boolean).join(", ");
+      const label = variant
+        ? `${item.productName} (${variant})`
+        : item.productName;
+      return item.quantity > 1 ? `${label} x${item.quantity}` : label;
+    })
+    .join(", ");
+
+  // The order's own window: the earliest day anything goes out and the
+  // latest anything is due back. Per-item dates stay on the item-scoped
+  // reminders; what a customer needs on the confirmation is when to come
+  // and when to return.
+  const pickupDate = liveItems.reduce<string | null>(
+    (earliest, item) =>
+      !earliest || item.fromDate < earliest ? item.fromDate : earliest,
+    null,
+  );
+  const returnDate = liveItems.reduce<string | null>(
+    (latest, item) => (!latest || item.toDate > latest ? item.toDate : latest),
+    null,
+  );
+
+  const totalDamageCharge = itemRows.reduce(
     (sum, r) => addMoney(sum, r.damageCharge),
     ZERO_MONEY,
   );
@@ -756,7 +904,11 @@ async function buildOrderContext(
     .select()
     .from(payments)
     .where(eq(payments.bookingId, bookingId));
-  const summary = computePaymentSummary(row.booking, totalDamageCharge, paymentRows);
+  const summary = computePaymentSummary(
+    row.booking,
+    totalDamageCharge,
+    paymentRows,
+  );
   const appUrl = env.NEXT_PUBLIC_APP_URL.replace(/\/$/, "");
   const recipientName = `${row.customerFirstName} ${row.customerLastName}`;
 
@@ -774,12 +926,23 @@ async function buildOrderContext(
       rental_amount: formatMoney(row.booking.totalAmount),
       advance_paid: formatMoney(summary.rentCollected),
       balance_amount: formatMoney(
-        subtractMoneyNonNegative(row.booking.totalAmount, summary.rentCollected),
+        subtractMoneyNonNegative(
+          row.booking.totalAmount,
+          summary.rentCollected,
+        ),
       ),
       outstanding: formatMoney(summary.outstanding),
       shop_name: row.shopName,
       receipt_url: `${appUrl}/dashboard/bookings/${row.booking.id}/receipt`,
       outlet_name: firstItem?.outletName ?? row.shopName,
+      // Alias of `outlet_name`, so a template that calls the field
+      // "branch" can map to it without anyone renaming anything.
+      branch: firstItem?.outletName ?? row.shopName,
+      // Everything in the order, for a confirmation that stands on its own.
+      items: itemList || "—",
+      item_count: String(liveItems.length),
+      pickup_date: pickupDate ? formatDate(pickupDate) : "—",
+      return_date: returnDate ? formatDate(returnDate) : "—",
       ...extra,
     },
   };
@@ -818,9 +981,14 @@ async function buildItemContext(
     .innerJoin(shops, eq(bookings.shopId, shops.id))
     .innerJoin(customers, eq(bookings.customerId, customers.id))
     .innerJoin(products, eq(bookingItems.productId, products.id))
-    .innerJoin(productVariations, eq(bookingItems.variationId, productVariations.id))
+    .innerJoin(
+      productVariations,
+      eq(bookingItems.variationId, productVariations.id),
+    )
     .leftJoin(outlets, eq(bookingItems.outletId, outlets.id))
-    .where(and(eq(bookingItems.id, itemId), eq(bookingItems.bookingId, bookingId)))
+    .where(
+      and(eq(bookingItems.id, itemId), eq(bookingItems.bookingId, bookingId)),
+    )
     .limit(1);
 
   if (!row) throw AppError.notFound("Booking item not found");
@@ -879,7 +1047,10 @@ export async function queueBookingNotification(
 
   const scope = NOTIFICATION_EVENT_SCOPE[event];
   if (scope === "item" && !options.itemId) {
-    throw new AppError(`"${event}" requires an itemId (item-scoped event)`, 500);
+    throw new AppError(
+      `"${event}" requires an itemId (item-scoped event)`,
+      500,
+    );
   }
   // Booking-scoped events never key on an item, even if a caller passed
   // one by mistake — keeps dedupe/log shape consistent with the event's
@@ -895,7 +1066,9 @@ export async function queueBookingNotification(
           eq(notificationLogs.shopId, booking.shopId),
           eq(notificationLogs.bookingId, booking.id),
           eq(notificationLogs.event, event),
-          itemId ? eq(notificationLogs.bookingItemId, itemId) : isNull(notificationLogs.bookingItemId),
+          itemId
+            ? eq(notificationLogs.bookingItemId, itemId)
+            : isNull(notificationLogs.bookingItemId),
         ),
       )
       .limit(1);
@@ -904,10 +1077,18 @@ export async function queueBookingNotification(
 
   const context =
     scope === "item"
-      ? await buildItemContext(database, booking.id, itemId as string, options.extraContext)
+      ? await buildItemContext(
+          database,
+          booking.id,
+          itemId as string,
+          options.extraContext,
+        )
       : await buildOrderContext(database, booking.id, options.extraContext);
 
-  const scheduledFor = offsetDate(options.scheduledFor, target.rule.scheduleOffsetMinutes);
+  const scheduledFor = offsetDate(
+    options.scheduledFor,
+    target.rule.scheduleOffsetMinutes,
+  );
 
   return insertNotificationLog(database, target, {
     shopId: booking.shopId,
@@ -921,25 +1102,172 @@ export async function queueBookingNotification(
   });
 }
 
+/** The dated reminders: queued by their own scan on the day they fall
+ * due, never by a booking action. */
+const REMINDER_EVENTS = ["pickup_reminder", "return_reminder"] as const;
+
+/** Days before the pickup date that `pickup_reminder` goes out. */
+const PICKUP_REMINDER_DAYS_BEFORE = 2;
+/** Days before the return date that `return_reminder` goes out. */
+const RETURN_REMINDER_DAYS_BEFORE = 1;
+
+/** Item states that still have a handover ahead of them. */
+const AWAITING_PICKUP_STATUSES = [
+  "draft",
+  "confirmed",
+  "pickup_pending",
+] as const;
+
 /**
- * Schedules one item's own pickup/return reminders (1 day before each
- * date) — called once per item created, in
- * `src/server/bookings/service.ts`. `booking_confirmed` is queued
- * separately, once per order, by the caller.
+ * Item states that still have a return ahead of them — including the ones
+ * not yet collected. A two-day rental collected on the morning of its
+ * return still needs "due back tomorrow" the day before, and on the day
+ * the reminder is due the item may not have been picked up yet.
  */
-export async function queueBookingLifecycleNotifications(
-  database: DbOrTx,
-  booking: Pick<Booking, "id" | "shopId">,
-  item: Pick<BookingItem, "id" | "fromDate" | "toDate">,
-): Promise<void> {
-  await queueBookingNotification(database, booking, "pickup_reminder", {
-    itemId: item.id,
-    scheduledFor: addDays(atLocalHour(item.fromDate), -1),
-  });
-  await queueBookingNotification(database, booking, "return_reminder", {
-    itemId: item.id,
-    scheduledFor: addDays(atLocalHour(item.toDate), -1),
-  });
+const AWAITING_RETURN_STATUSES = [
+  "draft",
+  "confirmed",
+  "pickup_pending",
+  "rented",
+  "return_pending",
+] as const;
+
+/**
+ * Orders that get no reminders at all: a cancelled one has nothing to
+ * collect, and a draft is an unconfirmed hold — telling someone their
+ * pickup is in two days implies a booking they have not actually made.
+ */
+const UNREMINDABLE_ORDER_STATUSES = ["cancelled", "draft"] as const;
+
+/**
+ * Queues the dated reminders whose day is *today*.
+ *
+ * These used to be queued at booking time with a future `scheduledFor`,
+ * which had a sharp edge: a booking taken inside the reminder window (a
+ * walk-in collecting tomorrow, or a two-day rental) produced a reminder
+ * whose send time was already in the past, so the dispatcher fired it
+ * seconds after the booking was confirmed. The customer got "your pickup
+ * is tomorrow" and "please return tomorrow" the moment they paid.
+ *
+ * So reminders are no longer scheduled ahead at all. This scan runs on
+ * every cron tick, asks which items reach their pickup/return date in
+ * exactly `daysBefore` days, and queues only those. A booking taken closer
+ * to its pickup than the reminder window therefore gets no pickup reminder
+ * — there is no day left on which "2 days before" is true, and sending one
+ * late would be the very behaviour this replaced.
+ *
+ * Idempotency has two layers: this only ever matches an item on one
+ * calendar day, and each insert is guarded by a lookup for an existing log
+ * with the same (booking, item, event) — so a cron running every 30s, or
+ * two workers running at once, still produce exactly one reminder per item.
+ */
+async function queueDatedReminders(
+  now: Date,
+  event: "pickup_reminder" | "return_reminder",
+): Promise<number> {
+  const isPickup = event === "pickup_reminder";
+  const daysBefore = isPickup
+    ? PICKUP_REMINDER_DAYS_BEFORE
+    : RETURN_REMINDER_DAYS_BEFORE;
+
+  // The date whose reminder is due today: today + daysBefore.
+  const targetDate = toDateString(addDays(now, daysBefore));
+
+  const dueItems = await db
+    .select({
+      itemId: bookingItems.id,
+      bookingId: bookingItems.bookingId,
+      shopId: bookingItems.shopId,
+    })
+    .from(bookingItems)
+    .innerJoin(bookings, eq(bookingItems.bookingId, bookings.id))
+    .where(
+      and(
+        eq(isPickup ? bookingItems.fromDate : bookingItems.toDate, targetDate),
+        inArray(
+          bookingItems.status,
+          isPickup ? AWAITING_PICKUP_STATUSES : AWAITING_RETURN_STATUSES,
+        ),
+        notInArray(bookings.status, [...UNREMINDABLE_ORDER_STATUSES]),
+        // A booking taken for the same day it is collected has nothing to
+        // remind anyone about — the customer is at the counter. The
+        // two-day window already excludes this in practice; saying it
+        // outright keeps it true if the window is ever changed.
+        ...(isPickup
+          ? [sql`${bookings.createdAt}::date <> ${bookingItems.fromDate}`]
+          : []),
+      ),
+    );
+
+  if (dueItems.length === 0) return 0;
+
+  // One rule lookup per shop rather than per item — same batching the
+  // overdue scan documents below.
+  const shopIds = [...new Set(dueItems.map((item) => item.shopId))];
+  const targets = new Map<string, ResolvedRuleTarget | null>();
+  for (const shopId of shopIds) {
+    targets.set(shopId, await resolveRuleTarget(db, shopId, event));
+  }
+
+  const candidates = dueItems.filter((item) => targets.get(item.shopId));
+  if (candidates.length === 0) return 0;
+
+  // One query for everything already queued/sent for these items, instead
+  // of a lookup per item per tick.
+  const alreadyQueued = await db
+    .select({ bookingItemId: notificationLogs.bookingItemId })
+    .from(notificationLogs)
+    .where(
+      and(
+        inArray(
+          notificationLogs.bookingItemId,
+          candidates.map((item) => item.itemId),
+        ),
+        eq(notificationLogs.event, event),
+      ),
+    );
+  const seen = new Set(alreadyQueued.map((row) => row.bookingItemId as string));
+
+  let queued = 0;
+  for (const item of candidates) {
+    if (seen.has(item.itemId)) continue;
+    const target = targets.get(item.shopId);
+    if (!target) continue;
+
+    const context = await buildItemContext(db, item.bookingId, item.itemId);
+    await insertNotificationLog(db, target, {
+      shopId: item.shopId,
+      bookingId: item.bookingId,
+      bookingItemId: item.itemId,
+      event,
+      recipientPhone: context.recipientPhone,
+      recipientName: context.recipientName,
+      values: context.values,
+      // Sent at a civil hour today rather than whenever the cron happens
+      // to tick, with the shop's own rule offset applied on top.
+      scheduledFor: offsetDate(
+        atLocalHour(toDateString(now)),
+        target.rule.scheduleOffsetMinutes,
+      ),
+    });
+    // Nothing else in this tick should queue it again.
+    seen.add(item.itemId);
+    queued += 1;
+  }
+
+  return queued;
+}
+
+/** `pickup_reminder`, exactly `PICKUP_REMINDER_DAYS_BEFORE` days before an
+ * item's pickup date. Cron-driven — see `queueDatedReminders`. */
+export async function queuePickupReminders(now = new Date()): Promise<number> {
+  return queueDatedReminders(now, "pickup_reminder");
+}
+
+/** `return_reminder`, exactly `RETURN_REMINDER_DAYS_BEFORE` day before an
+ * item's return date. Cron-driven — see `queueDatedReminders`. */
+export async function queueReturnReminders(now = new Date()): Promise<number> {
+  return queueDatedReminders(now, "return_reminder");
 }
 
 type OwnerNotificationEvent = "owner_item_booked" | "owner_item_cancelled";
@@ -985,7 +1313,9 @@ async function buildOwnerItemContext(
     )
     .leftJoin(outlets, eq(bookingItems.outletId, outlets.id))
     .leftJoin(customers, eq(productVariations.ownerCustomerId, customers.id))
-    .where(and(eq(bookingItems.id, itemId), eq(bookingItems.bookingId, bookingId)))
+    .where(
+      and(eq(bookingItems.id, itemId), eq(bookingItems.bookingId, bookingId)),
+    )
     .limit(1);
 
   if (!row) throw AppError.notFound("Booking item not found");
@@ -1116,7 +1446,10 @@ export async function queueOverdueReminders(now = new Date()): Promise<number> {
   const shopIds = [...new Set(overdueItems.map((item) => item.shopId))];
   const targets = new Map<string, ResolvedRuleTarget | null>();
   for (const shopId of shopIds) {
-    targets.set(shopId, await resolveRuleTarget(db, shopId, "overdue_reminder"));
+    targets.set(
+      shopId,
+      await resolveRuleTarget(db, shopId, "overdue_reminder"),
+    );
   }
 
   const candidates = overdueItems.filter((item) => targets.get(item.shopId));
@@ -1185,8 +1518,15 @@ export async function retryNotification(
 ): Promise<NotificationLog> {
   const [log] = await db
     .update(notificationLogs)
-    .set({ status: "queued", attempts: 0, lastError: null, updatedAt: new Date() })
-    .where(and(eq(notificationLogs.id, id), eq(notificationLogs.shopId, shopId)))
+    .set({
+      status: "queued",
+      attempts: 0,
+      lastError: null,
+      updatedAt: new Date(),
+    })
+    .where(
+      and(eq(notificationLogs.id, id), eq(notificationLogs.shopId, shopId)),
+    )
     .returning();
 
   if (!log) throw AppError.notFound("Notification not found");
@@ -1205,6 +1545,10 @@ async function claimDueNotifications(
   now: Date,
   bookingId: string | null,
   limit: number,
+  /** Events this particular dispatcher must never send — used by the
+   * post-confirmation nudge so a dated reminder can only ever leave on the
+   * day its own job queued it, never on the back of a booking action. */
+  excludeEvents: NotificationEvent[] = [],
 ): Promise<NotificationLog[]> {
   const due = db
     .select({ id: notificationLogs.id })
@@ -1213,8 +1557,14 @@ async function claimDueNotifications(
       and(
         eq(notificationLogs.status, "queued"),
         lte(notificationLogs.attempts, MAX_ATTEMPTS - 1),
-        or(isNull(notificationLogs.scheduledFor), lte(notificationLogs.scheduledFor, now)),
+        or(
+          isNull(notificationLogs.scheduledFor),
+          lte(notificationLogs.scheduledFor, now),
+        ),
         ...(bookingId ? [eq(notificationLogs.bookingId, bookingId)] : []),
+        ...(excludeEvents.length > 0
+          ? [notInArray(notificationLogs.event, [...excludeEvents])]
+          : []),
       ),
     )
     .orderBy(notificationLogs.createdAt)
@@ -1232,7 +1582,9 @@ async function claimDueNotifications(
     .returning();
 }
 
-async function sendClaimedNotifications(claimed: NotificationLog[]): Promise<number> {
+async function sendClaimedNotifications(
+  claimed: NotificationLog[],
+): Promise<number> {
   const client = new Msg91Client();
 
   for (const log of claimed) {
@@ -1260,8 +1612,11 @@ async function sendClaimedNotifications(claimed: NotificationLog[]): Promise<num
         })
         .where(eq(notificationLogs.id, log.id));
     } catch (error) {
-      const lastError = error instanceof Error ? error.message : "MSG91 send failed";
-      console.error(`[notifications] ${log.event} ${log.id} failed: ${lastError}`);
+      const lastError =
+        error instanceof Error ? error.message : "MSG91 send failed";
+      console.error(
+        `[notifications] ${log.event} ${log.id} failed: ${lastError}`,
+      );
 
       await db
         .update(notificationLogs)
@@ -1290,8 +1645,14 @@ async function sendClaimedNotifications(claimed: NotificationLog[]): Promise<num
  * Marking runs first so the reminder scan and every report agree about
  * which items are late within the same tick.
  */
-export async function dispatchDueNotifications(now = new Date()): Promise<number> {
+export async function dispatchDueNotifications(
+  now = new Date(),
+): Promise<number> {
   await markOverdueItems(now);
+  // The three date-driven jobs, each independent of booking time: two
+  // ahead of the event (pickup, return) and one after it (overdue).
+  await queuePickupReminders(now);
+  await queueReturnReminders(now);
   await queueOverdueReminders(now);
   return sendClaimedNotifications(await claimDueNotifications(now, null, 50));
 }
@@ -1300,33 +1661,45 @@ export async function dispatchDueNotifications(now = new Date()): Promise<number
  * Sends one booking's already-queued messages immediately instead of
  * waiting for the next cron tick. Must only be called *after* the
  * transaction that queued them has committed — see `dispatchAfterResponse`.
- * Future-dated reminders are left untouched by the `scheduledFor` filter,
- * so this only ever sends the event that just happened.
+ *
+ * Reminders cannot be caught up in this: nothing queues a `pickup_reminder`
+ * or `return_reminder` at booking time any more, so confirming a booking
+ * can only ever send what that confirmation itself queued
+ * (`booking_confirmed`, and the owner's "your item is booked"). The
+ * `REMINDER_EVENTS` exclusion below is belt and braces for anything a
+ * future caller might queue against the booking.
  */
 export async function dispatchNotificationsForBooking(
   bookingId: string,
 ): Promise<number> {
   return sendClaimedNotifications(
-    await claimDueNotifications(new Date(), bookingId, 10),
+    await claimDueNotifications(new Date(), bookingId, 10, [
+      ...REMINDER_EVENTS,
+    ]),
   );
 }
 
-export async function applyMsg91Webhook(payload: Record<string, unknown>): Promise<void> {
+export async function applyMsg91Webhook(
+  payload: Record<string, unknown>,
+): Promise<void> {
   const crqid = String(payload.CRQID ?? payload.crqid ?? "").trim();
-  const providerMessageId = String(payload.message_uuid ?? payload.message_id ?? "").trim();
-  const providerRequestId = String(payload.request_id ?? payload.campaign_request_id ?? "").trim();
+  const providerMessageId = String(
+    payload.message_uuid ?? payload.message_id ?? "",
+  ).trim();
+  const providerRequestId = String(
+    payload.request_id ?? payload.campaign_request_id ?? "",
+  ).trim();
   const status = String(payload.status ?? "").toLowerCase();
 
-  const nextStatus =
-    status.includes("read")
-      ? "read"
-      : status.includes("deliver")
-        ? "delivered"
-        : status.includes("fail")
-          ? "failed"
-          : status.includes("sent") || status.includes("submitted")
-            ? "sent"
-            : null;
+  const nextStatus = status.includes("read")
+    ? "read"
+    : status.includes("deliver")
+      ? "delivered"
+      : status.includes("fail")
+        ? "failed"
+        : status.includes("sent") || status.includes("submitted")
+          ? "sent"
+          : null;
 
   if (!nextStatus) return;
 
@@ -1345,7 +1718,8 @@ export async function applyMsg91Webhook(payload: Record<string, unknown>): Promi
       status: nextStatus,
       deliveredAt: nextStatus === "delivered" ? new Date() : undefined,
       readAt: nextStatus === "read" ? new Date() : undefined,
-      lastError: nextStatus === "failed" ? JSON.stringify(payload).slice(0, 1000) : null,
+      lastError:
+        nextStatus === "failed" ? JSON.stringify(payload).slice(0, 1000) : null,
       payload,
       updatedAt: new Date(),
     })
