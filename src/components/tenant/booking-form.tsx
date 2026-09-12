@@ -55,7 +55,11 @@ import { tenantPaths } from "@/lib/tenant-paths";
 import { ApiClientError, apiRequest } from "@/lib/api-client";
 import { addMoney, subtractMoneyNonNegative, ZERO_MONEY } from "@/lib/money";
 import { formatMoney, toDateString } from "@/lib/format";
-import { avatarGradient, initialsFor, resolveAvatarSrc } from "@/lib/tenant-avatar";
+import {
+  avatarGradient,
+  initialsFor,
+  resolveAvatarSrc,
+} from "@/lib/tenant-avatar";
 import type { VariationSearchResult } from "@/server/variations/service";
 
 const SELF = "self";
@@ -100,7 +104,12 @@ export function BookingForm({
   /** Non-empty only for an `admin` actor (see `NewBookingPage`) — every
    * other role's bookings are always attributed to themselves, so there's
    * nothing to pick and this field never renders for them. */
-  staffOptions?: { id: string; firstName: string; lastName: string; avatarUrl: string | null }[];
+  staffOptions?: {
+    id: string;
+    firstName: string;
+    lastName: string;
+    avatarUrl: string | null;
+  }[];
 }) {
   const router = useRouter();
   const [formError, setFormError] = useState<string | null>(null);
@@ -162,14 +171,26 @@ export function BookingForm({
     setQuotes((current) => ({ ...current, [key]: nextQuote }));
   }
 
+  /**
+   * Exactly one line is open at a time. Adding an item collapses whatever
+   * was open into its summary and opens the new line — which is what makes
+   * the cart read as a list of what has been added rather than a stack of
+   * identical forms. `null` means "the newest line", so a fresh form opens
+   * on its only line without having to know its generated key yet.
+   */
+  const [editingKey, setEditingKey] = useState<string | null>(null);
+
   function handleAddItem() {
     const lastItem = watchedItems?.[watchedItems.length - 1];
     append(emptyItem(lastItem?.fromDate, lastItem?.toDate));
+    setEditingKey(null);
     setFormError(null);
   }
 
   function handleRemoveItem(index: number, key: string) {
     remove(index);
+    // Removing the open line leaves nothing open; fall back to the newest.
+    setEditingKey((current) => (current === key ? null : current));
     setSelectedItems((current) => {
       const next = { ...current };
       delete next[key];
@@ -197,6 +218,9 @@ export function BookingForm({
     quantity: Math.max(1, Number(watchedItems?.[index]?.quantity) || 1),
   }));
 
+  // `null` tracks the newest line so a just-added row is the open one.
+  const openKey = editingKey ?? fields[fields.length - 1]?.id ?? null;
+
   const everyLineReady = lines.every(
     (line) => line.item && line.quote?.available === true,
   );
@@ -209,10 +233,22 @@ export function BookingForm({
   // re-validates and re-applies all of this server-side before anything
   // is frozen onto a booking.
   const priced = lines.filter((line) => line.quote?.available);
-  const watchedDiscount = useWatch({ control: form.control, name: "discountAmount" });
-  const watchedDeposit = useWatch({ control: form.control, name: "securityDeposit" });
-  const watchedAdditionalCost = useWatch({ control: form.control, name: "additionalCost" });
-  const watchedAdvance = useWatch({ control: form.control, name: "advanceAmount" });
+  const watchedDiscount = useWatch({
+    control: form.control,
+    name: "discountAmount",
+  });
+  const watchedDeposit = useWatch({
+    control: form.control,
+    name: "securityDeposit",
+  });
+  const watchedAdditionalCost = useWatch({
+    control: form.control,
+    name: "additionalCost",
+  });
+  const watchedAdvance = useWatch({
+    control: form.control,
+    name: "advanceAmount",
+  });
   const extraCharged = Number(watchedAdditionalCost || "0") > 0;
 
   const grossRentTotal = priced.reduce(
@@ -373,79 +409,89 @@ export function BookingForm({
                 <FieldError errors={[form.formState.errors.customerId]} />
               </Field>
 
-              <div className="flex flex-col gap-3 rounded-xl border border-border/70 bg-card overflow-hidden">
-                <div className="flex items-center justify-between gap-3 border-b border-border/60 bg-muted/30 px-4 py-3">
+              <div className="border-border/70 bg-card flex flex-col gap-3 overflow-hidden rounded-xl border">
+                <div className="border-border/60 bg-muted/30 flex items-center justify-between gap-3 border-b px-4 py-3">
                   <FieldLabel className="text-foreground/90 flex items-center gap-2 text-xs font-semibold tracking-wide uppercase">
-                    <PackageIcon className="size-3.5 text-primary" aria-hidden="true" />
+                    <PackageIcon
+                      className="text-primary size-3.5"
+                      aria-hidden="true"
+                    />
                     Items
                     {lines.length > 1 ? (
-                      <span className="text-muted-foreground font-normal normal-case tracking-normal">
+                      <span className="text-muted-foreground font-normal tracking-normal normal-case">
                         ({lines.length} lines · {totalUnits} units)
                       </span>
                     ) : null}
                   </FieldLabel>
                 </div>
 
-                <div className="flex flex-col gap-3 px-4 pb-4">
-                {lines.map((line) => (
-                  <BookingItemRow
-                    key={line.key}
-                    index={line.index}
-                    itemKey={line.key}
-                    control={form.control}
-                    register={form.register}
-                    setValue={form.setValue}
-                    trigger={form.trigger}
-                    errors={form.formState.errors.items?.[line.index]}
-                    selectedItem={line.item}
-                    onSelectItem={(item) =>
-                      handleSelectItem(line.index, line.key, item)
-                    }
-                    canRemove={lines.length > 1}
-                    onRemove={() => handleRemoveItem(line.index, line.key)}
-                    disabled={isSubmitting}
-                    onQuoteChange={handleQuoteChange}
-                  />
-                ))}
+                <div className="divide-border/50 flex flex-col divide-y px-4 pb-4">
+                  {lines.map((line) => (
+                    <BookingItemRow
+                      key={line.key}
+                      index={line.index}
+                      itemKey={line.key}
+                      control={form.control}
+                      register={form.register}
+                      setValue={form.setValue}
+                      trigger={form.trigger}
+                      errors={form.formState.errors.items?.[line.index]}
+                      selectedItem={line.item}
+                      onSelectItem={(item) =>
+                        handleSelectItem(line.index, line.key, item)
+                      }
+                      canRemove={lines.length > 1}
+                      onRemove={() => handleRemoveItem(line.index, line.key)}
+                      disabled={isSubmitting}
+                      onQuoteChange={handleQuoteChange}
+                      expanded={line.key === openKey}
+                      onEdit={() => setEditingKey(line.key)}
+                    />
+                  ))}
 
-                {overUnitCap ? (
-                  <Alert
-                    variant="destructive"
-                    className="border-destructive/25 bg-destructive/5"
-                  >
-                    <AlertCircleIcon />
-                    <AlertDescription className="text-destructive font-medium">
-                      One order can request at most {MAX_TOTAL_BOOKING_UNITS}{" "}
-                      units in total — this one asks for {totalUnits}.
-                    </AlertDescription>
-                  </Alert>
-                ) : null}
+                  {overUnitCap ? (
+                    <Alert
+                      variant="destructive"
+                      className="border-destructive/25 bg-destructive/5"
+                    >
+                      <AlertCircleIcon />
+                      <AlertDescription className="text-destructive font-medium">
+                        One order can request at most {MAX_TOTAL_BOOKING_UNITS}{" "}
+                        units in total — this one asks for {totalUnits}.
+                      </AlertDescription>
+                    </Alert>
+                  ) : null}
 
-                {lines.length < MAX_ITEM_LINES ? (
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    disabled={isSubmitting}
-                    onClick={handleAddItem}
-                    className="self-end"
-                  >
-                    <PlusIcon />
-                    Add another item
-                  </Button>
-                ) : null}
+                  {lines.length < MAX_ITEM_LINES ? (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      disabled={isSubmitting}
+                      onClick={handleAddItem}
+                      className="self-end"
+                    >
+                      <PlusIcon />
+                      Add another item
+                    </Button>
+                  ) : null}
                 </div>
               </div>
 
-              <div className="flex flex-col gap-4 rounded-xl border border-dashed border-border/70 bg-muted/20 p-4">
+              <div className="border-border/70 bg-muted/20 flex flex-col gap-4 rounded-xl border border-dashed p-4">
                 <FieldLabel className="text-foreground/90 flex items-center gap-2 text-xs font-semibold tracking-wide uppercase">
-                  <SlidersHorizontalIcon className="size-3.5 text-primary" aria-hidden="true" />
+                  <SlidersHorizontalIcon
+                    className="text-primary size-3.5"
+                    aria-hidden="true"
+                  />
                   Order adjustments
                 </FieldLabel>
 
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                   {canDiscount ? (
-                    <Field data-invalid={!!form.formState.errors.discountAmount}>
+                    <Field
+                      data-invalid={!!form.formState.errors.discountAmount}
+                    >
                       <FieldLabel htmlFor="order-discount">
                         Discount (optional)
                       </FieldLabel>
@@ -457,11 +503,13 @@ export function BookingForm({
                         aria-invalid={!!form.formState.errors.discountAmount}
                         {...form.register("discountAmount")}
                       />
-                      <FieldError errors={[form.formState.errors.discountAmount]} />
+                      <FieldError
+                        errors={[form.formState.errors.discountAmount]}
+                      />
                       {discountExceedsGross ? (
                         <p className="text-destructive text-xs">
-                          Discount cannot exceed the {formatMoney(grossRentTotal)}{" "}
-                          rental amount.
+                          Discount cannot exceed the{" "}
+                          {formatMoney(grossRentTotal)} rental amount.
                         </p>
                       ) : null}
                     </Field>
@@ -479,7 +527,9 @@ export function BookingForm({
                       aria-invalid={!!form.formState.errors.additionalCost}
                       {...form.register("additionalCost")}
                     />
-                    <FieldError errors={[form.formState.errors.additionalCost]} />
+                    <FieldError
+                      errors={[form.formState.errors.additionalCost]}
+                    />
                   </Field>
                 </div>
 
@@ -495,14 +545,18 @@ export function BookingForm({
                     aria-invalid={!!form.formState.errors.securityDeposit}
                     {...form.register("securityDeposit")}
                   />
-                  <FieldError errors={[form.formState.errors.securityDeposit]} />
+                  <FieldError
+                    errors={[form.formState.errors.securityDeposit]}
+                  />
                   <p className="text-muted-foreground text-xs">
-                    For the whole order. Leave blank to hold each
-                    item&rsquo;s own default deposit.
+                    For the whole order. Leave blank to hold each item&rsquo;s
+                    own default deposit.
                   </p>
                 </Field>
 
-                <Field data-invalid={!!form.formState.errors.additionalCostReason}>
+                <Field
+                  data-invalid={!!form.formState.errors.additionalCostReason}
+                >
                   <FieldLabel htmlFor="order-additional-reason">
                     Reason{extraCharged ? "" : " (optional)"}
                   </FieldLabel>
@@ -513,7 +567,9 @@ export function BookingForm({
                     aria-invalid={!!form.formState.errors.additionalCostReason}
                     {...form.register("additionalCostReason")}
                   />
-                  <FieldError errors={[form.formState.errors.additionalCostReason]} />
+                  <FieldError
+                    errors={[form.formState.errors.additionalCostReason]}
+                  />
                 </Field>
 
                 <Separator />
@@ -531,7 +587,9 @@ export function BookingForm({
                       aria-invalid={!!form.formState.errors.advanceAmount}
                       {...form.register("advanceAmount")}
                     />
-                    <FieldError errors={[form.formState.errors.advanceAmount]} />
+                    <FieldError
+                      errors={[form.formState.errors.advanceAmount]}
+                    />
                     {advanceExceedsTotal ? (
                       <p className="text-destructive text-xs">
                         Advance cannot exceed the {formatMoney(grandTotal)} due.
@@ -550,9 +608,14 @@ export function BookingForm({
                         <Select
                           value={field.value ?? "cash"}
                           onValueChange={field.onChange}
-                          disabled={isSubmitting || Number(watchedAdvance || "0") <= 0}
+                          disabled={
+                            isSubmitting || Number(watchedAdvance || "0") <= 0
+                          }
                         >
-                          <SelectTrigger id="order-advance-method" className="w-full">
+                          <SelectTrigger
+                            id="order-advance-method"
+                            className="w-full"
+                          >
                             <SelectValue placeholder="Cash" />
                           </SelectTrigger>
                           <SelectContent alignItemWithTrigger={false}>
@@ -616,11 +679,14 @@ export function BookingForm({
                                 <span className="flex min-w-0 items-center gap-2">
                                   <Avatar className="size-5 shrink-0">
                                     <AvatarImage
-                                      src={resolveAvatarSrc(staff.avatarUrl, name)}
+                                      src={resolveAvatarSrc(
+                                        staff.avatarUrl,
+                                        name,
+                                      )}
                                       alt={name}
                                     />
                                     <AvatarFallback
-                                      className="!text-white text-[10px] font-semibold"
+                                      className="text-[10px] font-semibold !text-white"
                                       style={{
                                         backgroundImage: avatarGradient(name),
                                       }}
@@ -646,11 +712,14 @@ export function BookingForm({
                                 <span className="flex min-w-0 items-center gap-2">
                                   <Avatar className="size-5 shrink-0">
                                     <AvatarImage
-                                      src={resolveAvatarSrc(staff.avatarUrl, name)}
+                                      src={resolveAvatarSrc(
+                                        staff.avatarUrl,
+                                        name,
+                                      )}
                                       alt={name}
                                     />
                                     <AvatarFallback
-                                      className="!text-white text-[10px] font-semibold"
+                                      className="text-[10px] font-semibold !text-white"
                                       style={{
                                         backgroundImage: avatarGradient(name),
                                       }}
@@ -717,29 +786,32 @@ export function BookingForm({
       </Card>
 
       <Card className="h-fit">
-        <CardHeader className="border-b border-border/60 px-5 py-4">
+        <CardHeader className="border-border/60 border-b px-5 py-4">
           <CardTitle className="flex items-center gap-2 text-base font-semibold">
-            <ReceiptTextIcon className="size-4 text-primary" aria-hidden="true" />
+            <ReceiptTextIcon
+              className="text-primary size-4"
+              aria-hidden="true"
+            />
             Order summary
           </CardTitle>
         </CardHeader>
-        <CardContent className="p-5 flex flex-col gap-4">
+        <CardContent className="flex flex-col gap-4 p-5">
           <div className="flex flex-col gap-2.5">
-            <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/80">
+            <span className="text-muted-foreground/80 text-[11px] font-semibold tracking-wider uppercase">
               {lines.length > 1 ? `Items (${lines.length})` : "Item"}
             </span>
             <div className="flex flex-col gap-1.5">
               {lines.map((line) => (
                 <div
                   key={line.key}
-                  className="flex flex-col gap-1 rounded-lg bg-muted/40 p-2.5 border border-border/40 text-sm"
+                  className="bg-muted/40 border-border/40 flex flex-col gap-1 rounded-lg border p-2.5 text-sm"
                 >
                   <div className="flex items-center justify-between gap-2">
-                    <span className="font-semibold text-foreground truncate">
+                    <span className="text-foreground truncate font-semibold">
                       {line.item ? line.item.productName : "No item selected"}
                       {line.quantity > 1 ? ` × ${line.quantity}` : ""}
                     </span>
-                    <span className="shrink-0 font-semibold text-foreground">
+                    <span className="text-foreground shrink-0 font-semibold">
                       {line.quote
                         ? line.quote.available
                           ? formatMoney(line.quote.totalReceivable)
@@ -748,7 +820,7 @@ export function BookingForm({
                     </span>
                   </div>
                   {line.item ? (
-                    <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
+                    <div className="text-muted-foreground flex items-center justify-between gap-2 text-xs">
                       <span className="truncate">
                         {line.item.color ? line.item.color : ""}
                         {line.item.size ? ` (${line.item.size})` : ""}
@@ -774,15 +846,15 @@ export function BookingForm({
           <Separator />
 
           <div className="flex flex-col gap-2 text-sm">
-            <div className="flex items-center justify-between text-muted-foreground">
+            <div className="text-muted-foreground flex items-center justify-between">
               <span>Rental Charges</span>
-              <span className="font-medium text-foreground">
+              <span className="text-foreground font-medium">
                 {formatMoney(totals.grossRent)}
               </span>
             </div>
 
             {Number(totals.discount) > 0 ? (
-              <div className="flex items-center justify-between text-emerald-600 dark:text-emerald-400 font-medium">
+              <div className="flex items-center justify-between font-medium text-emerald-600 dark:text-emerald-400">
                 <span className="flex items-center gap-1">
                   <TagIcon className="size-3.5" />
                   Discount
@@ -792,16 +864,17 @@ export function BookingForm({
             ) : null}
 
             {Number(totals.additionalCost) > 0 ? (
-              <div className="flex items-center justify-between text-muted-foreground">
+              <div className="text-muted-foreground flex items-center justify-between">
                 <span>Additional charges</span>
-                <span className="font-medium text-foreground">
+                <span className="text-foreground font-medium">
                   {formatMoney(totals.additionalCost)}
                 </span>
               </div>
             ) : null}
 
-            {Number(totals.discount) > 0 || Number(totals.additionalCost) > 0 ? (
-              <div className="flex items-center justify-between text-muted-foreground font-medium">
+            {Number(totals.discount) > 0 ||
+            Number(totals.additionalCost) > 0 ? (
+              <div className="text-muted-foreground flex items-center justify-between font-medium">
                 <span>Net Rent Subtotal</span>
                 <span className="text-foreground">
                   {formatMoney(totals.netRent)}
@@ -809,14 +882,17 @@ export function BookingForm({
               </div>
             ) : null}
 
-            <div className="flex items-center justify-between text-muted-foreground">
+            <div className="text-muted-foreground flex items-center justify-between">
               <span className="flex items-center gap-1.5">
                 Security Deposit
-                <Badge variant="outline" className="text-[10px] py-0 px-1.5 font-normal border-primary/30 text-primary">
+                <Badge
+                  variant="outline"
+                  className="border-primary/30 text-primary px-1.5 py-0 text-[10px] font-normal"
+                >
                   Refundable
                 </Badge>
               </span>
-              <span className="font-medium text-foreground">
+              <span className="text-foreground font-medium">
                 {formatMoney(totals.deposit)}
               </span>
             </div>
@@ -824,32 +900,37 @@ export function BookingForm({
 
           <Separator />
 
-          <div className="flex items-center justify-between rounded-xl bg-primary/5 p-3.5 border border-primary/20">
+          <div className="bg-primary/5 border-primary/20 flex items-center justify-between rounded-xl border p-3.5">
             <div className="flex flex-col">
-              <span className="text-sm font-bold text-foreground">
-                {Number(totals.advance) > 0 ? "Due at Pickup" : "Total Due at Pickup"}
+              <span className="text-foreground text-sm font-bold">
+                {Number(totals.advance) > 0
+                  ? "Due at Pickup"
+                  : "Total Due at Pickup"}
               </span>
-              <span className="text-[11px] text-muted-foreground">Rent + Security Deposit</span>
+              <span className="text-muted-foreground text-[11px]">
+                Rent + Security Deposit
+              </span>
             </div>
-            <span className="text-xl font-bold text-primary">
+            <span className="text-primary text-xl font-bold">
               {formatMoney(totals.dueAtPickup)}
             </span>
           </div>
 
           {Number(totals.advance) > 0 ? (
-            <div className="flex items-center justify-between text-muted-foreground text-sm">
+            <div className="text-muted-foreground flex items-center justify-between text-sm">
               <span>Advance ({formatMoney(totals.grandTotal)} total)</span>
-              <span className="font-medium text-foreground">
+              <span className="text-foreground font-medium">
                 -{formatMoney(totals.advance)}
               </span>
             </div>
           ) : null}
 
           {Number(totals.deposit) > 0 ? (
-            <div className="flex items-center gap-2 rounded-lg bg-emerald-500/10 border border-emerald-500/20 p-2.5 text-xs text-emerald-700 dark:text-emerald-400">
+            <div className="flex items-center gap-2 rounded-lg border border-emerald-500/20 bg-emerald-500/10 p-2.5 text-xs text-emerald-700 dark:text-emerald-400">
               <ShieldCheckIcon className="size-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
               <span>
-                Includes <strong>{formatMoney(totals.deposit)}</strong> in refundable security deposit, returned after item check.
+                Includes <strong>{formatMoney(totals.deposit)}</strong> in
+                refundable security deposit, returned after item check.
               </span>
             </div>
           ) : null}
@@ -859,12 +940,14 @@ export function BookingForm({
       {/* Mobile-only: keeps the running total and submit reachable without
        * scrolling past the whole form, mirroring what desktop already gets
        * for free from the two-column layout. */}
-      <div className="fixed inset-x-0 bottom-0 z-40 flex items-center justify-between gap-3 border-t border-border/60 bg-background/95 p-4 shadow-[0_-4px_16px_rgba(0,0,0,0.08)] backdrop-blur-sm lg:hidden">
+      <div className="border-border/60 bg-background/95 fixed inset-x-0 bottom-0 z-40 flex items-center justify-between gap-3 border-t p-4 shadow-[0_-4px_16px_rgba(0,0,0,0.08)] backdrop-blur-sm lg:hidden">
         <div className="flex min-w-0 flex-col">
           <span className="text-muted-foreground text-[11px]">
-            {Number(totals.advance) > 0 ? "Due at pickup" : "Total due at pickup"}
+            {Number(totals.advance) > 0
+              ? "Due at pickup"
+              : "Total due at pickup"}
           </span>
-          <span className="truncate text-lg font-bold text-primary">
+          <span className="text-primary truncate text-lg font-bold">
             {formatMoney(totals.dueAtPickup)}
           </span>
         </div>

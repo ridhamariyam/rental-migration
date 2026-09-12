@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import { redirect } from "next/navigation";
 import {
   SidebarInset,
@@ -5,10 +6,12 @@ import {
   SidebarTrigger,
 } from "@/components/ui/sidebar";
 import { NavCheckInOut } from "@/components/tenant/nav-check-in-out";
+import { NavNotifications } from "@/components/tenant/nav-notifications";
 import { TenantSidebar } from "@/components/tenant/tenant-sidebar";
 import { getCurrentUser } from "@/lib/auth/session";
 import { hasPermission, Permission } from "@/lib/auth/permissions";
 import { getTodaysAttendance } from "@/server/attendance/service";
+import type { TenantSessionUser } from "@/server/auth/guard";
 
 /**
  * Protected tenant shell. Phase 6/7 only needed a guard and a bare header
@@ -63,11 +66,14 @@ export default async function TenantDashboardLayout({
       <SidebarInset className="overflow-hidden">
         <header className="flex h-14 shrink-0 items-center gap-2 border-b bg-white px-4 print:hidden">
           <SidebarTrigger />
-          {canSelfCheckIn ? (
-            <div className="ml-auto">
-              <NavCheckInOut initialToday={today} />
-            </div>
-          ) : null}
+          <div className="ml-auto flex items-center gap-2">
+            {canSelfCheckIn ? <NavCheckInOut initialToday={today} /> : null}
+            {/* Suspended on its own: the header frame paints immediately,
+                the bell fills in when its query lands. */}
+            <Suspense fallback={null}>
+              <NavNotifications user={user as TenantSessionUser} />
+            </Suspense>
+          </div>
         </header>
         <div className="flex flex-1 flex-col overflow-y-auto">{children}</div>
       </SidebarInset>

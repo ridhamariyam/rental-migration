@@ -1,5 +1,6 @@
 "use client";
 
+import { ConfirmActionButton } from "@/components/tenant/confirm-action-button";
 import { useRef, useState } from "react";
 import { CameraIcon, FileTextIcon, PaperclipIcon, XIcon } from "lucide-react";
 
@@ -125,17 +126,15 @@ export function BookingDocumentsField({
                 {document.name}
               </a>
               {!disabled ? (
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon-sm"
-                  aria-label={`Remove ${document.name}`}
-                  onClick={() =>
+                <ConfirmActionButton
+                  ariaLabel={`Remove ${document.name}`}
+                  title="Remove this document?"
+                  description={`"${document.name}" comes off this booking. The file itself stays uploaded, but the booking will no longer reference it.`}
+                  onConfirm={() =>
                     onChange(value.filter((_, i) => i !== index))
                   }
-                >
-                  <XIcon className="size-3.5" />
-                </Button>
+                  icon={<XIcon className="size-3.5" />}
+                />
               ) : null}
             </li>
           ))}
@@ -167,9 +166,7 @@ export function BookingDocumentsField({
             )}
           </DropdownMenuTrigger>
           <DropdownMenuContent align="start">
-            <DropdownMenuItem
-              onClick={() => cameraInputRef.current?.click()}
-            >
+            <DropdownMenuItem onClick={() => cameraInputRef.current?.click()}>
               <CameraIcon />
               Take photo
             </DropdownMenuItem>
