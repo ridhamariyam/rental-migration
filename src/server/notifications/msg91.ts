@@ -75,6 +75,35 @@ function extractVariableSlots(body: string | null, components: UnknownRecord): s
   return [...slots];
 }
 
+function stringArray(value: unknown): string[] | null {
+  if (!Array.isArray(value) || value.length === 0) return null;
+  const strings = value.filter((item): item is string => typeof item === "string");
+  return strings.length === value.length ? strings : null;
+}
+
+/**
+ * MSG91's own template payload already lists the exact component keys to
+ * send (`variables`, e.g. `["body_var_1", ...]` for NAMED-parameter
+ * templates vs `["body_1", ...]` for POSITIONAL ones). Prefer that over
+ * `extractVariableSlots`'s regex guess, which reconstructs `{{var_1}}` as
+ * bare `"var_1"` instead of MSG91's expected `"body_var_1"` key —  a
+ * mismatch that makes MSG91 reject the send with "Parameter name is
+ * missing or empty" for every NAMED-parameter template. Checks both the
+ * flat shape and the `languages[]`-nested shape (see `template/*.json`).
+ */
+function extractDeclaredVariables(record: UnknownRecord): string[] | null {
+  const direct = stringArray(record.variables);
+  if (direct) return direct;
+
+  const languages = Array.isArray(record.languages) ? record.languages.map(asRecord) : [];
+  for (const language of languages) {
+    const nested = stringArray(language.variables);
+    if (nested) return nested;
+  }
+
+  return null;
+}
+
 export class Msg91Client {
   private readonly baseUrl: string;
   private readonly authkey: string;
@@ -183,7 +212,7 @@ export class Msg91Client {
           status: stringValue(record.status) ?? "approved",
           body,
           components,
-          variableSlots: extractVariableSlots(body, components),
+          variableSlots: extractDeclaredVariables(record) ?? extractVariableSlots(body, components),
           raw: record,
         };
       })
