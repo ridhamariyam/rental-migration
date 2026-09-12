@@ -44,7 +44,6 @@ import { Permission, hasPermission } from "@/lib/auth/permissions";
 import { outletScopeFor, type TenantSessionUser } from "@/server/auth/guard";
 import { AuditAction, recordAudit } from "@/server/audit/service";
 import {
-  queueBookingLifecycleNotifications,
   queueBookingNotification,
   queueOwnerBookingNotification,
 } from "@/server/notifications/service";
@@ -1073,8 +1072,14 @@ export async function createBooking(
         )
         .returning();
 
+      // Only the owner's "your item is booked" goes out here. The
+      // customer's pickup/return reminders are *not* queued at booking
+      // time any more — they are scanned for on the day they fall due
+      // (`queuePickupReminders`/`queueReturnReminders`), because a booking
+      // taken inside the reminder window produced a reminder whose send
+      // time had already passed, which the dispatcher then fired seconds
+      // after confirmation.
       for (const item of createdItems) {
-        await queueBookingLifecycleNotifications(tx, order, item);
         await queueOwnerBookingNotification(
           tx,
           order,
@@ -1500,7 +1505,7 @@ export async function addBookingItem(
 
     await recomputeOrderTotal(tx, bookingId);
 
-    await queueBookingLifecycleNotifications(tx, order, created);
+    // Reminders for this new line are queued by the dated scan, not here.
     await queueOwnerBookingNotification(
       tx,
       order,
