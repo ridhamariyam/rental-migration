@@ -134,14 +134,18 @@ transaction — so something has to drive the outbox:
 app writes notification_logs  →  scheduled worker  →  POST /api/internal/notifications/dispatch  →  MSG91
 ```
 
-**Production** runs `scripts/dispatch-notifications.ts` as a Railway cron
-service every 5 minutes (see `railway.notifications.json`). It runs once
-and exits, which is what a scheduler expects.
+**Production** dispatches in-process: `src/instrumentation.ts`'s `register()`
+starts a `setInterval` (default every 5 minutes, override with
+`NOTIFICATION_DISPATCH_INTERVAL_MS`) that calls `dispatchDueNotifications()`
+directly as soon as the `next start` server boots — no second service to
+deploy or configure. If Railway ever scales this service to multiple
+instances, that's fine too; see the locking note below.
 
-Deploy it as a second Railway service in the same project, pointed at the
-same repo, with `railway.notifications.json` as its config file. It needs
-`NEXT_PUBLIC_APP_URL` and `NOTIFICATION_WORKER_SECRET` — the same values
-as the app service — and nothing else; it talks HTTP, not SQL.
+The old approach — a second Railway service running
+`scripts/dispatch-notifications.ts` on a `railway.notifications.json` cron
+schedule, talking to `/api/internal/notifications/dispatch` over HTTP — still
+works and is kept as a fallback (e.g. if dispatch ever needs to be decoupled
+from the web process again), but is no longer required.
 
 Retries and restart-safety are handled by the dispatcher, not the
 scheduler: `claimDueNotifications` claims rows with `FOR UPDATE SKIP
