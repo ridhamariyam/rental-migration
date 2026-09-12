@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Spinner } from "@/components/ui/spinner";
 import { Button } from "@/components/ui/button";
+import { ScanBarcodeButton } from "@/components/tenant/barcode-scanner-dialog";
 import { apiRequest } from "@/lib/api-client";
 import { formatMoney } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -17,9 +18,13 @@ const SEARCH_DEBOUNCE_MS = 300;
 /**
  * Search-select for the booking form's "Item" field — searches SKU,
  * barcode or product name across the whole catalogue (unlike the product
- * detail page's per-product variation list). A barcode scanner types the
- * code followed by Enter, which naturally lands as a normal search here —
- * no separate "scan mode" is needed.
+ * detail page's per-product variation list).
+ *
+ * Three ways in, because a counter has all three: type a name, let a
+ * handheld scanner type the code and press Enter (it lands as an ordinary
+ * search), or tap the camera button and scan the label off the item. A
+ * camera scan that matches exactly one item selects it outright — the
+ * point of scanning is not to be handed a list to pick from.
  */
 export function ItemPicker({
   value,
@@ -57,6 +62,39 @@ export function ItemPicker({
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
+
+  /**
+   * A scanned barcode is an exact identifier, not a search term — look it
+   * up and take the item if the catalogue agrees on one. Anything else
+   * (no match, or a code that somehow matches several) falls back to the
+   * normal result list with the code in the box, so the person can see
+   * what happened instead of nothing happening.
+   */
+  async function handleScan(code: string) {
+    setQuery(code);
+    setOpen(true);
+    setLoading(true);
+
+    try {
+      const data = await apiRequest<VariationSearchResult[]>(
+        `/api/variations/search?q=${encodeURIComponent(code)}`,
+      );
+      setResults(data);
+
+      const exact = data.filter(
+        (item) => item.barcode === code || item.sku === code,
+      );
+      if (exact.length === 1) {
+        onSelect(exact[0]);
+        setQuery("");
+        setOpen(false);
+      }
+    } catch {
+      setResults([]);
+    } finally {
+      setLoading(false);
+    }
+  }
 
   function search(next: string) {
     setQuery(next);
@@ -131,21 +169,25 @@ export function ItemPicker({
 
   return (
     <div ref={containerRef} className="relative">
-      <div className="relative">
-        <SearchIcon className="text-muted-foreground pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2" />
-        <Input
-          value={query}
-          disabled={disabled}
-          aria-invalid={invalid}
-          autoFocus={autoFocus}
-          onChange={(event) => search(event.target.value)}
-          onFocus={() => setOpen(true)}
-          placeholder="Scan a barcode, or search by SKU/product name…"
-          className="pl-8"
-          role="combobox"
-          aria-expanded={open}
-          aria-controls="item-picker-list"
-        />
+      <div className="flex items-center gap-2">
+        <div className="relative flex-1">
+          <SearchIcon className="text-muted-foreground pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2" />
+          <Input
+            value={query}
+            disabled={disabled}
+            aria-invalid={invalid}
+            autoFocus={autoFocus}
+            onChange={(event) => search(event.target.value)}
+            onFocus={() => setOpen(true)}
+            placeholder="Scan a barcode, or search by SKU/product name…"
+            className="pl-8"
+            role="combobox"
+            aria-expanded={open}
+            aria-controls="item-picker-list"
+          />
+        </div>
+
+        <ScanBarcodeButton onScan={handleScan} disabled={disabled} />
       </div>
 
       {open && query.trim() ? (
