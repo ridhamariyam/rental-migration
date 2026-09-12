@@ -102,7 +102,7 @@ export default async function BookingInvoicePage({
 
       {/* The document itself. Its own background and border rather than a
           Card, so print keeps the banner and drops the app chrome. */}
-      <article className="bg-card ring-foreground/10 overflow-hidden rounded-xl shadow-xs ring-1 print:rounded-none print:shadow-none print:ring-0">
+      <article className="print-document bg-card ring-foreground/10 overflow-hidden rounded-xl shadow-xs ring-1">
         <header className="bg-primary text-primary-foreground flex items-center justify-end px-6 py-4 sm:px-8">
           <h1 className="text-2xl font-bold tracking-[0.2em] uppercase sm:text-3xl">
             Invoice
@@ -110,7 +110,7 @@ export default async function BookingInvoicePage({
         </header>
 
         <div className="flex flex-col gap-6 p-6 sm:p-8">
-          <div className="flex flex-wrap items-start justify-between gap-6">
+          <div className="flex flex-col items-start justify-between gap-6 sm:flex-row">
             <div className="flex items-start gap-3">
               {receipt.shop.logoUrl ? (
                 <Image
@@ -144,7 +144,7 @@ export default async function BookingInvoicePage({
               </div>
             </div>
 
-            <div className="flex flex-col items-end gap-0.5 text-right">
+            <div className="flex flex-col items-start gap-0.5 sm:items-end sm:text-right">
               <p className="text-primary text-xs font-semibold tracking-wide uppercase">
                 Bill to
               </p>
@@ -160,7 +160,7 @@ export default async function BookingInvoicePage({
             </div>
           </div>
 
-          <dl className="grid grid-cols-2 gap-x-6 gap-y-1 text-sm sm:max-w-sm">
+          <dl className="grid grid-cols-[auto_1fr] gap-x-6 gap-y-1 text-sm sm:max-w-sm">
             <dt className="text-muted-foreground text-xs font-semibold tracking-wide uppercase">
               Invoice ID
             </dt>
@@ -182,21 +182,27 @@ export default async function BookingInvoicePage({
             <table className="w-full border-collapse text-sm">
               <thead className="bg-muted/50">
                 <tr className="text-muted-foreground text-left text-xs font-semibold tracking-wide uppercase">
-                  <th className="w-10 px-2 py-2 sm:px-3">No</th>
+                  <th className="hidden w-10 px-2 py-2 sm:table-cell sm:px-3">
+                    No
+                  </th>
                   <th className="px-2 py-2 sm:px-3">Item</th>
-                  <th className="w-12 px-2 py-2 text-right sm:px-3">Qty</th>
-                  <th className="w-24 px-2 py-2 text-right sm:px-3">Amount</th>
+                  <th className="w-10 px-2 py-2 text-right sm:w-12 sm:px-3">
+                    Qty
+                  </th>
+                  <th className="w-24 px-2 py-2 text-right whitespace-nowrap sm:px-3">
+                    Amount
+                  </th>
                 </tr>
               </thead>
               <tbody>
                 {billedItems.map((item, index) => (
                   <tr key={item.id} className="border-t">
-                    <td className="text-muted-foreground px-2 py-2.5 align-top sm:px-3">
+                    <td className="text-muted-foreground hidden px-2 py-2.5 align-top sm:table-cell sm:px-3">
                       {index + 1}
                     </td>
                     <td className="px-2 py-2.5 sm:px-3">
                       <div className="flex items-start gap-2.5">
-                        <span className="bg-muted flex size-9 shrink-0 items-center justify-center overflow-hidden rounded border">
+                        <span className="bg-muted hidden size-9 shrink-0 items-center justify-center overflow-hidden rounded border sm:flex">
                           {item.image ? (
                             <Image
                               src={item.image}
@@ -230,7 +236,7 @@ export default async function BookingInvoicePage({
                     <td className="px-2 py-2.5 text-right align-top sm:px-3">
                       {item.quantity}
                     </td>
-                    <td className="px-2 py-2.5 text-right align-top font-medium sm:px-3">
+                    <td className="px-2 py-2.5 text-right align-top font-medium whitespace-nowrap sm:px-3">
                       {formatMoney(item.grossRent)}
                     </td>
                   </tr>
@@ -256,7 +262,7 @@ export default async function BookingInvoicePage({
               </p>
             </div>
 
-            <div className="flex flex-col gap-2 text-sm">
+            <div className="flex flex-col gap-2 border-t pt-4 text-sm sm:border-t-0 sm:pt-0">
               <div className="flex items-center justify-between">
                 <span className="text-muted-foreground text-xs font-semibold tracking-wide uppercase">
                   Product cost

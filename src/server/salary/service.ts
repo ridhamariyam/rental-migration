@@ -229,6 +229,33 @@ export async function listStaffSalaries(
     .orderBy(desc(salaries.effectiveDate));
 }
 
+export type PayReadiness = "none" | "no_rate" | "ready";
+
+/**
+ * Whether this staff member can have pay calculated at all, so the UI can
+ * say what is missing *before* someone presses Calculate and gets a red
+ * error back. `none` = never configured, `no_rate` = configured under the
+ * old monthly-only model and still has no hourly rate.
+ */
+export async function getPayReadiness(
+  actor: TenantSessionUser,
+  staffId: string,
+): Promise<PayReadiness> {
+  assertCanView(actor, staffId);
+
+  const [current] = await db
+    .select({ hourlyRate: salaries.hourlyRate })
+    .from(salaries)
+    .where(
+      and(eq(salaries.staffId, staffId), eq(salaries.shopId, actor.shopId)),
+    )
+    .orderBy(desc(salaries.effectiveDate))
+    .limit(1);
+
+  if (!current) return "none";
+  return Number(current.hourlyRate) > 0 ? "ready" : "no_rate";
+}
+
 /** The configuration in force on `onDate` — the latest row at or before
  * it, mirroring the legacy `SalaryRepository.get_effective`. */
 async function getEffectiveSalary(

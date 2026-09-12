@@ -187,15 +187,11 @@ export function TenantSidebar({
   }, [pathname]);
 
   const isOwner = user.role === "admin" || user.role === "super_admin";
-  // Plain staff accounts get no dashboard/overview page at all (see
-  // `dashboard/page.tsx`'s matching redirect) — Bookings is their
-  // effective "home" instead.
-  const homeHref =
-    user.role === "staff" ? tenantPaths.bookings : tenantPaths.dashboard;
+  // Every role now has a dashboard — a staff account's is the day's work
+  // at their own outlet rather than the shop's revenue (see
+  // `dashboard/page.tsx`), so it is their home like anyone else's.
+  const homeHref = tenantPaths.dashboard;
   const items = navItems
-    .filter(
-      (item) => item.href !== tenantPaths.dashboard || user.role !== "staff",
-    )
     .filter(
       (item) => !item.permission || hasPermission(user.role, item.permission),
     )

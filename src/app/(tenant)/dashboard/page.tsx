@@ -1,6 +1,5 @@
 import { Suspense } from "react";
 import Link from "next/link";
-import { redirect } from "next/navigation";
 import {
   BarChart3Icon,
   CalendarClockIcon,
@@ -64,13 +63,6 @@ export default async function TenantDashboardPage() {
     return null;
   }
 
-  // Plain staff accounts get no dashboard/overview at all — send them
-  // straight to Bookings, the page their day-to-day work actually
-  // happens on (see `TenantSidebar`'s matching nav filter).
-  if (user.role === "staff") {
-    redirect(tenantPaths.bookings);
-  }
-
   const shop = user.shopId ? await getTenantById(user.shopId) : null;
   const canViewReports = hasPermission(user.role, Permission.REPORT_VIEW);
 
@@ -87,7 +79,9 @@ export default async function TenantDashboardPage() {
         </div>
 
         <div className="flex flex-wrap gap-2">
-          {QUICK_LINKS.map((link) => (
+          {QUICK_LINKS.filter(
+            (link) => link.href !== tenantPaths.reports || canViewReports,
+          ).map((link) => (
             <Button
               key={link.href}
               size="sm"
@@ -103,6 +97,15 @@ export default async function TenantDashboardPage() {
         </div>
       </div>
 
+      {/* Work to do, not money earned. The counts are scoped by role
+          (`staffScopeCondition`), so a staff account sees its own outlet's
+          day — this is their whole dashboard, and the top of everyone
+          else's. Each tile opens the bookings list filtered to the rows it
+          counted. */}
+      <Suspense fallback={<DashboardOperationsTilesSkeleton />}>
+        <DashboardOperationsTiles actor={user as TenantSessionUser} />
+      </Suspense>
+
       {canViewReports ? (
         <>
           <Suspense fallback={<OnboardingChecklistSkeleton />}>
@@ -110,11 +113,6 @@ export default async function TenantDashboardPage() {
           </Suspense>
           <Suspense fallback={<DashboardStatsTilesSkeleton />}>
             <DashboardStatsTiles actor={user as TenantSessionUser} />
-          </Suspense>
-          {/* Work to do, not money earned — each tile opens the bookings
-              list already filtered to the rows it counted. */}
-          <Suspense fallback={<DashboardOperationsTilesSkeleton />}>
-            <DashboardOperationsTiles actor={user as TenantSessionUser} />
           </Suspense>
           <Suspense fallback={<RevenueTrendSectionSkeleton />}>
             <DashboardAnalyticsSection actor={user as TenantSessionUser} />

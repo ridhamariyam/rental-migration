@@ -6,6 +6,8 @@ import { AppError } from "@/lib/errors/app-error";
 import {
   bookingItems,
   bookings,
+  customers,
+  outlets,
   ownerSettlements,
   productVariations,
   products,
@@ -209,6 +211,137 @@ export async function listSettlements(
     pageSize: query.pageSize,
     totalPages: Math.max(1, Math.ceil(total / query.pageSize)),
   };
+}
+
+export type OwnerItem = {
+  variationId: string;
+  productId: string;
+  productName: string;
+  sku: string;
+  color: string | null;
+  size: string | null;
+  image: string | null;
+  outletName: string | null;
+  status: string;
+  isAvailable: boolean;
+  ownerName: string | null;
+  ownerPhone: string | null;
+  /** Set when the owner is a customer on file rather than free text — the
+   * page links through to them, and notifications fall back to this
+   * record's phone. */
+  ownerCustomerId: string | null;
+  ownerCustomerName: string | null;
+  shareAmount: string;
+  /** How many times this item has gone out (every booking line naming it,
+   * cancellations excluded). */
+  timesRented: number;
+  /** Owner money already settled, and still owed, across its history. */
+  paidTotal: string;
+  pendingTotal: string;
+};
+
+/**
+ * Every customer-owned item in the shop, whether or not it has earned a
+ * payout yet.
+ *
+ * A settlement row only exists once a rental has been *returned*, so the
+ * Revenue Share page used to be blank until the first completed rental —
+ * an owner's item could be listed, booked and out with a customer while
+ * the page said there was nothing to show. This is the register of what
+ * the shop holds on someone else's behalf; the settlements table beneath
+ * it stays the money ledger.
+ */
+export async function listOwnerItems(
+  actor: TenantSessionUser,
+  options: { outletId?: string; q?: string } = {},
+): Promise<OwnerItem[]> {
+  if (!hasPermission(actor.role, Permission.SETTLEMENT_VIEW)) {
+    throw AppError.forbidden("You do not have permission to do this");
+  }
+
+  const conditions = [
+    eq(products.shopId, actor.shopId),
+    eq(productVariations.ownershipType, "customer_owned"),
+  ];
+  if (options.outletId) {
+    conditions.push(eq(productVariations.outletId, options.outletId));
+  }
+  if (options.q) {
+    const pattern = `%${options.q}%`;
+    conditions.push(
+      or(
+        ilike(products.name, pattern),
+        ilike(productVariations.sku, pattern),
+        ilike(productVariations.ownerName, pattern),
+        ilike(customers.firstName, pattern),
+        ilike(customers.lastName, pattern),
+      )!,
+    );
+  }
+
+  const rows = await db
+    .select({
+      variationId: productVariations.id,
+      productId: products.id,
+      productName: products.name,
+      sku: productVariations.sku,
+      color: productVariations.color,
+      size: productVariations.size,
+      image: productVariations.image,
+      outletName: outlets.name,
+      status: productVariations.status,
+      isAvailable: productVariations.isAvailable,
+      ownerName: productVariations.ownerName,
+      ownerPhone: productVariations.ownerPhone,
+      ownerCustomerId: productVariations.ownerCustomerId,
+      ownerCustomerFirstName: customers.firstName,
+      ownerCustomerLastName: customers.lastName,
+      shareAmount: productVariations.ownerShareAmount,
+      timesRented: sql<number>`(
+        select count(*)::int from ${bookingItems}
+        where ${bookingItems.variationId} = ${productVariations.id}
+          and ${bookingItems.status} <> 'cancelled'
+      )`,
+      paidTotal: sql<string>`(
+        select coalesce(sum(${ownerSettlements.ownerAmount}), 0) from ${ownerSettlements}
+        where ${ownerSettlements.variationId} = ${productVariations.id}
+          and ${ownerSettlements.status} = 'paid'
+      )`,
+      pendingTotal: sql<string>`(
+        select coalesce(sum(${ownerSettlements.ownerAmount}), 0) from ${ownerSettlements}
+        where ${ownerSettlements.variationId} = ${productVariations.id}
+          and ${ownerSettlements.status} = 'pending'
+      )`,
+    })
+    .from(productVariations)
+    .innerJoin(products, eq(productVariations.productId, products.id))
+    .leftJoin(outlets, eq(productVariations.outletId, outlets.id))
+    .leftJoin(customers, eq(productVariations.ownerCustomerId, customers.id))
+    .where(and(...conditions))
+    .orderBy(desc(productVariations.createdAt));
+
+  return rows.map((row) => ({
+    variationId: row.variationId,
+    productId: row.productId,
+    productName: row.productName,
+    sku: row.sku,
+    color: row.color,
+    size: row.size,
+    image: row.image,
+    outletName: row.outletName,
+    status: row.status,
+    isAvailable: row.isAvailable,
+    ownerName: row.ownerName,
+    ownerPhone: row.ownerPhone,
+    ownerCustomerId: row.ownerCustomerId,
+    ownerCustomerName: row.ownerCustomerFirstName
+      ? `${row.ownerCustomerFirstName} ${row.ownerCustomerLastName}`
+      : null,
+    shareAmount: row.shareAmount,
+    timesRented: row.timesRented,
+    paidTotal: row.paidTotal,
+    pendingTotal: row.pendingTotal,
+  }));
 }
 
 export type SettlementSummary = {
