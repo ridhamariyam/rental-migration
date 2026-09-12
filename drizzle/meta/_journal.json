@@ -204,6 +204,13 @@
       "when": 1789196382586,
       "tag": "0028_hourly_rate_payroll",
       "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1789219177229,
+      "tag": "0029_payslip_date_ranges",
+      "breakpoints": true
     }
   ]
 }

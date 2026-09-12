@@ -62,20 +62,46 @@ export const updateSalarySchema = createSalarySchema.omit({ staffId: true });
 
 export type UpdateSalaryInput = z.infer<typeof updateSalarySchema>;
 
-export const calculateSalaryQuerySchema = z.object({
-  staffId: uuidSchema,
-  year: z.coerce.number().int().min(2000).max(2100),
-  month: z.coerce.number().int().min(1).max(12),
-});
+/**
+ * A payroll period, given either way: an explicit `fromDate`/`toDate`, or
+ * a `year`/`month` pair that stands for that whole calendar month. Payroll
+ * used to be month-only; a shop running a fortnight or a custom stretch of
+ * days needs the dates, and a month is just the common case of one.
+ */
+const payrollPeriodSchema = z
+  .object({
+    staffId: uuidSchema,
+    fromDate: z.iso.date("Enter a valid start date").optional(),
+    toDate: z.iso.date("Enter a valid end date").optional(),
+    year: z.coerce.number().int().min(2000).max(2100).optional(),
+    month: z.coerce.number().int().min(1).max(12).optional(),
+  })
+  .superRefine((data, ctx) => {
+    const hasRange = Boolean(data.fromDate && data.toDate);
+    const hasMonth = Boolean(data.year && data.month);
 
+    if (!hasRange && !hasMonth) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["fromDate"],
+        message: "Choose a period — either a month or a start and end date",
+      });
+      return;
+    }
+
+    if (hasRange && data.toDate! < data.fromDate!) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["toDate"],
+        message: "The end date cannot be before the start date",
+      });
+    }
+  });
+
+export const calculateSalaryQuerySchema = payrollPeriodSchema;
 export type CalculateSalaryQuery = z.infer<typeof calculateSalaryQuerySchema>;
 
-export const generatePayslipSchema = z.object({
-  staffId: uuidSchema,
-  year: z.coerce.number().int().min(2000).max(2100),
-  month: z.coerce.number().int().min(1).max(12),
-});
-
+export const generatePayslipSchema = payrollPeriodSchema;
 export type GeneratePayslipInput = z.infer<typeof generatePayslipSchema>;
 
 export const payslipListQuerySchema = z.object({
@@ -85,3 +111,28 @@ export const payslipListQuerySchema = z.object({
 });
 
 export type PayslipListQuery = z.infer<typeof payslipListQuerySchema>;
+
+/**
+ * Turns either shape of `payrollPeriodSchema` into the range the services
+ * work in. Kept next to the schema so route handlers never re-derive a
+ * month's bounds themselves.
+ */
+export function resolvePayrollRange(input: {
+  fromDate?: string;
+  toDate?: string;
+  year?: number;
+  month?: number;
+}): { fromDate: string; toDate: string } {
+  if (input.fromDate && input.toDate) {
+    return { fromDate: input.fromDate, toDate: input.toDate };
+  }
+
+  const year = input.year!;
+  const month = input.month!;
+  const pad = (value: number) => String(value).padStart(2, "0");
+  const lastDay = new Date(year, month, 0).getDate();
+  return {
+    fromDate: `${year}-${pad(month)}-01`,
+    toDate: `${year}-${pad(month)}-${pad(lastDay)}`,
+  };
+}

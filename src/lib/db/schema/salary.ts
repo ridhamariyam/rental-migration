@@ -104,8 +104,17 @@ export const salaryPayslips = pgTable(
     staffId: uuid("staff_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
-    periodYear: integer("period_year").notNull(),
-    periodMonth: integer("period_month").notNull(),
+    //: The days this payslip actually pays for. A payroll period is no
+    //: longer assumed to be a calendar month — a shop may run a fortnight,
+    //: a week, or any stretch of days — so the range is the source of
+    //: truth and the month pair below is derived from it.
+    periodStart: date("period_start").notNull(),
+    periodEnd: date("period_end").notNull(),
+    //: Set only when the range is exactly one whole calendar month, which
+    //: is what lets the history list keep labelling those "September 2026"
+    //: instead of a pair of dates. Null for any other range.
+    periodYear: integer("period_year"),
+    periodMonth: integer("period_month"),
     //: The monthly reference figure in force that month, if the shop
     //: states one. Never used in the arithmetic — `basePay` comes from
     //: hours × `hourlyRate` — kept so a payslip can still show what the
@@ -173,10 +182,13 @@ export const salaryPayslips = pgTable(
       .defaultNow(),
   },
   (table) => [
+    //: One payslip per staff member per exact range — regenerating the
+    //: same period overwrites rather than duplicating, the same rule the
+    //: month-keyed index enforced before ranges existed.
     uniqueIndex("uq_payslip_staff_period").on(
       table.staffId,
-      table.periodYear,
-      table.periodMonth,
+      table.periodStart,
+      table.periodEnd,
     ),
     index("ix_salary_payslips_shop_id").on(table.shopId),
   ],

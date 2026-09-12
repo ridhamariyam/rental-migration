@@ -113,3 +113,36 @@ export function toDateString(date: Date): string {
   const day = String(date.getDate()).padStart(2, "0");
   return `${year}-${month}-${day}`;
 }
+
+const PAYROLL_MONTH_LABELS = [
+  "January",
+  "February",
+  "March",
+  "April",
+  "May",
+  "June",
+  "July",
+  "August",
+  "September",
+  "October",
+  "November",
+  "December",
+];
+
+/**
+ * How a payroll period reads: "September 2026" when it is exactly one
+ * calendar month, and the two dates otherwise ("12 – 25 Sept 2026").
+ * Payslips can now be run for any stretch of days, and a range that is not
+ * a month has no month to be named after.
+ */
+export function formatPayrollPeriod(period: {
+  periodStart: string;
+  periodEnd: string;
+  periodYear: number | null;
+  periodMonth: number | null;
+}): string {
+  if (period.periodYear && period.periodMonth) {
+    return `${PAYROLL_MONTH_LABELS[period.periodMonth - 1]} ${period.periodYear}`;
+  }
+  return `${formatDate(period.periodStart)} – ${formatDate(period.periodEnd)}`;
+}

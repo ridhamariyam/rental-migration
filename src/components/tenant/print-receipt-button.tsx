@@ -5,7 +5,13 @@ import { Button } from "@/components/ui/button";
 
 /** Thin client island so the receipt page itself can stay a plain async
  * Server Component — `window.print()` needs to run in the browser. */
-export function PrintReceiptButton() {
+export function PrintReceiptButton({
+  label = "Print invoice",
+}: {
+  /** What the button prints — the same control serves the customer
+   * invoice and a staff payslip. */
+  label?: string;
+} = {}) {
   return (
     <Button
       type="button"
@@ -13,7 +19,7 @@ export function PrintReceiptButton() {
       className="print:hidden"
     >
       <PrinterIcon />
-      Print invoice
+      {label}
     </Button>
   );
 }
