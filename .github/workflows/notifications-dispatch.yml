@@ -1,0 +1,53 @@
+# Runs the notification dispatcher on a schedule.
+#
+# Queueing a notification only writes a `notification_logs` row; something
+# has to call the dispatcher for it to reach MSG91. Confirmations get sent
+# by the app itself right after the response, but the *dated* jobs — the
+# pickup reminder (2 days before), the return reminder (1 day before), the
+# overdue reminder, the feedback request — are only queued and sent when
+# this runs. Without a scheduler they never go out at all, which is the
+# state production was in.
+#
+# This is the zero-infrastructure option: GitHub runs it, so nothing has to
+# be added to Railway. If you would rather keep it inside Railway, create a
+# service on the same repo with a cron schedule and the start command
+# `pnpm exec tsx scripts/dispatch-notifications.ts` — that script does the
+# same thing, and this workflow can then be deleted.
+#
+# Two repository secrets are required (Settings → Secrets and variables →
+# Actions):
+#   NOTIFICATION_WORKER_SECRET — the same value the app service has
+#   APP_URL                    — https://rentque.online
+name: Dispatch notifications
+
+on:
+  schedule:
+    # Every 15 minutes. The dated scans only queue a reminder once per
+    # item, so a frequent cadence costs nothing and keeps the send close to
+    # its intended hour; GitHub's scheduler can run late under load, which
+    # a tighter schedule absorbs.
+    - cron: "*/15 * * * *"
+  # So the pipeline can be exercised on demand from the Actions tab.
+  workflow_dispatch:
+
+jobs:
+  dispatch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger the dispatcher
+        env:
+          APP_URL: ${{ secrets.APP_URL }}
+          WORKER_SECRET: ${{ secrets.NOTIFICATION_WORKER_SECRET }}
+        run: |
+          if [ -z "$WORKER_SECRET" ] || [ -z "$APP_URL" ]; then
+            echo "APP_URL and NOTIFICATION_WORKER_SECRET must both be set as repository secrets."
+            exit 1
+          fi
+
+          # `-f` fails the step on any 4xx/5xx, so a wrong secret or a down
+          # app shows up as a red run rather than silently sending nothing.
+          response=$(curl -sS -f -X POST \
+            -H "x-worker-secret: $WORKER_SECRET" \
+            "${APP_URL%/}/api/internal/notifications/dispatch")
+
+          echo "$response"

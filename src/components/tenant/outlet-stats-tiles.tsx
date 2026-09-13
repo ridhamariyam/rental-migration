@@ -1,28 +1,29 @@
 import { Building2Icon, CircleCheckIcon, CircleSlashIcon } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
+import { PASTEL_TONES } from "@/lib/pastel-tones";
 import type { OutletStats } from "@/server/outlets/service";
 
-/** Same KPI-tile treatment as `TenantStatsTiles` — the accent color is
- * reserved for "Active" only, everything else stays neutral. */
+/** Same KPI-tile treatment as `TenantStatsTiles` — each tile's icon sits on
+ * its own pastel (see `PASTEL_TONES`), mint for "Active". */
 export function OutletStatsTiles({ stats }: { stats: OutletStats }) {
   const tiles = [
     {
       label: "Total outlets",
       value: stats.total,
       icon: Building2Icon,
-      accent: false,
+      tone: "sky" as const,
     },
     {
       label: "Active",
       value: stats.active,
       icon: CircleCheckIcon,
-      accent: true,
+      tone: "mint" as const,
     },
     {
       label: "Inactive",
       value: stats.inactive,
       icon: CircleSlashIcon,
-      accent: false,
+      tone: "lavender" as const,
     },
   ];
 
@@ -32,11 +33,7 @@ export function OutletStatsTiles({ stats }: { stats: OutletStats }) {
         <Card key={tile.label}>
           <CardContent className="flex items-center gap-3 px-4">
             <span
-              className={
-                tile.accent
-                  ? "bg-primary/10 text-primary flex size-9 shrink-0 items-center justify-center rounded-full"
-                  : "bg-muted text-muted-foreground flex size-9 shrink-0 items-center justify-center rounded-full"
-              }
+              className={`${PASTEL_TONES[tile.tone].chip} flex size-9 shrink-0 items-center justify-center rounded-full`}
             >
               <tile.icon className="size-4" aria-hidden="true" />
             </span>

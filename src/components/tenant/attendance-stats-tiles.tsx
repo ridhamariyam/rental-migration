@@ -1,5 +1,6 @@
 import { CalendarCheck2Icon, PencilLineIcon, UsersIcon } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
+import { PASTEL_TONES } from "@/lib/pastel-tones";
 import type { AttendanceStats } from "@/server/attendance/service";
 
 export function AttendanceStatsTiles({ stats }: { stats: AttendanceStats }) {
@@ -8,19 +9,19 @@ export function AttendanceStatsTiles({ stats }: { stats: AttendanceStats }) {
       label: "Present today",
       value: stats.presentToday,
       icon: CalendarCheck2Icon,
-      accent: true,
+      tone: "mint" as const,
     },
     {
       label: "Active staff",
       value: stats.totalStaff,
       icon: UsersIcon,
-      accent: false,
+      tone: "sky" as const,
     },
     {
       label: "Corrections this month",
       value: stats.correctionsThisMonth,
       icon: PencilLineIcon,
-      accent: false,
+      tone: "peach" as const,
     },
   ];
 
@@ -30,11 +31,7 @@ export function AttendanceStatsTiles({ stats }: { stats: AttendanceStats }) {
         <Card key={tile.label}>
           <CardContent className="flex items-center gap-3 p-4">
             <span
-              className={
-                tile.accent
-                  ? "bg-primary/10 text-primary flex size-9 shrink-0 items-center justify-center rounded-full"
-                  : "bg-muted text-muted-foreground flex size-9 shrink-0 items-center justify-center rounded-full"
-              }
+              className={`${PASTEL_TONES[tile.tone].chip} flex size-9 shrink-0 items-center justify-center rounded-full`}
             >
               <tile.icon className="size-4" aria-hidden="true" />
             </span>

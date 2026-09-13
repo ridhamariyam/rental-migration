@@ -31,6 +31,18 @@ const client = new S3Client({
     accessKeyId: env.STORAGE_ACCESS_KEY_ID,
     secretAccessKey: env.STORAGE_SECRET_ACCESS_KEY,
   },
+  // The SDK sets no timeouts by default, so one stalled connection to the
+  // bucket used to hang an upload request forever. These bound each
+  // attempt; the SDK retries a timed-out attempt (3 attempts in total),
+  // which all fits inside the browser's own 60 s upload timeout
+  // (`src/lib/uploads/upload-file.ts`). The request timer stops once
+  // response headers arrive, so streaming a large file back out through
+  // `GET /api/files/...` is not cut off.
+  requestHandler: {
+    connectionTimeout: 5_000,
+    requestTimeout: 15_000,
+    throwOnRequestTimeout: true,
+  },
 });
 
 /** The folders a key may live under. The serving route decides access per

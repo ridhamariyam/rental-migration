@@ -1,5 +1,6 @@
 import { CheckCircle2Icon, SparklesIcon, WrenchIcon } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
+import { PASTEL_TONES } from "@/lib/pastel-tones";
 import type { MaintenanceStats } from "@/server/maintenance/service";
 
 export function MaintenanceStatsTiles({ stats }: { stats: MaintenanceStats }) {
@@ -8,25 +9,26 @@ export function MaintenanceStatsTiles({ stats }: { stats: MaintenanceStats }) {
       label: "Open tasks",
       value: stats.open,
       icon: WrenchIcon,
-      accent: stats.open > 0,
+      // Warm only while there is something open to get to.
+      tone: stats.open > 0 ? ("peach" as const) : ("lemon" as const),
     },
     {
       label: "Cleaning",
       value: stats.cleaning,
       icon: SparklesIcon,
-      accent: false,
+      tone: "sky" as const,
     },
     {
       label: "Maintenance",
       value: stats.maintenance,
       icon: WrenchIcon,
-      accent: false,
+      tone: "lavender" as const,
     },
     {
       label: "Completed",
       value: stats.completed,
       icon: CheckCircle2Icon,
-      accent: false,
+      tone: "mint" as const,
     },
   ];
 
@@ -36,11 +38,7 @@ export function MaintenanceStatsTiles({ stats }: { stats: MaintenanceStats }) {
         <Card key={tile.label}>
           <CardContent className="flex items-center gap-3 px-4">
             <span
-              className={
-                tile.accent
-                  ? "bg-primary/10 text-primary flex size-9 shrink-0 items-center justify-center rounded-full"
-                  : "bg-muted text-muted-foreground flex size-9 shrink-0 items-center justify-center rounded-full"
-              }
+              className={`${PASTEL_TONES[tile.tone].chip} flex size-9 shrink-0 items-center justify-center rounded-full`}
             >
               <tile.icon className="size-4" aria-hidden="true" />
             </span>

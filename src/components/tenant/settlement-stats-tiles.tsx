@@ -1,11 +1,12 @@
 import { CircleCheckIcon, ClockIcon, WalletIcon } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { formatMoney } from "@/lib/format";
+import { PASTEL_TONES } from "@/lib/pastel-tones";
 import type { SettlementSummary } from "@/server/settlements/service";
 
-/** Same KPI-tile treatment as `OutletStatsTiles`/`TenantStatsTiles` — the
- * accent color calls out "Pending" (the number that needs the owner's
- * attention), everything else stays neutral. */
+/** Same KPI-tile treatment as `OutletStatsTiles`/`TenantStatsTiles` —
+ * "Pending" (the number that needs the owner's attention) sits on peach,
+ * the settled totals on cooler pastels. */
 export function SettlementStatsTiles({
   summary,
 }: {
@@ -16,19 +17,19 @@ export function SettlementStatsTiles({
       label: "Pending payout",
       value: formatMoney(summary.pendingTotal),
       icon: ClockIcon,
-      accent: true,
+      tone: "peach" as const,
     },
     {
       label: "Paid out",
       value: formatMoney(summary.paidTotal),
       icon: CircleCheckIcon,
-      accent: false,
+      tone: "mint" as const,
     },
     {
       label: "All-time owed",
       value: formatMoney(summary.allTimeTotal),
       icon: WalletIcon,
-      accent: false,
+      tone: "lavender" as const,
     },
   ];
 
@@ -38,11 +39,7 @@ export function SettlementStatsTiles({
         <Card key={tile.label}>
           <CardContent className="flex items-center gap-3 px-4">
             <span
-              className={
-                tile.accent
-                  ? "bg-primary/10 text-primary flex size-9 shrink-0 items-center justify-center rounded-full"
-                  : "bg-muted text-muted-foreground flex size-9 shrink-0 items-center justify-center rounded-full"
-              }
+              className={`${PASTEL_TONES[tile.tone].chip} flex size-9 shrink-0 items-center justify-center rounded-full`}
             >
               <tile.icon className="size-4" aria-hidden="true" />
             </span>

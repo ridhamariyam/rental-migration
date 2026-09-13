@@ -249,7 +249,7 @@ export function TenantSidebar({
                       render={<Link href={item.href} />}
                       className={
                         isActive
-                          ? "bg-primary/10 text-primary hover:bg-primary/15 hover:text-primary data-active:bg-primary/10 data-active:text-primary h-9 rounded-lg px-2.5 text-sm font-semibold transition-colors data-active:font-semibold"
+                          ? "bg-card text-primary hover:bg-card hover:text-primary data-active:bg-card data-active:text-primary h-9 rounded-lg px-2.5 text-sm font-semibold shadow-xs transition-colors data-active:font-semibold"
                           : "text-muted-foreground/90 hover:bg-accent/60 hover:text-foreground h-9 rounded-lg px-2.5 text-sm font-medium transition-colors"
                       }
                     >
@@ -290,7 +290,7 @@ export function TenantSidebar({
                         render={<Link href={item.href} />}
                         className={
                           isActive
-                            ? "bg-primary/10 text-primary hover:bg-primary/15 hover:text-primary data-active:bg-primary/10 data-active:text-primary h-9 rounded-lg px-2.5 text-sm font-semibold transition-colors data-active:font-semibold"
+                            ? "bg-card text-primary hover:bg-card hover:text-primary data-active:bg-card data-active:text-primary h-9 rounded-lg px-2.5 text-sm font-semibold shadow-xs transition-colors data-active:font-semibold"
                             : "text-muted-foreground/90 hover:bg-accent/60 hover:text-foreground h-9 rounded-lg px-2.5 text-sm font-medium transition-colors"
                         }
                       >

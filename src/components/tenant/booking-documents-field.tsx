@@ -13,11 +13,15 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Spinner } from "@/components/ui/spinner";
 import { ApiClientError } from "@/lib/api-client";
+import { compressImage } from "@/lib/uploads/compress-image";
+import { uploadFile } from "@/lib/uploads/upload-file";
 import { MAX_BOOKING_DOCUMENTS } from "@/lib/validation/bookings";
 
 export type BookingDocument = { url: string; name: string };
 
-type UploadResponse = { url: string };
+/** A photographed ID card or agreement page has fine print on it, so it
+ * keeps more resolution than an item photo does. */
+const DOCUMENT_MAX_DIMENSION = 2400;
 
 /**
  * Optional paperwork attached to a booking — an ID proof, a signed rental
@@ -57,51 +61,44 @@ export function BookingDocumentsField({
     // with nothing pointing at it.
     const room = MAX_BOOKING_DOCUMENTS - value.length;
     const accepted = files.slice(0, room);
-    if (accepted.length < files.length) {
-      setError(`At most ${MAX_BOOKING_DOCUMENTS} documents per booking.`);
-    }
+    const limitError =
+      accepted.length < files.length
+        ? `At most ${MAX_BOOKING_DOCUMENTS} documents per booking.`
+        : null;
+    setError(limitError);
 
     setIsUploading(true);
-    const uploaded: BookingDocument[] = [];
 
-    try {
-      for (const file of accepted) {
-        const formData = new FormData();
-        formData.append("file", file);
-
-        const response = await fetch("/api/uploads/document", {
-          method: "POST",
-          body: formData,
+    // All picked files go up at once rather than one after another.
+    const results = await Promise.allSettled(
+      accepted.map(async (file) => {
+        const compressed = await compressImage(file, {
+          maxDimension: DOCUMENT_MAX_DIMENSION,
         });
-        const payload = (await response.json().catch(() => null)) as {
-          success: boolean;
-          message: string;
-          data: UploadResponse | null;
-        } | null;
+        const url = await uploadFile("/api/uploads/document", compressed);
+        return { url, name: file.name.slice(0, 200) };
+      }),
+    );
 
-        if (!response.ok || !payload?.success || !payload.data) {
-          throw new ApiClientError(
-            payload?.message ?? "Upload failed. Please try again.",
-            response.status,
-          );
-        }
+    // Whatever made it through is kept even if another file failed —
+    // re-picking the one that failed beats re-picking all of them.
+    const uploaded = results.flatMap((result) =>
+      result.status === "fulfilled" ? [result.value] : [],
+    );
+    if (uploaded.length > 0) {
+      onChange([...value, ...uploaded]);
+    }
 
-        uploaded.push({ url: payload.data.url, name: file.name.slice(0, 200) });
-      }
-    } catch (uploadError) {
+    const failure = results.find((result) => result.status === "rejected");
+    if (failure) {
       setError(
-        uploadError instanceof ApiClientError
-          ? uploadError.message
+        failure.reason instanceof ApiClientError
+          ? failure.reason.message
           : "Upload failed. Please try again.",
       );
-    } finally {
-      // Whatever made it through is kept even if a later file failed —
-      // re-picking the one that failed beats re-picking all of them.
-      if (uploaded.length > 0) {
-        onChange([...value, ...uploaded]);
-      }
-      setIsUploading(false);
     }
+
+    setIsUploading(false);
   };
 
   return (

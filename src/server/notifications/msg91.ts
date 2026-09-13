@@ -66,7 +66,11 @@ function extractTemplateBody(record: UnknownRecord): string | null {
   const direct = stringValue(record.body) ?? stringValue(record.template_body);
   if (direct) return direct;
 
-  const components = Array.isArray(record.components) ? record.components : [];
+  const components = Array.isArray(record.components)
+    ? record.components
+    : Array.isArray(record.code)
+      ? record.code
+      : [];
   const body = components
     .map(asRecord)
     .find((component) => stringValue(component.type)?.toLowerCase() === "body");
@@ -218,8 +222,13 @@ export class Msg91Client {
   }
 
   async fetchTemplates(integratedNumber: string): Promise<Msg91Template[]> {
+    // Every status, not only approved. Editing a template sends it back to
+    // Meta review, and while it is "pending" MSG91 still accepts the send
+    // request — Meta then fails it asynchronously with "template name ...
+    // does not exist in en". With an approved-only filter such a template
+    // simply dropped out of the response, so its stored row stayed
+    // "approved" and every booking confirmation went to a dead template.
     const params = new URLSearchParams({
-      template_status: "approved",
       pagination: "true",
       page_size: "500",
       page_num: "1",
@@ -229,14 +238,26 @@ export class Msg91Client {
       { headers: { "content-type": "text/plain" } },
     );
 
-    return pickArray(payload)
-      .map((record) => {
-        const name =
-          stringValue(record.name) ??
-          stringValue(record.template_name) ??
-          stringValue(record.templateName);
-        if (!name) return null;
+    return pickArray(payload).flatMap((template) => {
+      const name =
+        stringValue(template.name) ??
+        stringValue(template.template_name) ??
+        stringValue(template.templateName);
+      if (!name) return [];
 
+      // MSG91 keeps status, variables and body per language under
+      // `languages[]`, and each language is approved separately — so each
+      // is its own row. Reading them off the top level instead found no
+      // status and fell back to "approved" for every template.
+      const languages = Array.isArray(template.languages)
+        ? template.languages.map(asRecord)
+        : [];
+      const variants: UnknownRecord[] =
+        languages.length > 0
+          ? languages.map((language) => ({ ...template, ...language, languages: [] }))
+          : [template];
+
+      return variants.map((record): Msg91Template => {
         const componentsValue = record.components ?? record.template_components ?? {};
         const components = Array.isArray(componentsValue)
           ? { items: componentsValue }
@@ -253,15 +274,15 @@ export class Msg91Client {
             stringValue(record.template_language) ??
             "en",
           category: stringValue(record.category) ?? stringValue(record.template_category),
-          status: stringValue(record.status) ?? "approved",
+          status: stringValue(record.status) ?? "unknown",
           body,
           components,
           variableSlots,
           legacySlotAliases: extractLegacySlotAliases(record, variableSlots),
-          raw: record,
+          raw: template,
         };
-      })
-      .filter((template): template is Msg91Template => Boolean(template));
+      });
+    });
   }
 
   async sendTemplate(params: {

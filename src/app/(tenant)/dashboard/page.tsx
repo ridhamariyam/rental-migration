@@ -18,6 +18,7 @@ import { OnboardingChecklistSkeleton } from "@/components/tenant/onboarding-chec
 import { RevenueTrendSectionSkeleton } from "@/components/tenant/revenue-trend-section-skeleton";
 import { getCurrentUser } from "@/lib/auth/session";
 import { hasPermission, Permission } from "@/lib/auth/permissions";
+import { PASTEL_TONES } from "@/lib/pastel-tones";
 import { tenantPaths } from "@/lib/tenant-paths";
 import { getTenantById } from "@/server/tenants/service";
 import type { TenantSessionUser } from "@/server/auth/guard";
@@ -36,21 +37,25 @@ const QUICK_LINKS = [
     href: tenantPaths.newBooking,
     label: "New booking",
     icon: CalendarClockIcon,
+    tone: "mint",
   },
   {
     href: tenantPaths.newCustomer,
     label: "Add customer",
     icon: ContactIcon,
+    tone: "sky",
   },
   {
     href: tenantPaths.products,
     label: "Browse catalogue",
     icon: ShirtIcon,
+    tone: "lavender",
   },
   {
     href: tenantPaths.reports,
     label: "Full reports",
     icon: BarChart3Icon,
+    tone: "peach",
   },
 ] as const;
 
@@ -88,7 +93,7 @@ export default async function TenantDashboardPage() {
               variant="outline"
               nativeButton={false}
               render={<Link href={link.href} />}
-              className="h-8 gap-1.5 px-3 text-xs"
+              className={`h-8 gap-1.5 px-3 text-xs ${PASTEL_TONES[link.tone].link}`}
             >
               <link.icon className="size-3.5" />
               {link.label}
