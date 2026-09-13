@@ -1,5 +1,6 @@
 import { CalendarClockIcon, FileTextIcon, XCircleIcon } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
+import { PASTEL_TONES } from "@/lib/pastel-tones";
 import type { BookingStats } from "@/server/bookings/service";
 
 export function BookingStatsTiles({ stats }: { stats: BookingStats }) {
@@ -8,25 +9,25 @@ export function BookingStatsTiles({ stats }: { stats: BookingStats }) {
       label: "Total bookings",
       value: stats.total,
       icon: CalendarClockIcon,
-      accent: false,
+      tone: "sky" as const,
     },
     {
       label: "Active",
       value: stats.active,
       icon: CalendarClockIcon,
-      accent: true,
+      tone: "mint" as const,
     },
     {
       label: "Draft",
       value: stats.draft,
       icon: FileTextIcon,
-      accent: false,
+      tone: "lemon" as const,
     },
     {
       label: "Cancelled",
       value: stats.cancelled,
       icon: XCircleIcon,
-      accent: false,
+      tone: "rose" as const,
     },
   ];
 
@@ -39,11 +40,7 @@ export function BookingStatsTiles({ stats }: { stats: BookingStats }) {
         <Card key={tile.label}>
           <CardContent className="flex items-center gap-3 px-4">
             <span
-              className={
-                tile.accent
-                  ? "bg-primary/10 text-primary flex size-9 shrink-0 items-center justify-center rounded-full"
-                  : "bg-muted text-muted-foreground flex size-9 shrink-0 items-center justify-center rounded-full"
-              }
+              className={`${PASTEL_TONES[tile.tone].chip} flex size-9 shrink-0 items-center justify-center rounded-full`}
             >
               <tile.icon className="size-4" aria-hidden="true" />
             </span>

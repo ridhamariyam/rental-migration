@@ -543,6 +543,45 @@ export async function syncWhatsappTemplates(
         await tx.insert(whatsappTemplates).values(values);
       }
     }
+
+    // A template MSG91 no longer lists at all (deleted or renamed) has to
+    // stop being sendable too, or its last "approved" row keeps a rule
+    // pointed at a name Meta rejects. Skipped on an empty response so one
+    // blank reply can't switch off every notification at once.
+    if (templates.length > 0) {
+      const listed = new Set(
+        templates.map((template) => `${template.name}:${template.language}`),
+      );
+      const stored = await tx
+        .select({
+          id: whatsappTemplates.id,
+          name: whatsappTemplates.name,
+          language: whatsappTemplates.language,
+        })
+        .from(whatsappTemplates)
+        .where(
+          and(
+            eq(whatsappTemplates.shopId, shopId),
+            eq(whatsappTemplates.integratedNumber, number.integratedNumber),
+          ),
+        );
+      const unlisted = stored
+        .filter(
+          (template) => !listed.has(`${template.name}:${template.language}`),
+        )
+        .map((template) => template.id);
+
+      if (unlisted.length > 0) {
+        await tx
+          .update(whatsappTemplates)
+          .set({
+            status: "not_returned_by_msg91",
+            lastSyncedAt: now,
+            updatedAt: now,
+          })
+          .where(inArray(whatsappTemplates.id, unlisted));
+      }
+    }
   });
 
   return listWhatsappTemplates(shopId);

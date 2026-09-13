@@ -65,50 +65,67 @@
   --color-auth-success: #159a75;
 }
 
+/* Pastel accents -------------------------------------------------------
+   Soft colour for the dashboard's tiles, quick links and charts (see
+   `src/lib/pastel-tones.ts` for the class sets). Each `-ink` is the dark
+   text/icon shade of its pastel, at 4.9:1 contrast or better on it. */
+@theme {
+  --color-pastel-mint: oklch(0.95 0.04 168);
+  --color-pastel-mint-ink: oklch(0.47 0.09 170);
+  --color-pastel-sky: oklch(0.95 0.035 235);
+  --color-pastel-sky-ink: oklch(0.48 0.1 245);
+  --color-pastel-lavender: oklch(0.95 0.035 295);
+  --color-pastel-lavender-ink: oklch(0.49 0.12 295);
+  --color-pastel-peach: oklch(0.955 0.04 60);
+  --color-pastel-peach-ink: oklch(0.52 0.12 50);
+  --color-pastel-rose: oklch(0.95 0.035 10);
+  --color-pastel-rose-ink: oklch(0.52 0.16 15);
+  --color-pastel-lemon: oklch(0.965 0.05 95);
+  --color-pastel-lemon-ink: oklch(0.5 0.1 85);
+}
+
 :root {
-  /* Two-tone neutral system (Operate mode): the sidebar is white, the main
-     content canvas behind it is gray-100 (a light but clearly visible
-     grey), and every card/table sitting on that canvas (--card) is white
-     again — so the cards read as the "paper" floating over a light desk,
-     with a white sidebar alongside. */
-  --background: oklch(0.967 0 0);
+  /* Soft pastel system: a mint-tinted sidebar frames a lavender-mist
+     content canvas, and every card/table sitting on that canvas (--card)
+     stays white — so the cards still read as the "paper" floating over a
+     light desk, just a coloured one. */
+  --background: oklch(0.972 0.012 285);
   --foreground: oklch(0.145 0 0);
   --card: oklch(1 0 0);
   --card-foreground: oklch(0.145 0 0);
   --popover: oklch(1 0 0);
   --popover-foreground: oklch(0.145 0 0);
-  /* Restrained color strategy (Operate mode): neutral surface throughout,
-     one accent reserved for primary actions, focus, and current-state —
-     never decoration. See PRODUCT.md § Brand Commitments.
-     Brand accent is #009675, converted to oklch(0.6 0.118 174). */
+  /* Brand accent is #009675, converted to oklch(0.6 0.118 174) — still the
+     one colour for primary actions, focus and current state. The pastels
+     around it (secondary/muted/accent, charts, the `pastel-*` tokens) are
+     the decoration. */
   --primary: oklch(0.6 0.118 174);
   --primary-foreground: oklch(0.99 0 0);
-  --secondary: oklch(0.97 0 0);
+  --secondary: oklch(0.955 0.02 290);
   --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.96 0 0);
-  --muted-foreground: oklch(0.44 0 0);
-  --accent: oklch(0.96 0 0);
+  --muted: oklch(0.955 0.012 285);
+  --muted-foreground: oklch(0.44 0.01 280);
+  /* Lavender, so a hover still shows on the mint sidebar as well as in a
+     white menu. */
+  --accent: oklch(0.945 0.03 290);
   --accent-foreground: oklch(0.205 0 0);
   --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.885 0 0);
-  --input: oklch(0.885 0 0);
+  --border: oklch(0.9 0.012 285);
+  --input: oklch(0.9 0.012 285);
   --ring: oklch(0.75 0.12 174);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
+  --chart-1: oklch(0.78 0.1 168);
+  --chart-2: oklch(0.76 0.1 295);
+  --chart-3: oklch(0.8 0.11 55);
+  --chart-4: oklch(0.76 0.1 235);
+  --chart-5: oklch(0.78 0.1 10);
   --radius: 0.625rem;
-  /* White, matching --card — the sidebar and every card now read as the
-     same "paper" surface, distinct from the grey --background canvas
-     between/behind them. */
-  --sidebar: oklch(1 0 0);
+  --sidebar: oklch(0.965 0.022 175);
   --sidebar-foreground: oklch(0.145 0 0);
   --sidebar-primary: oklch(0.6 0.118 174);
   --sidebar-primary-foreground: oklch(0.99 0 0);
-  --sidebar-accent: oklch(0.94 0 0);
+  --sidebar-accent: oklch(0.93 0.035 175);
   --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.885 0 0);
+  --sidebar-border: oklch(0.9 0.02 175);
   --sidebar-ring: oklch(0.75 0.12 174);
 }
 

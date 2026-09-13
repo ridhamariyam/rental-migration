@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
+import { PASTEL_TONES, type PastelTone } from "@/lib/pastel-tones";
 import { tenantPaths } from "@/lib/tenant-paths";
 import type { TenantSessionUser } from "@/server/auth/guard";
 import {
@@ -23,9 +24,10 @@ import {
  * (`bookingViewCondition`), so a tile can never promise rows the list then
  * fails to show.
  *
- * Overdue returns and pending payments carry a colour because they are
- * exceptions someone has to act on; the rest are neutral counts of a
- * normal day.
+ * Every tile's icon sits on its own pastel so the row is easy to scan.
+ * Overdue returns and pending payments additionally turn their number and
+ * border red/amber once non-zero, because they are exceptions someone has
+ * to act on; the rest are counts of a normal day.
  */
 const TILES: {
   view: BookingView;
@@ -33,6 +35,7 @@ const TILES: {
   hint: string;
   icon: typeof TruckIcon;
   tone: "neutral" | "warning" | "danger" | "positive";
+  pastel: PastelTone;
 }[] = [
   {
     view: "upcoming",
@@ -40,6 +43,7 @@ const TILES: {
     hint: "Pickup still ahead",
     icon: CalendarCheckIcon,
     tone: "neutral",
+    pastel: "sky",
   },
   {
     view: "pickup_today",
@@ -47,6 +51,7 @@ const TILES: {
     hint: "Going out today",
     icon: TruckIcon,
     tone: "neutral",
+    pastel: "lavender",
   },
   {
     view: "return_today",
@@ -54,6 +59,7 @@ const TILES: {
     hint: "Due back today",
     icon: PackageCheckIcon,
     tone: "neutral",
+    pastel: "lemon",
   },
   {
     view: "overdue",
@@ -61,6 +67,7 @@ const TILES: {
     hint: "Past their return date",
     icon: AlarmClockIcon,
     tone: "danger",
+    pastel: "rose",
   },
   {
     view: "pending_payment",
@@ -68,6 +75,7 @@ const TILES: {
     hint: "Balance still owed",
     icon: BanknoteIcon,
     tone: "warning",
+    pastel: "peach",
   },
   {
     view: "completed",
@@ -75,15 +83,9 @@ const TILES: {
     hint: "Returned and closed",
     icon: CircleCheckBigIcon,
     tone: "positive",
+    pastel: "mint",
   },
 ];
-
-const TONE_ICON: Record<(typeof TILES)[number]["tone"], string> = {
-  neutral: "bg-muted text-muted-foreground",
-  warning: "bg-amber-500/10 text-amber-600 dark:text-amber-400",
-  danger: "bg-destructive/10 text-destructive",
-  positive: "bg-primary/10 text-primary",
-};
 
 export async function DashboardOperationsTiles({
   actor,
@@ -120,7 +122,7 @@ export async function DashboardOperationsTiles({
                   <span
                     className={cn(
                       "flex size-7 shrink-0 items-center justify-center rounded-full",
-                      TONE_ICON[tile.tone],
+                      PASTEL_TONES[tile.pastel].chip,
                     )}
                   >
                     <tile.icon className="size-3.5" aria-hidden="true" />

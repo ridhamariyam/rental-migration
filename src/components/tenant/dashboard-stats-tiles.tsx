@@ -8,16 +8,16 @@ import {
 import { Card, CardContent } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import { formatMoney } from "@/lib/format";
+import { PASTEL_TONES, type PastelTone } from "@/lib/pastel-tones";
 import type { TenantSessionUser } from "@/server/auth/guard";
 import { getDashboardStats } from "@/server/reports/service";
 
 /**
  * The Shop Owner Dashboard's KPI tiles (doc §19) — server-fetched and
  * `Suspense`-wrapped by the page so the header/quick-actions above it
- * paint immediately while these tiles load. Reuses the exact tile-card
- * markup every other stats-tiles component in this app already uses
- * (`OutletStatsTiles`/`SettlementStatsTiles`/etc.) so this page reads as
- * one family with the rest of the dashboard, not a bespoke layout.
+ * paint immediately while these tiles load. Each tile is a card washed in
+ * its own pastel (see `PASTEL_TONES`), with its icon on a white chip in the
+ * matching ink, so the four headline numbers are told apart at a glance.
  */
 export async function DashboardStatsTiles({
   actor,
@@ -51,7 +51,15 @@ export async function DashboardStatsTiles({
   // baseline, and a comparison label with nothing to compare is worse
   // than no label. The two constant badges ("Active", "Ready") are gone
   // for the same reason — they never changed, so they said nothing.
-  const kpis = [
+  const kpis: {
+    title: string;
+    value: string;
+    badge: string | null;
+    badgeVariant: "positive" | "warning" | "neutral";
+    subtitle: string;
+    icon: typeof BadgeIndianRupeeIcon;
+    tone: PastelTone;
+  }[] = [
     {
       title: "Cash Collected Today",
       value: formatMoney(stats.todaysIncome),
@@ -59,6 +67,7 @@ export async function DashboardStatsTiles({
       badgeVariant: todaysTrend.badgeVariant,
       subtitle: todaysTrend.badge ? "vs yesterday" : "Payments received today",
       icon: BadgeIndianRupeeIcon,
+      tone: "mint",
     },
     {
       title: "Cash Collected This Month",
@@ -69,6 +78,7 @@ export async function DashboardStatsTiles({
         ? "vs last month"
         : "Payments received this month",
       icon: HandCoinsIcon,
+      tone: "sky",
     },
     {
       title: "Active Rentals",
@@ -77,6 +87,7 @@ export async function DashboardStatsTiles({
       badgeVariant: "warning",
       subtitle: "Out with customers",
       icon: CalendarClockIcon,
+      tone: "lavender",
     },
     {
       title: "Available Stock",
@@ -85,6 +96,7 @@ export async function DashboardStatsTiles({
       badgeVariant: "neutral",
       subtitle: "Available to book",
       icon: PackageCheckIcon,
+      tone: "peach",
     },
   ];
 
@@ -93,22 +105,25 @@ export async function DashboardStatsTiles({
       {kpis.map((kpi) => (
         <Card
           key={kpi.title}
-          className="hover:border-border/80 relative overflow-hidden transition-all"
+          className={cn(
+            "relative overflow-hidden transition-all",
+            PASTEL_TONES[kpi.tone].surface,
+          )}
         >
           <CardContent className="flex flex-col gap-3 p-5">
             <div className="flex items-center justify-between gap-2">
-              <span className="text-muted-foreground/80 text-xs font-semibold tracking-wider uppercase">
+              <span className="text-foreground/70 text-xs font-semibold tracking-wider uppercase">
                 {kpi.title}
               </span>
               {kpi.badge ? (
                 <span
                   className={cn(
-                    "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold",
+                    "bg-card/80 inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-semibold",
                     kpi.badgeVariant === "positive"
-                      ? "border border-emerald-500/20 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+                      ? "border-emerald-500/20 text-emerald-700 dark:text-emerald-400"
                       : kpi.badgeVariant === "warning"
-                        ? "border border-amber-500/20 bg-amber-500/10 text-amber-600 dark:text-amber-400"
-                        : "bg-muted text-muted-foreground border-border/40 border",
+                        ? "border-amber-500/20 text-amber-700 dark:text-amber-400"
+                        : "text-muted-foreground border-border/40",
                   )}
                 >
                   {kpi.badgeVariant === "positive" ? (
@@ -119,12 +134,22 @@ export async function DashboardStatsTiles({
               ) : null}
             </div>
 
-            <div className="flex flex-col gap-0.5">
-              <span className="text-foreground text-2xl font-bold tracking-tight">
-                {kpi.value}
-              </span>
-              <span className="text-muted-foreground/80 text-xs font-medium">
-                {kpi.subtitle}
+            <div className="flex items-end justify-between gap-3">
+              <div className="flex min-w-0 flex-col gap-0.5">
+                <span className="text-foreground text-2xl font-bold tracking-tight">
+                  {kpi.value}
+                </span>
+                <span className="text-foreground/65 text-xs font-medium">
+                  {kpi.subtitle}
+                </span>
+              </div>
+              <span
+                className={cn(
+                  "bg-card/80 flex size-9 shrink-0 items-center justify-center rounded-full",
+                  PASTEL_TONES[kpi.tone].ink,
+                )}
+              >
+                <kpi.icon className="size-4" aria-hidden="true" />
               </span>
             </div>
           </CardContent>

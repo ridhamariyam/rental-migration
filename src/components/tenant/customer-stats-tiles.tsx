@@ -1,5 +1,6 @@
 import { ArchiveIcon, CircleCheckIcon, ContactIcon } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
+import { PASTEL_TONES } from "@/lib/pastel-tones";
 import type { CustomerStats } from "@/server/customers/service";
 
 export function CustomerStatsTiles({ stats }: { stats: CustomerStats }) {
@@ -8,19 +9,19 @@ export function CustomerStatsTiles({ stats }: { stats: CustomerStats }) {
       label: "Total customers",
       value: stats.total,
       icon: ContactIcon,
-      accent: false,
+      tone: "sky" as const,
     },
     {
       label: "Active",
       value: stats.active,
       icon: CircleCheckIcon,
-      accent: true,
+      tone: "mint" as const,
     },
     {
       label: "Archived",
       value: stats.archived,
       icon: ArchiveIcon,
-      accent: false,
+      tone: "lavender" as const,
     },
   ];
 
@@ -30,11 +31,7 @@ export function CustomerStatsTiles({ stats }: { stats: CustomerStats }) {
         <Card key={tile.label}>
           <CardContent className="flex items-center gap-3 px-4">
             <span
-              className={
-                tile.accent
-                  ? "bg-primary/10 text-primary flex size-9 shrink-0 items-center justify-center rounded-full"
-                  : "bg-muted text-muted-foreground flex size-9 shrink-0 items-center justify-center rounded-full"
-              }
+              className={`${PASTEL_TONES[tile.tone].chip} flex size-9 shrink-0 items-center justify-center rounded-full`}
             >
               <tile.icon className="size-4" aria-hidden="true" />
             </span>

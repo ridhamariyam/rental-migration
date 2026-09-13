@@ -679,6 +679,15 @@ export function NotificationsConsole({
                         ? `${number.integratedNumber} · ${template.name}`
                         : "Not set up yet"}
                     </p>
+                    {rule.isEnabled &&
+                    template &&
+                    template.status.toLowerCase() !== "approved" ? (
+                      <p className="text-destructive text-xs">
+                        Template is {template.status} on MSG91 — nothing is
+                        sent for this event until it is approved and
+                        templates are synced again.
+                      </p>
+                    ) : null}
                   </div>
                 </div>
                 <Badge variant={rule.isEnabled ? "default" : "secondary"}>

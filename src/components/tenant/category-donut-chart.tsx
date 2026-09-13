@@ -4,12 +4,15 @@ import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from "recharts";
 import { formatMoney } from "@/lib/format";
 import { Building2Icon } from "lucide-react";
 
+// The pastel chart palette from `globals.css` (mint, lavender, peach, sky,
+// rose) — every slice is also named in the legend below, so colour is
+// never the only way to tell them apart.
 const COLORS = [
-  "oklch(0.6 0.118 174)",  // Primary teal
-  "oklch(0.7 0.18 55)",    // Warm amber
-  "oklch(0.62 0.19 260)",  // Blue
-  "oklch(0.6 0.2 310)",    // Purple
-  "oklch(0.65 0.2 15)",    // Coral
+  "var(--chart-1)",
+  "var(--chart-2)",
+  "var(--chart-3)",
+  "var(--chart-4)",
+  "var(--chart-5)",
 ];
 
 export type DonutItem = {

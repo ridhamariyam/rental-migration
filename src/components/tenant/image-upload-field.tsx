@@ -13,8 +13,8 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Spinner } from "@/components/ui/spinner";
 import { ApiClientError } from "@/lib/api-client";
-
-type UploadResponse = { url: string };
+import { compressImage } from "@/lib/uploads/compress-image";
+import { uploadFile } from "@/lib/uploads/upload-file";
 
 /**
  * A single image upload field — separate from the surrounding form's own
@@ -23,6 +23,9 @@ type UploadResponse = { url: string };
  * becomes the resulting URL string, so a failed *item* save never leaves an
  * orphaned upload behind, and a failed *upload* never blocks the rest of
  * the form.
+ *
+ * The photo is shrunk in the browser first (`compressImage`), and the
+ * picked file is previewed right away while the upload runs.
  */
 export function ImageUploadField({
   value,
@@ -34,19 +37,20 @@ export function ImageUploadField({
   value: string;
   onChange: (url: string) => void;
   disabled?: boolean;
-  /** Which upload route to post the file to \u2014 defaults to the item
+  /** Which upload route to post the file to — defaults to the item
    * photo endpoint. The Profile/Business Settings forms
    * pass `/api/uploads/avatar` instead (see that route's own doc comment
    * for why it needs no specific `Permission`). */
   endpoint?: string;
   /** Renders the preview/placeholder as a circle instead of a rounded
-   * square \u2014 used for a person's avatar, left `false` for a product
+   * square — used for a person's avatar, left `false` for a product
    * image or a business logo. */
   rounded?: boolean;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const [isUploading, setIsUploading] = useState(false);
+  const [pendingPreview, setPendingPreview] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const handleFileChange = async (
@@ -56,31 +60,14 @@ export function ImageUploadField({
     event.target.value = "";
     if (!file) return;
 
+    const previewUrl = URL.createObjectURL(file);
+    setPendingPreview(previewUrl);
     setIsUploading(true);
     setError(null);
 
     try {
-      const formData = new FormData();
-      formData.append("file", file);
-
-      const response = await fetch(endpoint, {
-        method: "POST",
-        body: formData,
-      });
-      const payload = (await response.json().catch(() => null)) as {
-        success: boolean;
-        message: string;
-        data: UploadResponse | null;
-      } | null;
-
-      if (!response.ok || !payload?.success || !payload.data) {
-        throw new ApiClientError(
-          payload?.message ?? "Upload failed. Please try again.",
-          response.status,
-        );
-      }
-
-      onChange(payload.data.url);
+      const url = await uploadFile(endpoint, await compressImage(file));
+      onChange(url);
     } catch (uploadError) {
       setError(
         uploadError instanceof ApiClientError
@@ -88,9 +75,13 @@ export function ImageUploadField({
           : "Upload failed. Please try again.",
       );
     } finally {
+      setPendingPreview(null);
+      URL.revokeObjectURL(previewUrl);
       setIsUploading(false);
     }
   };
+
+  const previewSrc = pendingPreview ?? value;
 
   return (
     <div className="flex flex-col gap-2">
@@ -102,13 +93,17 @@ export function ImageUploadField({
               : "bg-muted flex size-20 shrink-0 items-center justify-center overflow-hidden rounded-lg border"
           }
         >
-          {value ? (
+          {previewSrc ? (
             <Image
-              src={value}
+              src={previewSrc}
               alt=""
               width={80}
               height={80}
-              className="size-full object-cover"
+              className={
+                isUploading
+                  ? "size-full object-cover opacity-60"
+                  : "size-full object-cover"
+              }
               unoptimized
             />
           ) : (
@@ -170,7 +165,7 @@ export function ImageUploadField({
             ) : null}
           </div>
           <p className="text-muted-foreground text-xs">
-            JPEG, PNG, or WebP — up to 5 MB.
+            JPEG, PNG, or WebP. Large photos are resized automatically.
           </p>
         </div>
 
