@@ -85,7 +85,7 @@
 }
 
 :root {
-  /* Soft pastel system: a mint-tinted sidebar frames a lavender-mist
+  /* Soft pastel system: a plain white sidebar alongside a lavender-mist
      content canvas, and every card/table sitting on that canvas (--card)
      stays white — so the cards still read as the "paper" floating over a
      light desk, just a coloured one. */
@@ -105,8 +105,8 @@
   --secondary-foreground: oklch(0.205 0 0);
   --muted: oklch(0.955 0.012 285);
   --muted-foreground: oklch(0.44 0.01 280);
-  /* Lavender, so a hover still shows on the mint sidebar as well as in a
-     white menu. */
+  /* Lavender hover for menus and ghost buttons. The sidebar keeps its own
+     neutral `--sidebar-accent` instead. */
   --accent: oklch(0.945 0.03 290);
   --accent-foreground: oklch(0.205 0 0);
   --destructive: oklch(0.577 0.245 27.325);
@@ -119,13 +119,15 @@
   --chart-4: oklch(0.76 0.1 235);
   --chart-5: oklch(0.78 0.1 10);
   --radius: 0.625rem;
-  --sidebar: oklch(0.965 0.022 175);
+  /* White, matching --card — the sidebar stays uncoloured; the pastels
+     live in the content area only. */
+  --sidebar: oklch(1 0 0);
   --sidebar-foreground: oklch(0.145 0 0);
   --sidebar-primary: oklch(0.6 0.118 174);
   --sidebar-primary-foreground: oklch(0.99 0 0);
-  --sidebar-accent: oklch(0.93 0.035 175);
+  --sidebar-accent: oklch(0.94 0 0);
   --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.9 0.02 175);
+  --sidebar-border: oklch(0.885 0 0);
   --sidebar-ring: oklch(0.75 0.12 174);
 }
 
