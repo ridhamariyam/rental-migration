@@ -28,7 +28,8 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { BookingStatusBadge } from "@/components/tenant/booking-status-badge";
+import { OrderStageBadge } from "@/components/tenant/order-stage-badge";
+import { deriveOrderStage } from "@/lib/order-stage";
 import {
   ListCardRow,
   ListCards,
@@ -134,7 +135,7 @@ export async function BookingsTable({
               title={customerName || booking.bookingNumber}
               badge={
                 <>
-                  <BookingStatusBadge status={booking.status} />
+                  <OrderStageBadge stage={deriveOrderStage(booking, booking.groupItems)} />
                   {refundPending ? (
                     <Badge
                       variant="outline"
@@ -333,7 +334,7 @@ export async function BookingsTable({
                   </TableCell>
 
                   <TableCell className="px-4 py-3">
-                    <BookingStatusBadge status={booking.status} />
+                    <OrderStageBadge stage={deriveOrderStage(booking, booking.groupItems)} />
                   </TableCell>
 
                   <TableCell className="px-4 py-3">

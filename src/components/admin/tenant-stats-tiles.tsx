@@ -32,21 +32,21 @@ export function TenantStatsTiles({ stats }: { stats: TenantStats }) {
   ];
 
   return (
-    <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+    <div className="grid grid-cols-3 gap-2 sm:gap-4">
       {tiles.map((tile) => (
         <Card key={tile.label}>
-          <CardContent className="flex items-center gap-3 px-4">
+          <CardContent className="flex items-center gap-3 px-3 sm:px-4">
             <span
               className={
                 tile.accent
-                  ? "bg-primary/10 text-primary flex size-9 shrink-0 items-center justify-center rounded-full"
-                  : "bg-muted text-muted-foreground flex size-9 shrink-0 items-center justify-center rounded-full"
+                  ? "bg-primary/10 text-primary hidden size-9 sm:flex shrink-0 items-center justify-center rounded-full"
+                  : "bg-muted text-muted-foreground hidden size-9 sm:flex shrink-0 items-center justify-center rounded-full"
               }
             >
               <tile.icon className="size-4" aria-hidden="true" />
             </span>
             <div className="flex flex-col">
-              <span className="text-muted-foreground text-xs font-medium tracking-wide uppercase">
+              <span className="text-muted-foreground text-xs leading-tight font-medium tracking-wide uppercase">
                 {tile.label}
               </span>
               <span className="text-lg font-semibold tracking-tight">

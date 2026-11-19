@@ -4,7 +4,7 @@ import { randomBytes, createHash } from "node:crypto";
 import { cookies } from "next/headers";
 import { eq, inArray } from "drizzle-orm";
 import { db } from "@/lib/db/client";
-import { sessions, users } from "@/lib/db/schema";
+import { sessions, shops, users } from "@/lib/db/schema";
 import { isProduction } from "@/lib/env";
 
 export const SESSION_COOKIE_NAME = "session_token";
@@ -56,6 +56,10 @@ export type SessionUser = {
   avatarUrl: string | null;
   mustChangePassword: boolean;
   isActive: boolean;
+  /** The user's shop is the shared public demo account. */
+  shopIsDemo: boolean;
+  /** End of the shop's paid subscription period; null = never locks. */
+  subscriptionEndsAt: Date | null;
 };
 
 /**
@@ -87,9 +91,12 @@ export async function getCurrentUser(): Promise<SessionUser | null> {
       avatarUrl: users.avatarUrl,
       mustChangePassword: users.mustChangePassword,
       isActive: users.isActive,
+      shopIsDemo: shops.isDemo,
+      subscriptionEndsAt: shops.subscriptionEndsAt,
     })
     .from(sessions)
     .innerJoin(users, eq(sessions.userId, users.id))
+    .leftJoin(shops, eq(users.shopId, shops.id))
     .where(eq(sessions.tokenHash, hashToken(rawToken)))
     .limit(1);
 
@@ -108,6 +115,8 @@ export async function getCurrentUser(): Promise<SessionUser | null> {
     avatarUrl: row.avatarUrl,
     mustChangePassword: row.mustChangePassword,
     isActive: row.isActive,
+    shopIsDemo: row.shopIsDemo ?? false,
+    subscriptionEndsAt: row.subscriptionEndsAt ?? null,
   };
 }
 

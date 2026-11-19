@@ -211,6 +211,13 @@
       "when": 1789219177229,
       "tag": "0029_payslip_date_ranges",
       "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "7",
+      "when": 1795099800051,
+      "tag": "0030_platform_subscriptions",
+      "breakpoints": true
     }
   ]
 }
