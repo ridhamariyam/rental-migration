@@ -26,6 +26,7 @@ import {
   listDues,
   type DueFilter,
 } from "@/server/admin/service";
+import { getPlans } from "@/server/billing/plans";
 
 export const metadata = {
   title: "Dues — Rentique Admin",
@@ -47,7 +48,7 @@ export default async function AdminDuesPage({ searchParams }: { searchParams: Se
   const raw = (await searchParams).filter;
   const filter: DueFilter = (DUE_FILTERS as readonly string[]).includes(String(raw)) ? (raw as DueFilter) : "due";
 
-  const [items, counts] = await Promise.all([listDues(filter), getDueCounts()]);
+  const [items, counts, plans] = await Promise.all([listDues(filter), getDueCounts(), getPlans()]);
   const outstandingPaise = items
     .filter((i) => i.state === "grace" || i.state === "locked")
     .reduce((acc, i) => acc + (i.renewalPaise ?? 0), 0);
@@ -171,6 +172,7 @@ export default async function AdminDuesPage({ searchParams }: { searchParams: Se
                     <RecordPaymentDialog
                       tenantId={item.id}
                       tenantName={item.name}
+                      plans={plans}
                       currentPlan={item.plan}
                       currentEndsAt={item.subscriptionEndsAt?.toISOString() ?? null}
                       hasPaidBefore={Boolean(item.lastPaidAt)}

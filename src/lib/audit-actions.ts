@@ -15,6 +15,7 @@ export const AuditAction = {
   SUBSCRIPTION_PAYMENT_RECORDED: "subscription.payment_recorded",
   SUBSCRIPTION_PAYMENT_RESOLVED: "subscription.payment_resolved",
   TENANT_OWNER_PASSWORD_RESET: "tenant.owner_password_reset",
+  PLAN_PRICES_CHANGED: "platform.plan_prices_changed",
   STAFF_CREATED: "staff.created",
   STAFF_UPDATED: "staff.updated",
   STAFF_ROLE_CHANGED: "staff.role_changed",
@@ -67,6 +68,7 @@ export const PLATFORM_ONLY_ACTIONS: ReadonlySet<AuditActionValue> = new Set([
   AuditAction.SUBSCRIPTION_PAYMENT_RECORDED,
   AuditAction.SUBSCRIPTION_PAYMENT_RESOLVED,
   AuditAction.TENANT_OWNER_PASSWORD_RESET,
+  AuditAction.PLAN_PRICES_CHANGED,
 ]);
 
 /** The subset of `AuditAction` a tenant owner is actually allowed to see

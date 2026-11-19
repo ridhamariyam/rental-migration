@@ -19,7 +19,7 @@ import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui
 import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
 import { ApiClientError, apiRequest } from "@/lib/api-client";
-import { addMonths, PLANS } from "@/lib/plans";
+import { addMonths, type PlanCatalog } from "@/lib/plans";
 import { OFFLINE_PAYMENT_METHODS } from "@/lib/validation/admin-billing";
 
 type PlanChoice = "yearly" | "monthly" | "custom";
@@ -40,6 +40,7 @@ const selectClass =
 export function RecordPaymentDialog({
   tenantId,
   tenantName,
+  plans,
   currentPlan,
   currentEndsAt,
   hasPaidBefore,
@@ -50,6 +51,8 @@ export function RecordPaymentDialog({
 }: {
   tenantId: string;
   tenantName: string;
+  /** Live prices from `getPlans()` — the dialog pre-fills amounts from these. */
+  plans: PlanCatalog;
   currentPlan: PlanChoice | null;
   currentEndsAt: string | null;
   hasPaidBefore: boolean;
@@ -61,7 +64,7 @@ export function RecordPaymentDialog({
   const router = useRouter();
   const initialPlan: PlanChoice = currentPlan ?? "yearly";
   const defaultAmount = (plan: PlanChoice, withSetup: boolean) =>
-    plan === "custom" ? "" : String(PLANS[plan].price + (withSetup ? PLANS[plan].setupFee : 0));
+    plan === "custom" ? "" : String(plans[plan].price + (withSetup ? plans[plan].setupFee : 0));
 
   const [open, setOpen] = useState(false);
   const [plan, setPlan] = useState<PlanChoice>(initialPlan);
@@ -83,7 +86,7 @@ export function RecordPaymentDialog({
       ? endsAt
         ? new Date(`${endsAt}T23:59:59`)
         : null
-      : addMonths(periodStart, PLANS[plan].periodMonths);
+      : addMonths(periodStart, plans[plan].periodMonths);
 
   function changePlan(next: PlanChoice) {
     setPlan(next);
@@ -105,7 +108,7 @@ export function RecordPaymentDialog({
         body: JSON.stringify({
           plan,
           amount: Number(amount),
-          setupFee: plan !== "custom" && includeSetup ? PLANS[plan].setupFee : 0,
+          setupFee: plan !== "custom" && includeSetup ? plans[plan].setupFee : 0,
           method,
           reference: reference || undefined,
           note: note || undefined,
@@ -166,7 +169,7 @@ export function RecordPaymentDialog({
                           : "hover:bg-muted rounded-lg border px-2 py-2 text-sm"
                       }
                     >
-                      {p === "custom" ? "Custom" : PLANS[p].name}
+                      {p === "custom" ? "Custom" : plans[p].name}
                     </button>
                   ))}
                 </div>
@@ -180,7 +183,7 @@ export function RecordPaymentDialog({
                     checked={includeSetup}
                     onChange={(e) => toggleSetup(e.target.checked)}
                   />
-                  Include one-time setup fee (₹{PLANS[plan].setupFee})
+                  Include one-time setup fee (₹{plans[plan].setupFee})
                 </label>
               ) : null}
 

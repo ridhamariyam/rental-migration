@@ -6,6 +6,10 @@ import {
   SidebarTrigger,
 } from "@/components/ui/sidebar";
 import { NavCheckInOut } from "@/components/tenant/nav-check-in-out";
+import {
+  DemoUpgradeBanner,
+  DemoUpgradeHeaderButton,
+} from "@/components/tenant/demo-upgrade-banner";
 import { NavNotifications } from "@/components/tenant/nav-notifications";
 import { TenantSidebar } from "@/components/tenant/tenant-sidebar";
 import { getCurrentUser } from "@/lib/auth/session";
@@ -67,6 +71,7 @@ export default async function TenantDashboardLayout({
         <header className="flex h-14 shrink-0 items-center gap-2 border-b bg-white px-4 print:hidden">
           <SidebarTrigger />
           <div className="ml-auto flex items-center gap-2">
+            {user.shopIsDemo ? <DemoUpgradeHeaderButton /> : null}
             {canSelfCheckIn ? <NavCheckInOut initialToday={today} /> : null}
             {/* Suspended on its own: the header frame paints immediately,
                 the bell fills in when its query lands. */}
@@ -75,7 +80,10 @@ export default async function TenantDashboardLayout({
             </Suspense>
           </div>
         </header>
-        <div className="flex flex-1 flex-col overflow-y-auto">{children}</div>
+        <div className="flex flex-1 flex-col overflow-y-auto">
+          {user.shopIsDemo ? <DemoUpgradeBanner /> : null}
+          {children}
+        </div>
       </SidebarInset>
     </SidebarProvider>
   );

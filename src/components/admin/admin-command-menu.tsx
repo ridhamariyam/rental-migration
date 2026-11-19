@@ -6,6 +6,7 @@ import {
   Building2Icon,
   CalendarClockIcon,
   LayoutDashboardIcon,
+  TagIcon,
   ReceiptIndianRupeeIcon,
   SearchIcon,
 } from "lucide-react";
@@ -32,6 +33,7 @@ const searchableItems = [
   { href: adminPaths.tenants, label: "Tenants", icon: Building2Icon },
   { href: adminPaths.dues, label: "Dues", icon: CalendarClockIcon },
   { href: adminPaths.payments, label: "Payments", icon: ReceiptIndianRupeeIcon },
+  { href: adminPaths.plans, label: "Plans & pricing", icon: TagIcon },
 ];
 
 /** Sidebar search box + Cmd/Ctrl-K command palette for jumping between admin pages. */

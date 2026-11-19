@@ -10,4 +10,5 @@ export const adminPaths = {
   newTenant: "/admin/tenants/new",
   payments: "/admin/payments",
   dues: "/admin/dues",
+  plans: "/admin/plans",
 } as const;

@@ -31,3 +31,23 @@ export type ResolvePaymentInput = z.infer<typeof resolvePaymentSchema>;
 export const resetOwnerPasswordSchema = z.object({
   userId: z.uuid("Invalid owner"),
 });
+
+const rupees = (label: string, min: number) =>
+  z.coerce
+    .number({ message: `Enter the ${label}` })
+    .int("Whole rupees only")
+    .min(min, min > 0 ? `The ${label} must be at least ₹${min}` : `The ${label} can't be negative`)
+    .max(1_000_000, `The ${label} is too large`);
+
+const planPriceSchema = z.object({
+  price: rupees("price", 1),
+  setupFee: rupees("setup fee", 0),
+});
+
+/** Super admin: new prices for both standard plans, in whole rupees. */
+export const updatePlanPricesSchema = z.object({
+  yearly: planPriceSchema,
+  monthly: planPriceSchema,
+});
+
+export type UpdatePlanPricesInput = z.infer<typeof updatePlanPricesSchema>;

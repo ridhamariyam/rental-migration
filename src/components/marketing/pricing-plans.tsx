@@ -3,7 +3,7 @@ import { CheckIcon, MessageCircleIcon, SparklesIcon } from "lucide-react";
 import {
   CUSTOM_PLAN_FEATURES,
   CUSTOM_PLAN_WHATSAPP_MESSAGE,
-  PLANS,
+  type PlanCatalog,
   PLAN_FEATURES,
   formatRupees,
   signupTotal,
@@ -61,11 +61,11 @@ function PlanCard({ plan, featured }: { plan: Plan; featured?: boolean }) {
 }
 
 /** Public pricing: the two self-serve plans plus the WhatsApp custom plan. */
-export function PricingPlans() {
+export function PricingPlans({ plans }: { plans: PlanCatalog }) {
   return (
     <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
-      <PlanCard plan={PLANS.yearly} featured />
-      <PlanCard plan={PLANS.monthly} />
+      <PlanCard plan={plans.yearly} featured />
+      <PlanCard plan={plans.monthly} />
 
       <div className="border-auth-line flex flex-col rounded-2xl border bg-[#f3f2ee] p-6 sm:p-7">
         <h3 className="flex items-center gap-2 text-lg font-medium tracking-tight">

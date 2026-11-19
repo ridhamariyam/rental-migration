@@ -6,9 +6,9 @@
     "node": ">=20.9.0"
   },
   "scripts": {
-    "dev": "next dev -p 3003",
+    "dev": "TZ=Asia/Kolkata next dev -p 3003",
     "build": "next build",
-    "start": "next start",
+    "start": "TZ=Asia/Kolkata next start",
     "test": "tsx --conditions=react-server --env-file=.env.test --test --test-concurrency=1 \"src/**/*.test.ts\"",
     "lint": "eslint",
     "typecheck": "tsc --noEmit",

@@ -62,9 +62,12 @@ import { generateBarcode, generateSku } from "../src/lib/barcode";
 import {
   addMoney,
   compareMoney,
-  multiplyMoneyByDays,
+  multiplyMoneyByQuantity,
   subtractMoneyNonNegative,
 } from "../src/lib/money";
+import type { Payment } from "../src/lib/db/schema";
+
+type PaymentType = Payment["paymentType"];
 
 const databaseUrl = process.env.DATABASE_URL;
 if (!databaseUrl) {
@@ -120,6 +123,11 @@ function gt(a: string, b: string): boolean {
 type Db = Parameters<Parameters<typeof rootDb.transaction>[0]>[0];
 
 async function seed(db: Db) {
+  // Loaded here (not at the top) so .env.local is in place first: the
+  // payments service pulls in the app's env-validated db client. Needs
+  // tsx's `--conditions=react-server` for its `server-only` import.
+  const { computePaymentSummary } = await import("../src/server/payments/service");
+
   // -------------------------------------------------------------------------
   // Guard: never touch an existing tenant.
   // -------------------------------------------------------------------------
@@ -615,28 +623,81 @@ async function seed(db: Db) {
     const toDate = offsetDateIso(plan.from + plan.days - 1);
     const createdAt = offsetTimestamp(plan.from - randomInt(3, 15), randomInt(10, 19), randomInt(0, 59));
 
-    const lineCalcs = lines.map((v) => ({
-      variation: v,
-      grossRent: multiplyMoneyByDays(v.rentPrice, plan.days),
-    }));
+    // Rent is a flat price per booking × quantity — exactly `quoteRental`
+    // (src/server/bookings/pricing.ts); it is NOT multiplied by days.
+    const isCancelled = plan.status === "cancelled";
+    const isReturned = plan.status === "returned";
+    const lineCalcs = lines.map((v) => {
+      const damaged = isReturned && Math.random() < 0.14;
+      const damageCharge = damaged
+        ? money(Math.min(randomInt(3, 8) * 100, Math.floor(Number(v.securityDeposit) * 0.5)))
+        : "0.00";
+      return { variation: v, grossRent: multiplyMoneyByQuantity(v.rentPrice, 1), damaged, damageCharge };
+    });
     const gross = lineCalcs.reduce((sum, l) => addMoney(sum, l.grossRent), "0.00");
-    const discount = Math.random() < 0.2 ? money(Math.min(500, Number(gross) * 0.1)) : "0.00";
-    const totalAmount = subtractMoneyNonNegative(gross, discount);
-    const deposit = lineCalcs.reduce((sum, l) => addMoney(sum, l.variation.securityDeposit), "0.00");
+    // Cancelling every line leaves nothing payable and nothing to secure —
+    // what `recomputeOrderTotal` stores for a fully cancelled order.
+    const discount = !isCancelled && Math.random() < 0.2 ? money(Math.min(500, Math.round(Number(gross) * 0.1))) : "0.00";
+    const totalAmount = isCancelled ? "0.00" : subtractMoneyNonNegative(gross, discount);
+    const deposit = isCancelled
+      ? "0.00"
+      : lineCalcs.reduce((sum, l) => addMoney(sum, l.variation.securityDeposit), "0.00");
+    const damageTotal = lineCalcs.reduce((sum, l) => addMoney(sum, l.damageCharge), "0.00");
+
+    // The order's whole ledger, decided up front so its payment status can
+    // be computed from it with the app's own `computePaymentSummary`.
+    type PlannedPayment = { amount: string; type: PaymentType; day: number; note?: string; method?: string };
+    const ledger: PlannedPayment[] = [];
+    const addPay = (amount: string, type: PaymentType, day: number, note?: string, method?: string) => {
+      if (gt(amount, "0.00")) ledger.push({ amount, type, day: Math.min(day, 0), note, method });
+    };
+    const returnDay = plan.from + plan.days;
+
+    if (isCancelled) {
+      if (Math.random() < 0.4) {
+        const advance = money(Math.round(Number(gross) * 0.3));
+        addPay(advance, "advance", plan.from - 6);
+        addPay(advance, "refund", plan.from - 2, "Booking cancelled — advance refunded");
+      }
+    } else if (plan.status === "confirmed") {
+      const bookedDay = -randomInt(0, 6);
+      if (Math.random() < 0.25) {
+        addPay(totalAmount, "advance", bookedDay);
+      } else {
+        addPay(money(Math.round(Number(totalAmount) * 0.4)), "advance", bookedDay);
+      }
+    } else if (plan.status !== "draft") {
+      // rented / overdue / returned: advance when booked, deposit and the
+      // rest of the rent at pickup.
+      const advance = money(Math.round(Number(totalAmount) * 0.4));
+      addPay(advance, "advance", plan.from - randomInt(2, 10));
+      addPay(deposit, "security_deposit", plan.from);
+      if (isReturned || Math.random() < 0.7) {
+        addPay(subtractMoneyNonNegative(totalAmount, advance), "balance", plan.from);
+      }
+      if (isReturned) {
+        // At return: damage is kept out of that line's deposit
+        // (`deposit_applied`, which settles the damage), the rest handed back.
+        for (const line of lineCalcs) {
+          const lineDeposit = line.variation.securityDeposit;
+          const applied = gt(line.damageCharge, lineDeposit) ? lineDeposit : line.damageCharge;
+          addPay(applied, "deposit_applied", returnDay, "Security deposit applied to damage charge", "other");
+          addPay(subtractMoneyNonNegative(lineDeposit, applied), "deposit_release", returnDay, "Security deposit returned at item return");
+        }
+      }
+    }
+
+    const { status: paymentStatus } = computePaymentSummary(
+      { totalAmount, securityDeposit: deposit },
+      damageTotal,
+      ledger.map((row) => ({ paymentType: row.type, amount: row.amount })),
+    );
 
     const bookingId = randomUUID();
-    const paymentStatus =
-      plan.status === "draft" ? "unpaid"
-      : plan.status === "cancelled" ? "unpaid"
-      : plan.status === "confirmed" ? (Math.random() < 0.25 ? "paid" : "partial")
-      : plan.status === "returned" ? "paid"
-      : Math.random() < 0.7 ? "paid" : "partial";
-
-    const cancelledAt = plan.status === "cancelled" ? offsetTimestamp(plan.from - 2, 15) : null;
-    const cancellationReason =
-      plan.status === "cancelled"
-        ? pick(["Customer rescheduled the event", "Event postponed", "Customer chose a different outfit"])
-        : null;
+    const cancelledAt = isCancelled ? offsetTimestamp(plan.from - 2, 15) : null;
+    const cancellationReason = isCancelled
+      ? pick(["Customer rescheduled the event", "Event postponed", "Customer chose a different outfit"])
+      : null;
 
     await db.insert(bookings).values({
       id: bookingId,
@@ -646,7 +707,7 @@ async function seed(db: Db) {
       discountAmount: discount,
       securityDeposit: deposit,
       totalAmount,
-      status: plan.status === "draft" ? "draft" : plan.status === "cancelled" ? "cancelled" : "confirmed",
+      status: plan.status === "draft" ? "draft" : isCancelled ? "cancelled" : "confirmed",
       paymentStatus,
       cancelledAt,
       cancellationReason,
@@ -656,24 +717,6 @@ async function seed(db: Db) {
       createdAt,
       updatedAt: createdAt,
     });
-
-    const pay = async (amount: string, paymentType: string, days: number, method?: string, note?: string) => {
-      if (!gt(amount, "0.00")) return;
-      const paymentMethod = (method ?? pick(["cash", "upi", "upi", "card"])) as "cash";
-      await db.insert(payments).values({
-        shopId: SHOP_ID,
-        outletId: outlet.id,
-        bookingId,
-        amount,
-        paymentType: paymentType as "advance",
-        paymentMethod,
-        referenceNumber: paymentMethod === "cash" ? null : `TXN${randomInt(10000000, 99999999)}`,
-        note: note ?? null,
-        recordedById: handler.id,
-        createdAt: offsetTimestamp(days, randomInt(10, 19), randomInt(0, 59)),
-      });
-      counts.payments += 1;
-    };
 
     for (const line of lineCalcs) {
       const v = line.variation;
@@ -697,7 +740,7 @@ async function seed(db: Db) {
 
       if (plan.status === "draft" || plan.status === "confirmed") {
         await db.insert(bookingItems).values({ ...itemBase, status: plan.status });
-      } else if (plan.status === "cancelled") {
+      } else if (isCancelled) {
         await db.insert(bookingItems).values({ ...itemBase, status: "cancelled", cancelledAt, cancellationReason });
       } else if (plan.status === "rented" || plan.status === "overdue") {
         await db.insert(bookingItems).values({
@@ -708,48 +751,40 @@ async function seed(db: Db) {
         });
       } else {
         counts.returned += 1;
-        const damaged = counts.returned % 7 === 0;
-        const damageCharge = damaged
-          ? money(Math.min(randomInt(3, 8) * 100, Math.floor(Number(v.securityDeposit) * 0.5)))
-          : "0.00";
-        const depositRefunded = subtractMoneyNonNegative(v.securityDeposit, damageCharge);
-        const returnedAt = offsetTimestamp(plan.from + plan.days, randomInt(11, 19));
+        const depositRefunded = subtractMoneyNonNegative(v.securityDeposit, line.damageCharge);
+        const returnedAt = offsetTimestamp(returnDay, randomInt(11, 19));
         await db.insert(bookingItems).values({
           ...itemBase,
           status: "returned",
           pickedUpAt: offsetTimestamp(plan.from, 11),
           pickedUpById: handler.id,
           returnedAt,
-          returnCondition: damaged ? "minor_damage" : "good",
-          damageCharge,
-          damageNotes: damaged ? pick(["Small stain on dupatta", "Loose embroidery on sleeve", "Hook missing"]) : null,
+          returnCondition: line.damaged ? "minor_damage" : "good",
+          damageCharge: line.damageCharge,
+          damageNotes: line.damaged ? pick(["Small stain on dupatta", "Loose embroidery on sleeve", "Hook missing"]) : null,
           depositRefunded,
           cleaningRequired: Math.random() < 0.5,
-          maintenanceRequired: damaged,
+          maintenanceRequired: line.damaged,
           collectedById: handler.id,
         });
-        if (damaged) {
-          await pay(damageCharge, "damage_charge", plan.from + plan.days, "cash", "Deducted from deposit");
-          if (counts.maintenance < 8) {
-            counts.maintenance += 1;
-            const done = counts.maintenance % 3 !== 0;
-            await db.insert(maintenanceTasks).values({
-              shopId: SHOP_ID,
-              outletId: outlet.id,
-              variationId: v.id,
-              bookingId: itemId,
-              taskType: pick(["cleaning", "maintenance"] as const),
-              status: done ? "completed" : "in_progress",
-              notes: "Opened at return — damage reported",
-              assignedToId: handler.id,
-              startedAt: offsetTimestamp(plan.from + plan.days, 18),
-              completedAt: done ? offsetTimestamp(plan.from + plan.days + 2, 13) : null,
-              completedById: done ? handler.id : null,
-              createdAt: returnedAt,
-            });
-          }
+        if (line.damaged && counts.maintenance < 8) {
+          counts.maintenance += 1;
+          const done = counts.maintenance % 3 !== 0;
+          await db.insert(maintenanceTasks).values({
+            shopId: SHOP_ID,
+            outletId: outlet.id,
+            variationId: v.id,
+            bookingId: itemId,
+            taskType: pick(["cleaning", "maintenance"] as const),
+            status: done ? "completed" : "in_progress",
+            notes: "Opened at return — damage reported",
+            assignedToId: handler.id,
+            startedAt: offsetTimestamp(returnDay, 18),
+            completedAt: done ? offsetTimestamp(returnDay + 2, 13) : null,
+            completedById: done ? handler.id : null,
+            createdAt: returnedAt,
+          });
         }
-        await pay(depositRefunded, "deposit_release", plan.from + plan.days);
 
         if (customerOwnedIds.has(v.id)) {
           counts.settlements += 1;
@@ -767,7 +802,7 @@ async function seed(db: Db) {
             ownerAmount,
             shopAmount: subtractMoneyNonNegative(line.grossRent, ownerAmount),
             status: paid ? "paid" : "pending",
-            paidAt: paid ? offsetTimestamp(plan.from + plan.days + 5, 15) : null,
+            paidAt: paid ? offsetTimestamp(returnDay + 5, 15) : null,
             paidById: paid ? managerFor(outlet.id) : null,
             paymentReference: paid ? `UPI${randomInt(100000, 999999)}` : null,
             createdAt: returnedAt,
@@ -776,20 +811,21 @@ async function seed(db: Db) {
       }
     }
 
-    // Order-level money in, matching the payment status above.
-    if (plan.status === "cancelled") {
-      if (Math.random() < 0.4) {
-        await pay(deposit, "security_deposit", plan.from - 6);
-        await pay(deposit, "refund", plan.from - 2, undefined, "Booking cancelled — deposit refunded");
-      }
-    } else if (plan.status !== "draft") {
-      const advanceDay = Math.min(plan.from - 1, -0);
-      const advance = paymentStatus === "paid" && plan.status !== "confirmed" ? money(Number(totalAmount) * 0.5) : money(Number(totalAmount) * 0.4);
-      await pay(addMoney(advance, plan.status === "confirmed" ? "0.00" : deposit), "advance", plan.status === "confirmed" ? Math.min(-randomInt(0, 6), 0) : advanceDay);
-      if (paymentStatus === "paid") {
-        const balanceDay = plan.status === "confirmed" ? Math.min(-randomInt(0, 3), 0) : plan.from;
-        await pay(subtractMoneyNonNegative(totalAmount, advance), "balance", balanceDay);
-      }
+    for (const row of ledger) {
+      const paymentMethod = (row.method ?? pick(["cash", "upi", "upi", "card"])) as "cash";
+      await db.insert(payments).values({
+        shopId: SHOP_ID,
+        outletId: outlet.id,
+        bookingId,
+        amount: row.amount,
+        paymentType: row.type,
+        paymentMethod,
+        referenceNumber: paymentMethod === "cash" || paymentMethod === ("other" as "cash") ? null : `TXN${randomInt(10000000, 99999999)}`,
+        note: row.note ?? null,
+        recordedById: handler.id,
+        createdAt: offsetTimestamp(row.day, randomInt(10, 19), randomInt(0, 59)),
+      });
+      counts.payments += 1;
     }
   }
   console.log(

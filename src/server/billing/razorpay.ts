@@ -36,6 +36,7 @@ export type RazorpayOrder = {
   amount: number;
   currency: string;
   status: string;
+  notes?: Record<string, string> | unknown[];
 };
 
 export async function createRazorpayOrder(params: {
@@ -114,4 +115,75 @@ export function verifyWebhookSignature(
     hmacHex(env.RAZORPAY_WEBHOOK_SECRET, rawBody),
     signature,
   );
+}
+
+type RazorpayPayment = {
+  id: string;
+  order_id: string | null;
+  amount: number;
+  currency: string;
+  status: "created" | "authorized" | "captured" | "refunded" | "failed";
+};
+
+async function razorpayApi<T>(path: string, init?: RequestInit): Promise<T> {
+  const auth = Buffer.from(`${env.RAZORPAY_KEY_ID}:${env.RAZORPAY_KEY_SECRET}`).toString("base64");
+  const response = await fetch(`${RAZORPAY_API}${path}`, {
+    ...init,
+    headers: { Authorization: `Basic ${auth}`, "Content-Type": "application/json" },
+    cache: "no-store",
+  });
+  if (!response.ok) {
+    const detail = await response.text().catch(() => "");
+    console.error("Razorpay API call failed", path, response.status, detail);
+    throw new AppError("We couldn't confirm the payment with Razorpay. Please try again in a moment.", 502);
+  }
+  return (await response.json()) as T;
+}
+
+/**
+ * Money check before anything is activated: a valid checkout/webhook
+ * signature proves the payment belongs to our order, but not that the
+ * money was actually *captured*, or captured in full. This asks Razorpay
+ * for the payment and its order and requires: same order, INR, the exact
+ * amount our server put on the order, and status `captured`. A payment
+ * that is only `authorized` (auto-capture switched off on the account)
+ * is captured here for that exact amount; otherwise it would be refunded
+ * automatically after a few days while the account stayed active.
+ */
+export async function settleGatewayPayment(params: { orderId: string; paymentId: string }): Promise<void> {
+  assertRazorpayConfigured();
+  const [order, payment] = await Promise.all([
+    razorpayApi<RazorpayOrder>(`/orders/${encodeURIComponent(params.orderId)}`),
+    razorpayApi<RazorpayPayment>(`/payments/${encodeURIComponent(params.paymentId)}`),
+  ]);
+
+  // Only ever touch orders this app created (they carry our row id) —
+  // never capture a payment belonging to another integration on the same
+  // Razorpay account. Same message the webhook already treats as "ignore".
+  const notes = order.notes && !Array.isArray(order.notes) ? order.notes : {};
+  if (!notes.paymentRowId) {
+    throw AppError.notFound("Payment not found");
+  }
+  if (payment.order_id !== order.id || order.id !== params.orderId) {
+    throw new AppError("This payment doesn't belong to this order.", 400);
+  }
+  if (payment.currency !== "INR" || payment.amount !== order.amount) {
+    console.error("Razorpay amount mismatch", { order: order.id, expected: order.amount, paid: payment.amount, currency: payment.currency });
+    throw new AppError("The amount paid doesn't match the order. Please contact us on WhatsApp.", 400);
+  }
+
+  let status = payment.status;
+  if (status === "authorized") {
+    const captured = await razorpayApi<RazorpayPayment>(`/payments/${encodeURIComponent(payment.id)}/capture`, {
+      method: "POST",
+      body: JSON.stringify({ amount: order.amount, currency: "INR" }),
+    });
+    status = captured.status;
+  }
+  if (status !== "captured") {
+    throw new AppError(
+      "Your payment hasn't been completed yet. If money was deducted, it will be confirmed automatically shortly.",
+      409,
+    );
+  }
 }

@@ -15,6 +15,7 @@ import { PricingPlans } from "@/components/marketing/pricing-plans";
 import { getCurrentUser } from "@/lib/auth/session";
 import { whatsappLink } from "@/lib/plans";
 import { isDemoAvailable } from "@/server/billing/service";
+import { getPlans } from "@/server/billing/plans";
 
 export const metadata = {
   title: "Rentque — Rental management for bridal & costume businesses",
@@ -64,7 +65,7 @@ export default async function HomePage() {
     redirect("/dashboard");
   }
 
-  const demoAvailable = await isDemoAvailable();
+  const [demoAvailable, plans] = await Promise.all([isDemoAvailable(), getPlans()]);
 
   return (
     <div className="bg-auth-canvas text-auth-ink flex min-h-full flex-1 flex-col">
@@ -139,7 +140,7 @@ export default async function HomePage() {
               in and start adding your stock.
             </p>
             <div className="mt-10">
-              <PricingPlans />
+              <PricingPlans plans={plans} />
             </div>
           </div>
         </section>

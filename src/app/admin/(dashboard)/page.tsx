@@ -63,6 +63,7 @@ const ACTION_LABELS: Record<string, string> = {
   "subscription.updated": "Subscription edited",
   "subscription.payment_recorded": "Offline payment",
   "subscription.payment_resolved": "Payment resolved",
+  "platform.plan_prices_changed": "Prices changed",
 };
 
 const numberFormat = new Intl.NumberFormat("en-IN");

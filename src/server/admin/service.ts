@@ -47,6 +47,7 @@ import type {
   ResolvePaymentInput,
 } from "@/lib/validation/admin-billing";
 import { AuditAction, recordAudit } from "@/server/audit/service";
+import { getPlans } from "@/server/billing/plans";
 
 /**
  * Super admin (platform owner) reads and writes that span tenants: the
@@ -133,6 +134,7 @@ export async function getPlatformOverview(): Promise<PlatformOverview> {
     [staffTotal],
     [outletTotal],
     revenueRows,
+    plans,
   ] = await Promise.all([
     db.select({ value: count() }).from(shops),
     db.select({ value: count() }).from(shops).where(eq(shops.isActive, true)),
@@ -160,6 +162,7 @@ export async function getPlatformOverview(): Promise<PlatformOverview> {
       .from(subscriptionPayments)
       .where(paidInWindow)
       .groupBy(monthExpr),
+    getPlans(),
   ]);
 
   const subscriptions: Record<SubscriptionState, number> = {
@@ -174,8 +177,8 @@ export async function getPlatformOverview(): Promise<PlatformOverview> {
     const state = subscriptionState(row.endsAt, now);
     subscriptions[state] += 1;
     if (state === "active" || state === "expiring") {
-      if (row.plan === "yearly") recurringPaisePerMonth += toPaise(PLANS.yearly.price) / 12;
-      if (row.plan === "monthly") recurringPaisePerMonth += toPaise(PLANS.monthly.price);
+      if (row.plan === "yearly") recurringPaisePerMonth += toPaise(plans.yearly.price) / 12;
+      if (row.plan === "monthly") recurringPaisePerMonth += toPaise(plans.monthly.price);
     }
   }
 
@@ -345,7 +348,7 @@ export async function listDues(filter: DueFilter): Promise<DueItem[]> {
   if (rows.length === 0) return [];
   const ids = rows.map((r) => r.id);
 
-  const [owners, lastPaid] = await Promise.all([
+  const [owners, lastPaid, plans] = await Promise.all([
     db
       .select({
         shopId: users.shopId,
@@ -362,6 +365,7 @@ export async function listDues(filter: DueFilter): Promise<DueItem[]> {
       .from(subscriptionPayments)
       .where(and(inArray(subscriptionPayments.shopId, ids), eq(subscriptionPayments.status, "paid")))
       .groupBy(subscriptionPayments.shopId),
+    getPlans(),
   ]);
 
   const ownerByShop = new Map<string, (typeof owners)[number]>();
@@ -379,7 +383,7 @@ export async function listDues(filter: DueFilter): Promise<DueItem[]> {
         ? Math.ceil((row.subscriptionEndsAt.getTime() - now.getTime()) / DAY_MS)
         : null,
       renewalPaise:
-        row.plan === "yearly" || row.plan === "monthly" ? toPaise(PLANS[row.plan].price) : null,
+        row.plan === "yearly" || row.plan === "monthly" ? toPaise(plans[row.plan].price) : null,
       ownerName: owner ? `${owner.firstName} ${owner.lastName}`.trim() : null,
       ownerPhone: owner?.phone ?? null,
       lastPaidAt: lastPaidByShop.get(row.id) ?? null,
@@ -661,4 +665,71 @@ export async function getDemoTenant(): Promise<{ id: string; name: string } | nu
     .where(eq(shops.isDemo, true))
     .limit(1);
   return row ?? null;
+}
+
+export type TenantPaymentSummary = {
+  id: string;
+  name: string;
+  plan: "yearly" | "monthly" | "custom" | null;
+  subscriptionEndsAt: Date | null;
+  isDemo: boolean;
+  payments: number;
+  totalPaidPaise: number;
+  lastPaidAt: Date | null;
+  lastAmountPaise: number | null;
+};
+
+/**
+ * One row per tenant with what they have paid the platform so far. Amounts
+ * come from the stored payments (what was actually charged), so they are
+ * unaffected by later price changes. Tenants with no payments are included.
+ */
+export async function listTenantPaymentSummaries(): Promise<TenantPaymentSummary[]> {
+  const paid = eq(subscriptionPayments.status, "paid");
+  const [tenants, totals, latest] = await Promise.all([
+    db
+      .select({
+        id: shops.id,
+        name: shops.name,
+        plan: shops.plan,
+        subscriptionEndsAt: shops.subscriptionEndsAt,
+        isDemo: shops.isDemo,
+      })
+      .from(shops)
+      .orderBy(asc(shops.name)),
+    db
+      .select({
+        shopId: subscriptionPayments.shopId,
+        payments: count(),
+        total: sum(subscriptionPayments.amountPaise),
+        lastPaidAt: max(subscriptionPayments.paidAt),
+      })
+      .from(subscriptionPayments)
+      .where(and(paid, isNotNull(subscriptionPayments.shopId)))
+      .groupBy(subscriptionPayments.shopId),
+    db
+      .selectDistinctOn([subscriptionPayments.shopId], {
+        shopId: subscriptionPayments.shopId,
+        amountPaise: subscriptionPayments.amountPaise,
+      })
+      .from(subscriptionPayments)
+      .where(and(paid, isNotNull(subscriptionPayments.shopId)))
+      .orderBy(subscriptionPayments.shopId, desc(subscriptionPayments.paidAt)),
+  ]);
+
+  const totalByShop = new Map(totals.map((t) => [t.shopId, t]));
+  const latestByShop = new Map(latest.map((l) => [l.shopId, l.amountPaise]));
+
+  return tenants
+    .map((t) => {
+      const row = totalByShop.get(t.id);
+      return {
+        ...t,
+        payments: row?.payments ?? 0,
+        totalPaidPaise: Number(row?.total ?? 0),
+        lastPaidAt: row?.lastPaidAt ?? null,
+        lastAmountPaise: latestByShop.get(t.id) ?? null,
+      };
+    })
+    .sort((a, b) => b.totalPaidPaise - a.totalPaidPaise || a.name.localeCompare(b.name));
 }

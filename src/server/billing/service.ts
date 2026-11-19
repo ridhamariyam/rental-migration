@@ -26,6 +26,7 @@ import type {
 } from "@/lib/validation/billing";
 import { tenantIdParamSchema } from "@/lib/validation/tenants";
 import { AuditAction, recordAudit } from "@/server/audit/service";
+import { getPlans } from "@/server/billing/plans";
 import {
   createRazorpayOrder,
   razorpayKeyId,
@@ -94,7 +95,8 @@ export async function startSignup(input: SignupInput): Promise<CheckoutSession> 
     );
   }
 
-  const plan = PLANS[input.plan];
+  // Always the live server-side price — never anything the browser sent.
+  const plan = (await getPlans())[input.plan];
   const planFeePaise = toPaise(plan.price);
   const setupFeePaise = toPaise(plan.setupFee);
   const amountPaise = toPaise(signupTotal(plan));
@@ -175,7 +177,7 @@ export async function startRenewal(
     );
   }
 
-  const plan = PLANS[planId];
+  const plan = (await getPlans())[planId];
   const amountPaise = toPaise(plan.price);
 
   const [row] = await db
@@ -257,6 +259,8 @@ export async function completePayment(params: {
     }
 
     const now = new Date();
+    // Only the period length is read here (not editable); the amount
+    // charged is whatever this payment row recorded at checkout.
     const plan = PLANS[payment.plan as PlanId] ?? PLANS.yearly;
 
     if (payment.purpose === "renewal") {

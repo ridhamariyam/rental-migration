@@ -7,6 +7,7 @@ import {
   Building2Icon,
   CalendarClockIcon,
   LayoutDashboardIcon,
+  TagIcon,
   ReceiptIndianRupeeIcon,
 } from "lucide-react";
 import {
@@ -33,6 +34,7 @@ const navItems = [
   { href: adminPaths.tenants, label: "Tenants", icon: Building2Icon },
   { href: adminPaths.dues, label: "Dues", icon: CalendarClockIcon },
   { href: adminPaths.payments, label: "Payments", icon: ReceiptIndianRupeeIcon },
+  { href: adminPaths.plans, label: "Plans & pricing", icon: TagIcon },
 ];
 
 export function AppSidebar({ adminEmail }: { adminEmail: string }) {

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { verifyWebhookSignature } from "@/server/billing/razorpay";
+import { settleGatewayPayment, verifyWebhookSignature } from "@/server/billing/razorpay";
 import { completePayment, markPaymentFailed } from "@/server/billing/service";
 
 type PaymentEntity = { id?: string; order_id?: string; error_description?: string };
@@ -26,6 +26,7 @@ export async function POST(request: Request) {
 
     if (payment?.id && payment.order_id) {
       if (event.event === "payment.captured" || event.event === "order.paid") {
+        await settleGatewayPayment({ orderId: payment.order_id, paymentId: payment.id });
         await completePayment({ orderId: payment.order_id, paymentId: payment.id });
       } else if (event.event === "payment.failed") {
         await markPaymentFailed(

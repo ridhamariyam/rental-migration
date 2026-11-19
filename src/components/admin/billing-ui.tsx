@@ -148,6 +148,6 @@ export function renewalReminderLink(params: {
       : `ended on ${formatDate(params.endsAt)}`
     : "needs renewing";
   const amount = params.amountPaise ? ` The renewal is ${formatPaise(params.amountPaise)}.` : "";
-  const message = `${greeting}, your Rentque subscription for ${params.businessName} ${when}.${amount} You can renew from Settings → Subscription in your dashboard, or reply here to pay by UPI. Thank you!`;
+  const message = `${greeting}, your Rentque subscription for ${params.businessName} ${when}.${amount} Reply here and we'll share the UPI details to renew. Thank you!`;
   return `https://wa.me/${digits}?text=${encodeURIComponent(message)}`;
 }

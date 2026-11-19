@@ -42,7 +42,7 @@ import {
 import { TenantStatusAction } from "@/components/admin/tenant-status-action";
 import { adminPaths } from "@/lib/admin-paths";
 import { formatDate, formatDateTime, formatMoney } from "@/lib/format";
-import { formatPaise, PLANS } from "@/lib/plans";
+import { formatPaise } from "@/lib/plans";
 import { avatarGradient } from "@/lib/tenant-avatar";
 import {
   getDemoTenant,
@@ -51,6 +51,7 @@ import {
   listPlatformActivity,
 } from "@/server/admin/service";
 import { listPaymentsForShop } from "@/server/billing/service";
+import { getPlans } from "@/server/billing/plans";
 import { getTenantById } from "@/server/tenants/service";
 
 type Params = Promise<{ id: string }>;
@@ -96,18 +97,19 @@ export default async function AdminTenantDetailPage({
     notFound();
   }
 
-  const [owners, usage, payments, activity, demoTenant] = await Promise.all([
+  const [owners, usage, payments, activity, demoTenant, plans] = await Promise.all([
     getTenantOwners(tenant.id),
     getTenantUsage(tenant.id),
     listPaymentsForShop(tenant.id),
     listPlatformActivity({ shopId: tenant.id, limit: 8 }),
     getDemoTenant(),
+    getPlans(),
   ]);
 
   const primaryOwner = owners[0] ?? null;
   const totalPaidPaise = payments.reduce((acc, p) => acc + p.amountPaise, 0);
   const renewalPaise =
-    tenant.plan === "yearly" || tenant.plan === "monthly" ? PLANS[tenant.plan].price * 100 : null;
+    tenant.plan === "yearly" || tenant.plan === "monthly" ? plans[tenant.plan].price * 100 : null;
   const reminder = renewalReminderLink({
     phone: primaryOwner?.phone ?? tenant.phone,
     businessName: tenant.name,
@@ -203,7 +205,7 @@ export default async function AdminTenantDetailPage({
                   <p className="mt-1 font-semibold">{planLabel(tenant.plan)}</p>
                   {renewalPaise ? (
                     <p className="text-muted-foreground text-xs">
-                      {formatPaise(renewalPaise)} / {PLANS[tenant.plan as "yearly" | "monthly"].periodLabel}
+                      {formatPaise(renewalPaise)} / {plans[tenant.plan as "yearly" | "monthly"].periodLabel}
                     </p>
                   ) : null}
                 </div>
@@ -227,6 +229,7 @@ export default async function AdminTenantDetailPage({
                 <RecordPaymentDialog
                   tenantId={tenant.id}
                   tenantName={tenant.name}
+                  plans={plans}
                   currentPlan={tenant.plan}
                   currentEndsAt={tenant.subscriptionEndsAt?.toISOString() ?? null}
                   hasPaidBefore={payments.length > 0}

@@ -18,3 +18,4 @@ export * from "@/lib/db/schema/settlements";
 export * from "@/lib/db/schema/audit-logs";
 export * from "@/lib/db/schema/notifications";
 export * from "@/lib/db/schema/subscription-payments";
+export * from "@/lib/db/schema/plan-prices";

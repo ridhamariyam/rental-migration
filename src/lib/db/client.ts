@@ -32,9 +32,22 @@ function poolSize(): number {
   }
 }
 
+/**
+ * Every tenant is an Indian business, so "today", "this month" and every
+ * report bucket mean the India calendar day. Pinning the session zone
+ * makes `created_at::date` / `date_trunc` group by IST instead of the
+ * server's UTC — otherwise a payment taken at 00:30 IST lands on the
+ * previous day. Stored timestamps are absolute instants and unaffected;
+ * the Node side is pinned the same way by `TZ` in package.json.
+ */
+export const BUSINESS_TIME_ZONE = "Asia/Kolkata";
+
 const queryClient =
   globalForDb.queryClient ??
-  postgres(env.DATABASE_URL, { max: poolSize() });
+  postgres(env.DATABASE_URL, {
+    max: poolSize(),
+    connection: { TimeZone: BUSINESS_TIME_ZONE },
+  });
 
 if (env.NODE_ENV !== "production") {
   globalForDb.queryClient = queryClient;

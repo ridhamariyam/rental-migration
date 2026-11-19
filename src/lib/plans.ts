@@ -24,7 +24,16 @@ export type Plan = {
   tagline: string;
 };
 
-export const PLANS: Record<PlanId, Plan> = {
+export type PlanCatalog = Record<PlanId, Plan>;
+
+/**
+ * Default plans. The *live* prices are editable by the super admin and
+ * read on the server with `getPlans()` (`src/server/billing/plans.ts`),
+ * which overlays the `plan_prices` table on these defaults — always
+ * charge and display from that, never from this constant directly. Names,
+ * periods and taglines stay here; only `price` and `setupFee` change.
+ */
+export const PLANS: PlanCatalog = {
   yearly: {
     id: "yearly",
     name: "Yearly",
@@ -75,6 +84,29 @@ export function whatsappLink(message: string): string {
 
 export const CUSTOM_PLAN_WHATSAPP_MESSAGE =
   "Hi, I'm interested in a custom Rentque plan (online payments / AI features / custom reports / integrations). Please share the details.";
+
+/** Overlay saved prices (whole rupees) onto the default plans. */
+export function withPrices(
+  overrides: { plan: string; price: number; setupFee: number }[],
+): PlanCatalog {
+  const catalog: PlanCatalog = { yearly: { ...PLANS.yearly }, monthly: { ...PLANS.monthly } };
+  for (const row of overrides) {
+    if (isPlanId(row.plan)) {
+      catalog[row.plan] = { ...catalog[row.plan], price: row.price, setupFee: row.setupFee };
+    }
+  }
+  catalog.yearly.tagline = planTagline(catalog.yearly);
+  return catalog;
+}
+
+/** "About ₹833 a month" style tagline for the yearly plan, kept in step
+ * with whatever the yearly price currently is. */
+export function planTagline(plan: Plan): string {
+  if (plan.id === "yearly") {
+    return `Best value — about ${formatRupees(Math.round(plan.price / 12))} a month.`;
+  }
+  return plan.tagline;
+}
 
 export function isPlanId(value: unknown): value is PlanId {
   return typeof value === "string" && (PLAN_IDS as readonly string[]).includes(value);
