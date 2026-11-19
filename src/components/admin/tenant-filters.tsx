@@ -14,6 +14,15 @@ import {
 
 const SEARCH_DEBOUNCE_MS = 350;
 
+const SUBSCRIPTION_LABELS: Record<string, string> = {
+  all: "All subscriptions",
+  active: "Paid up",
+  expiring: "Expiring soon",
+  grace: "Grace period",
+  locked: "Locked",
+  none: "No plan",
+};
+
 const STATUS_LABELS: Record<string, string> = {
   all: "All statuses",
   active: "Active",
@@ -30,9 +39,11 @@ const STATUS_LABELS: Record<string, string> = {
 export function TenantFilters({
   defaultQuery,
   defaultStatus,
+  defaultSubscription = "all",
 }: {
   defaultQuery: string;
   defaultStatus: string;
+  defaultSubscription?: string;
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -102,6 +113,26 @@ export function TenantFilters({
           <SelectItem value="all">All statuses</SelectItem>
           <SelectItem value="active">Active</SelectItem>
           <SelectItem value="blocked">Blocked</SelectItem>
+        </SelectContent>
+      </Select>
+
+      <Select
+        defaultValue={defaultSubscription}
+        onValueChange={(next) =>
+          updateParams({ subscription: next === "all" ? null : next })
+        }
+      >
+        <SelectTrigger className="w-full sm:w-44">
+          <SelectValue placeholder="Subscription">
+            {(value: string) => SUBSCRIPTION_LABELS[value] ?? "Subscription"}
+          </SelectValue>
+        </SelectTrigger>
+        <SelectContent alignItemWithTrigger={false}>
+          {Object.entries(SUBSCRIPTION_LABELS).map(([value, label]) => (
+            <SelectItem key={value} value={value}>
+              {label}
+            </SelectItem>
+          ))}
         </SelectContent>
       </Select>
     </div>

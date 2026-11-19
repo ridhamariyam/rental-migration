@@ -31,11 +31,17 @@ import { paginationRange } from "@/lib/pagination-range";
 import { avatarGradient } from "@/lib/tenant-avatar";
 import type { TenantListQuery } from "@/lib/validation/tenants";
 import { listTenants } from "@/server/tenants/service";
+import {
+  planLabel,
+  SubscriptionBadge,
+  subscriptionSummary,
+} from "@/components/admin/billing-ui";
 
 function tenantsHref(query: TenantListQuery, page: number): string {
   const params = new URLSearchParams();
   if (query.q) params.set("q", query.q);
   if (query.status !== "all") params.set("status", query.status);
+  if (query.subscription !== "all") params.set("subscription", query.subscription);
   if (page > 1) params.set("page", String(page));
   const search = params.toString();
   return `${adminPaths.tenants}${search ? `?${search}` : ""}`;
@@ -54,7 +60,8 @@ function tenantsHref(query: TenantListQuery, page: number): string {
  */
 export async function TenantsTable({ query }: { query: TenantListQuery }) {
   const { items, total, page, totalPages } = await listTenants(query);
-  const hasFilters = Boolean(query.q) || query.status !== "all";
+  const hasFilters =
+    Boolean(query.q) || query.status !== "all" || query.subscription !== "all";
 
   if (items.length === 0) {
     return (
@@ -71,7 +78,7 @@ export async function TenantsTable({ query }: { query: TenantListQuery }) {
           <EmptyDescription>
             {hasFilters
               ? "Try a different search term or clear the status filter."
-              : "Tenants you onboard will show up here — adding one lands in the next phase."}
+              : "Businesses appear here when they sign up and pay, or when you add one."}
           </EmptyDescription>
         </EmptyHeader>
       </Empty>
@@ -86,13 +93,16 @@ export async function TenantsTable({ query }: { query: TenantListQuery }) {
             <TableHead className="text-muted-foreground h-11 px-4 text-xs font-medium tracking-wide uppercase">
               Name
             </TableHead>
-            <TableHead className="text-muted-foreground h-11 px-4 text-xs font-medium tracking-wide uppercase">
+            <TableHead className="text-muted-foreground hidden h-11 px-4 text-xs font-medium tracking-wide uppercase md:table-cell">
               Contact
+            </TableHead>
+            <TableHead className="text-muted-foreground h-11 px-4 text-xs font-medium tracking-wide uppercase">
+              Subscription
             </TableHead>
             <TableHead className="text-muted-foreground h-11 px-4 text-xs font-medium tracking-wide uppercase">
               Status
             </TableHead>
-            <TableHead className="text-muted-foreground h-11 px-4 text-xs font-medium tracking-wide uppercase">
+            <TableHead className="text-muted-foreground hidden h-11 px-4 text-xs font-medium tracking-wide uppercase lg:table-cell">
               Created
             </TableHead>
           </TableRow>
@@ -113,10 +123,30 @@ export async function TenantsTable({ query }: { query: TenantListQuery }) {
                   <span className="group-hover:underline">{tenant.name}</span>
                 </Link>
               </TableCell>
-              <TableCell className="text-muted-foreground px-4 py-3 text-sm">
+              <TableCell className="text-muted-foreground hidden px-4 py-3 text-sm md:table-cell">
                 <div className="flex flex-col">
                   <span>{tenant.email}</span>
                   <span>{tenant.phone}</span>
+                </div>
+              </TableCell>
+              <TableCell className="px-4 py-3">
+                <div className="flex flex-col items-start gap-1">
+                  <span className="flex flex-wrap items-center gap-1.5">
+                    <SubscriptionBadge endsAt={tenant.subscriptionEndsAt} />
+                    {tenant.isDemo ? (
+                      <Badge variant="secondary" className="bg-violet-500/10 text-violet-700 dark:text-violet-400">
+                        Demo
+                      </Badge>
+                    ) : null}
+                  </span>
+                  <span className="text-muted-foreground text-xs">
+                    {planLabel(tenant.plan)}
+                    {tenant.subscriptionEndsAt ? (
+                      <span className="hidden sm:inline">
+                        {` · ${subscriptionSummary(tenant.subscriptionEndsAt)}`}
+                      </span>
+                    ) : null}
+                  </span>
                 </div>
               </TableCell>
               <TableCell className="px-4 py-3">
@@ -135,7 +165,7 @@ export async function TenantsTable({ query }: { query: TenantListQuery }) {
                   </Badge>
                 )}
               </TableCell>
-              <TableCell className="text-muted-foreground px-4 py-3 text-sm">
+              <TableCell className="text-muted-foreground hidden px-4 py-3 text-sm lg:table-cell">
                 {formatDate(tenant.createdAt)}
               </TableCell>
             </TableRow>

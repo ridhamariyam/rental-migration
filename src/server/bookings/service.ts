@@ -86,6 +86,8 @@ export type BookingGroupItemInfo = {
   quantity: number;
   fromDate: string;
   toDate: string;
+  /** Lets the list derive the order's stage (`deriveOrderStage`). */
+  status: BookingItem["status"];
 };
 
 export type BookingListItem = BookingRow & {
@@ -171,7 +173,25 @@ function bookingViewCondition(view: BookingListQuery["view"] | undefined) {
   }
 
   if (view === "completed") {
-    return eq(bookings.status, "returned");
+    // Same rule as `deriveOrderStage`'s "completed": the order row itself
+    // stays `confirmed` through the whole lifecycle (only its items move),
+    // so completion means every item is finished and at least one actually
+    // came back — not `bookings.status = 'returned'`, which nothing writes.
+    return and(
+      ne(bookings.status, "cancelled"),
+      inArray(
+        bookings.id,
+        db
+          .select({ id: bookingItems.bookingId })
+          .from(bookingItems)
+          .where(eq(bookingItems.status, "returned")),
+      ),
+      sql`not exists (
+        select 1 from ${bookingItems}
+        where ${bookingItems.bookingId} = ${bookings.id}
+          and ${bookingItems.status} not in ('returned', 'cancelled')
+      )`,
+    );
   }
 
   const itemCondition =
@@ -430,6 +450,7 @@ export async function listBookings(
             quantity: bookingItems.quantity,
             fromDate: bookingItems.fromDate,
             toDate: bookingItems.toDate,
+            status: bookingItems.status,
           })
           .from(bookingItems)
           .innerJoin(products, eq(bookingItems.productId, products.id))
@@ -455,6 +476,7 @@ export async function listBookings(
       quantity: item.quantity,
       fromDate: item.fromDate,
       toDate: item.toDate,
+      status: item.status,
     });
   }
 
@@ -501,7 +523,19 @@ export async function getBookingStats(
     db
       .select({ value: count() })
       .from(bookings)
-      .where(scopedWhere(eq(bookings.status, "confirmed"))),
+      // "Active" = confirmed and not finished yet: at least one item is
+      // still to be picked up or brought back. Without the item check every
+      // completed order (the row stays `confirmed`) counted as active.
+      .where(
+        scopedWhere(
+          eq(bookings.status, "confirmed"),
+          sql`exists (
+            select 1 from ${bookingItems}
+            where ${bookingItems.bookingId} = ${bookings.id}
+              and ${bookingItems.status} not in ('returned', 'cancelled')
+          )`,
+        ),
+      ),
   ]);
 
   return {

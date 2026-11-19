@@ -89,6 +89,8 @@ function sessionUser(
     avatarUrl: row.avatarUrl,
     mustChangePassword: row.mustChangePassword,
     isActive: row.isActive,
+    shopIsDemo: false,
+    subscriptionEndsAt: null,
   };
 }
 

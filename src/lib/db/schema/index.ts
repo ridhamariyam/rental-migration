@@ -17,3 +17,4 @@ export * from "@/lib/db/schema/salary";
 export * from "@/lib/db/schema/settlements";
 export * from "@/lib/db/schema/audit-logs";
 export * from "@/lib/db/schema/notifications";
+export * from "@/lib/db/schema/subscription-payments";

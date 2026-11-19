@@ -1,4 +1,4 @@
-import { requireTenantUser } from "@/server/auth/guard";
+import { assertNotDemo, requireTenantUser } from "@/server/auth/guard";
 import { apiError, apiSuccess } from "@/lib/errors/api-response";
 import { updateProfileSchema } from "@/lib/validation/profile";
 import { updateOwnProfile } from "@/server/profile/service";
@@ -13,6 +13,7 @@ import { updateOwnProfile } from "@/server/profile/service";
 export async function PATCH(request: Request) {
   try {
     const user = await requireTenantUser();
+    assertNotDemo(user);
 
     const body = updateProfileSchema.parse(await request.json());
     const profile = await updateOwnProfile(user.id, body);

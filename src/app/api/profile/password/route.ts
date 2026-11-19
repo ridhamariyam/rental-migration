@@ -1,4 +1,4 @@
-import { requireTenantUser } from "@/server/auth/guard";
+import { assertNotDemo, requireTenantUser } from "@/server/auth/guard";
 import { apiError, apiSuccess } from "@/lib/errors/api-response";
 import { changeOwnPasswordSchema } from "@/lib/validation/profile";
 import { changeOwnPassword } from "@/server/profile/service";
@@ -12,6 +12,7 @@ import { changeOwnPassword } from "@/server/profile/service";
 export async function POST(request: Request) {
   try {
     const user = await requireTenantUser();
+    assertNotDemo(user);
 
     const body = changeOwnPasswordSchema.parse(await request.json());
     await changeOwnPassword(user.id, body);

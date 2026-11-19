@@ -22,6 +22,9 @@ export const tenantListQuerySchema = z.object({
     .optional()
     .catch(undefined),
   status: z.enum(["all", "active", "blocked"]).catch("all"),
+  subscription: z
+    .enum(["all", "active", "expiring", "grace", "locked", "none"])
+    .catch("all"),
 });
 
 export type TenantListQuery = z.infer<typeof tenantListQuerySchema>;
