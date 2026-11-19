@@ -1,4 +1,4 @@
-import { assertNotDemo, requireTenantUser } from "@/server/auth/guard";
+import { requireTenantUser } from "@/server/auth/guard";
 import { Permission } from "@/lib/auth/permissions";
 import { apiError, apiSuccess } from "@/lib/errors/api-response";
 import { updateBusinessSchema } from "@/lib/validation/business";
@@ -23,7 +23,6 @@ export async function GET() {
 export async function PATCH(request: Request) {
   try {
     const user = await requireTenantUser(Permission.SHOP_MANAGE);
-    assertNotDemo(user);
 
     const body = updateBusinessSchema.parse(await request.json());
     const shop = await updateOwnShop(user, body);

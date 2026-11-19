@@ -8,6 +8,4 @@ export const adminPaths = {
   dashboard: "/admin",
   tenants: "/admin/tenants",
   newTenant: "/admin/tenants/new",
-  payments: "/admin/payments",
-  dues: "/admin/dues",
 } as const;

@@ -259,26 +259,3 @@ export const notificationLogStatusEnum = pgEnum("notification_log_status", [
   "failed",
   "cancelled",
 ]);
-
-/** Platform subscription plan a tenant pays for (see `src/lib/plans.ts`).
- * `custom` covers deals agreed directly with the platform owner. */
-export const subscriptionPlanEnum = pgEnum("subscription_plan", [
-  "yearly",
-  "monthly",
-  "custom",
-]);
-
-/** What a platform payment was for: buying a new account, or extending an
- * existing tenant's subscription. */
-export const subscriptionPaymentPurposeEnum = pgEnum(
-  "subscription_payment_purpose",
-  ["signup", "renewal"],
-);
-
-/** `created` = order opened at the gateway, not paid yet. `paid` = money
- * received (see `needsAttention` on the row for a paid signup that could
- * not be provisioned). `failed` = the gateway reported a failure. */
-export const subscriptionPaymentStatusEnum = pgEnum(
-  "subscription_payment_status",
-  ["created", "paid", "failed"],
-);

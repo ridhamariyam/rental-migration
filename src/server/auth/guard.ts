@@ -3,7 +3,6 @@ import "server-only";
 import { getCurrentUser, type SessionUser } from "@/lib/auth/session";
 import { AppError } from "@/lib/errors/app-error";
 import { hasPermission, type Permission } from "@/lib/auth/permissions";
-import { subscriptionState } from "@/lib/plans";
 
 export type TenantSessionUser = SessionUser & { shopId: string };
 
@@ -38,15 +37,6 @@ export async function requireTenantUser(
 
   if (!user.shopId) {
     throw AppError.forbidden("This action requires a business account");
-  }
-
-  // Past the paid period + grace days, the business is locked out of
-  // everything except renewing (the renew routes don't go through here).
-  if (subscriptionState(user.subscriptionEndsAt) === "locked") {
-    throw new AppError(
-      "Your subscription has expired. Renew it to keep using Rentque.",
-      402,
-    );
   }
 
   if (permission && !hasPermission(user.role, permission)) {
@@ -120,19 +110,4 @@ export function resolveOutletScope(
   }
 
   return scope;
-}
-
-/**
- * Refuses account-level changes (passwords, profile, business settings)
- * on the shared public demo shop — every prospect signs in as the same
- * user, so letting one of them change its password or details would lock
- * out or confuse everyone after them. Day-to-day operations (bookings,
- * products, customers...) stay fully usable so the demo shows the product.
- */
-export function assertNotDemo(user: Pick<SessionUser, "shopIsDemo">): void {
-  if (user.shopIsDemo) {
-    throw AppError.forbidden(
-      "This is disabled in the demo account. Buy a plan to get your own account.",
-    );
-  }
 }

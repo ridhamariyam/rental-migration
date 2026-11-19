@@ -67,17 +67,6 @@ const envSchema = z.object({
   MSG91_WEBHOOK_SECRET: z
     .string()
     .min(32, "MSG91_WEBHOOK_SECRET must be at least 32 characters"),
-  // Razorpay — collects the platform subscription payments (signup and
-  // renewal) into the platform owner's own Razorpay account. Optional so
-  // the app still boots without them; the "Buy" flow then tells visitors
-  // online payment is unavailable and points them to WhatsApp instead.
-  // Keys: Razorpay Dashboard → Account & Settings → API Keys.
-  RAZORPAY_KEY_ID: z.string().default(""),
-  RAZORPAY_KEY_SECRET: z.string().default(""),
-  // Webhook secret set when adding `<app>/api/webhooks/razorpay` in the
-  // Razorpay dashboard (events: payment.captured, order.paid). Backstop
-  // for a buyer who closes the tab before the browser confirms payment.
-  RAZORPAY_WEBHOOK_SECRET: z.string().default(""),
   WHATSAPP_DEFAULT_COUNTRY_CODE: z
     .string()
     .regex(/^\d{1,4}$/, "WHATSAPP_DEFAULT_COUNTRY_CODE must be numeric")

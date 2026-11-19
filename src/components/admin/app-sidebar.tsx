@@ -3,12 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import {
-  Building2Icon,
-  CalendarClockIcon,
-  LayoutDashboardIcon,
-  ReceiptIndianRupeeIcon,
-} from "lucide-react";
+import { Building2Icon, LayoutDashboardIcon } from "lucide-react";
 import {
   Sidebar,
   SidebarContent,
@@ -31,8 +26,6 @@ import { adminPaths } from "@/lib/admin-paths";
 const navItems = [
   { href: adminPaths.dashboard, label: "Dashboard", icon: LayoutDashboardIcon },
   { href: adminPaths.tenants, label: "Tenants", icon: Building2Icon },
-  { href: adminPaths.dues, label: "Dues", icon: CalendarClockIcon },
-  { href: adminPaths.payments, label: "Payments", icon: ReceiptIndianRupeeIcon },
 ];
 
 export function AppSidebar({ adminEmail }: { adminEmail: string }) {

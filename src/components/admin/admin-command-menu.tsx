@@ -2,13 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import {
-  Building2Icon,
-  CalendarClockIcon,
-  LayoutDashboardIcon,
-  ReceiptIndianRupeeIcon,
-  SearchIcon,
-} from "lucide-react";
+import { Building2Icon, LayoutDashboardIcon, SearchIcon } from "lucide-react";
 import {
   Command,
   CommandDialog,
@@ -30,8 +24,6 @@ import { adminPaths } from "@/lib/admin-paths";
 const searchableItems = [
   { href: adminPaths.dashboard, label: "Dashboard", icon: LayoutDashboardIcon },
   { href: adminPaths.tenants, label: "Tenants", icon: Building2Icon },
-  { href: adminPaths.dues, label: "Dues", icon: CalendarClockIcon },
-  { href: adminPaths.payments, label: "Payments", icon: ReceiptIndianRupeeIcon },
 ];
 
 /** Sidebar search box + Cmd/Ctrl-K command palette for jumping between admin pages. */

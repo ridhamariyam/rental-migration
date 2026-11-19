@@ -1,4 +1,4 @@
-import { assertNotDemo, requireTenantUser } from "@/server/auth/guard";
+import { requireTenantUser } from "@/server/auth/guard";
 import { Permission } from "@/lib/auth/permissions";
 import { apiError, apiSuccess } from "@/lib/errors/api-response";
 import { resetStaffPassword } from "@/server/staff/service";
@@ -17,7 +17,6 @@ export async function POST(
 ) {
   try {
     const user = await requireTenantUser(Permission.STAFF_MANAGE);
-    assertNotDemo(user);
 
     const { id } = await params;
     const result = await resetStaffPassword(user, id);

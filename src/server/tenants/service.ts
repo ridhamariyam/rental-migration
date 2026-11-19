@@ -1,6 +1,6 @@
 import "server-only";
 
-import { and, count, desc, eq, gte, ilike, isNull, lt, or } from "drizzle-orm";
+import { and, count, desc, eq, ilike, or } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { destroySessionsForShop } from "@/lib/auth/session";
 import { hashPassword } from "@/lib/auth/password";
@@ -13,9 +13,6 @@ import {
   type CreateTenantInput,
   type TenantListQuery,
 } from "@/lib/validation/tenants";
-import { SUBSCRIPTION_GRACE_DAYS, SUBSCRIPTION_REMINDER_DAYS } from "@/lib/plans";
-
-const DAY_MS = 86_400_000;
 
 export type TenantListItem = typeof shops.$inferSelect;
 
@@ -36,7 +33,7 @@ export type TenantListResult = {
 export async function listTenants(
   query: TenantListQuery,
 ): Promise<TenantListResult> {
-  const { page, pageSize, q, status, subscription } = query;
+  const { page, pageSize, q, status } = query;
 
   const conditions = [];
 
@@ -55,24 +52,6 @@ export async function listTenants(
     conditions.push(eq(shops.isActive, true));
   } else if (status === "blocked") {
     conditions.push(eq(shops.isActive, false));
-  }
-
-  if (subscription !== "all") {
-    const now = Date.now();
-    const reminderEdge = new Date(now + SUBSCRIPTION_REMINDER_DAYS * DAY_MS);
-    const graceEdge = new Date(now - SUBSCRIPTION_GRACE_DAYS * DAY_MS);
-    const nowDate = new Date(now);
-    if (subscription === "none") {
-      conditions.push(isNull(shops.subscriptionEndsAt));
-    } else if (subscription === "active") {
-      conditions.push(gte(shops.subscriptionEndsAt, reminderEdge));
-    } else if (subscription === "expiring") {
-      conditions.push(and(gte(shops.subscriptionEndsAt, nowDate), lt(shops.subscriptionEndsAt, reminderEdge)));
-    } else if (subscription === "grace") {
-      conditions.push(and(gte(shops.subscriptionEndsAt, graceEdge), lt(shops.subscriptionEndsAt, nowDate)));
-    } else if (subscription === "locked") {
-      conditions.push(lt(shops.subscriptionEndsAt, graceEdge));
-    }
   }
 
   const where = conditions.length > 0 ? and(...conditions) : undefined;
