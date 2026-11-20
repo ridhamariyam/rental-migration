@@ -44,7 +44,6 @@ export function RecordPaymentDialog({
   currentPlan,
   currentEndsAt,
   hasPaidBefore,
-  customDeal = null,
   triggerLabel = "Record payment",
   triggerVariant = "default",
   triggerSize = "sm",
@@ -57,8 +56,6 @@ export function RecordPaymentDialog({
   currentPlan: PlanChoice | null;
   currentEndsAt: string | null;
   hasPaidBefore: boolean;
-  /** Last agreed custom terms (amount in paise + cycle), to pre-fill. */
-  customDeal?: { amountPaise: number; cycle: "monthly" | "yearly" } | null;
   triggerLabel?: string;
   triggerVariant?: "default" | "outline" | "secondary";
   triggerSize?: "sm" | "default";
@@ -67,11 +64,7 @@ export function RecordPaymentDialog({
   const router = useRouter();
   const initialPlan: PlanChoice = currentPlan ?? "yearly";
   const defaultAmount = (plan: PlanChoice, withSetup: boolean) =>
-    plan === "custom"
-      ? customDeal
-        ? String(customDeal.amountPaise / 100)
-        : ""
-      : String(plans[plan].price + (withSetup ? plans[plan].setupFee : 0));
+    plan === "custom" ? "" : String(plans[plan].price + (withSetup ? plans[plan].setupFee : 0));
 
   const [open, setOpen] = useState(false);
   const [plan, setPlan] = useState<PlanChoice>(initialPlan);
@@ -81,19 +74,18 @@ export function RecordPaymentDialog({
   const [reference, setReference] = useState("");
   const [note, setNote] = useState("");
   const [paidOn, setPaidOn] = useState(todayIso());
-  const [extend, setExtend] = useState(true);
-  const [cycle, setCycle] = useState<"monthly" | "yearly">(customDeal?.cycle ?? "monthly");
+  const [endsAt, setEndsAt] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const now = new Date();
   const currentEnd = currentEndsAt ? new Date(currentEndsAt) : null;
   const periodStart = currentEnd && currentEnd > now ? currentEnd : now;
-  const hasFutureEnd = Boolean(currentEnd && currentEnd > now);
-  const previewEnd = !extend && hasFutureEnd
-    ? currentEnd
-    : plan === "custom"
-      ? addMonths(periodStart, cycle === "yearly" ? 12 : 1)
+  const previewEnd =
+    plan === "custom"
+      ? endsAt
+        ? new Date(`${endsAt}T23:59:59`)
+        : null
       : addMonths(periodStart, plans[plan].periodMonths);
 
   function changePlan(next: PlanChoice) {
@@ -121,8 +113,7 @@ export function RecordPaymentDialog({
           reference: reference || undefined,
           note: note || undefined,
           paidOn: paidOn || undefined,
-          cycle: plan === "custom" ? cycle : undefined,
-          extend: hasFutureEnd ? extend : true,
+          endsAt: plan === "custom" ? endsAt : undefined,
         }),
       });
       setOpen(false);
@@ -232,29 +223,8 @@ export function RecordPaymentDialog({
                 </Field>
                 {plan === "custom" ? (
                   <Field className="sm:col-span-2">
-                    <FieldLabel>Billed</FieldLabel>
-                    <div className="grid grid-cols-2 gap-2" role="radiogroup" aria-label="Custom billing cycle">
-                      {(["monthly", "yearly"] as const).map((c) => (
-                        <button
-                          key={c}
-                          type="button"
-                          role="radio"
-                          aria-checked={cycle === c}
-                          onClick={() => setCycle(c)}
-                          className={
-                            cycle === c
-                              ? "border-primary bg-primary/5 text-primary rounded-lg border px-2 py-2 text-sm font-medium"
-                              : "hover:bg-muted rounded-lg border px-2 py-2 text-sm"
-                          }
-                        >
-                          {c === "monthly" ? "Monthly (1 month)" : "Yearly (12 months)"}
-                        </button>
-                      ))}
-                    </div>
-                    <FieldDescription>
-                      Enter the agreed price above. This payment covers one {cycle === "yearly" ? "year" : "month"}
-                      {customDeal ? "; pre-filled from their last custom payment" : ""}.
-                    </FieldDescription>
+                    <FieldLabel htmlFor="rp-ends">Deal runs until</FieldLabel>
+                    <Input id="rp-ends" type="date" min={todayIso()} required value={endsAt} onChange={(e) => setEndsAt(e.target.value)} />
                   </Field>
                 ) : null}
                 <Field className="sm:col-span-2">
@@ -263,46 +233,10 @@ export function RecordPaymentDialog({
                 </Field>
               </div>
 
-              {hasFutureEnd && currentEnd ? (
-                <Field>
-                  <FieldLabel>Subscription date</FieldLabel>
-                  <div className="flex flex-col gap-2 text-sm">
-                    <label className="flex items-start gap-2">
-                      <input
-                        type="radio"
-                        name="rp-extend"
-                        className="accent-primary mt-0.5 size-4"
-                        checked={extend}
-                        onChange={() => setExtend(true)}
-                      />
-                      <span>
-                        Extend the subscription by this payment
-                        <span className="text-muted-foreground block text-xs">Use this for a normal renewal.</span>
-                      </span>
-                    </label>
-                    <label className="flex items-start gap-2">
-                      <input
-                        type="radio"
-                        name="rp-extend"
-                        className="accent-primary mt-0.5 size-4"
-                        checked={!extend}
-                        onChange={() => setExtend(false)}
-                      />
-                      <span>
-                        Keep the paid-until date ({new Intl.DateTimeFormat("en-IN", { dateStyle: "medium" }).format(currentEnd)})
-                        <span className="text-muted-foreground block text-xs">
-                          Use this if you already set the date with “Edit plan” and only need to log the money.
-                        </span>
-                      </span>
-                    </label>
-                  </div>
-                </Field>
-              ) : null}
-
               <FieldDescription>
                 {previewEnd
                   ? `Subscription will run until ${new Intl.DateTimeFormat("en-IN", { dateStyle: "long" }).format(previewEnd)}.`
-                  : ""}
+                  : "Pick the end date for this custom deal."}
               </FieldDescription>
 
               {error ? (

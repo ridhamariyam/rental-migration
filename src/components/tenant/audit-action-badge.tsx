@@ -17,8 +17,6 @@ const ACTION_META: Record<string, { label: string; tone: "neutral" | "positive" 
   [AuditAction.ATTENDANCE_CORRECTED]: { label: "Attendance corrected", tone: "neutral" },
   [AuditAction.LEAVE_DECIDED]: { label: "Leave decided", tone: "neutral" },
   [AuditAction.BOOKING_DISCOUNT_APPLIED]: { label: "Discount applied", tone: "neutral" },
-  [AuditAction.BOOKING_RATE_CHANGED]: { label: "Rate changed on bill", tone: "neutral" },
-  [AuditAction.VARIATION_RATE_UPDATED]: { label: "Item rate updated", tone: "neutral" },
   [AuditAction.BOOKING_CANCELLED]: { label: "Booking cancelled", tone: "negative" },
   [AuditAction.BOOKING_PICKED_UP]: { label: "Booking picked up", tone: "positive" },
   [AuditAction.BOOKING_RETURNED]: { label: "Booking returned", tone: "positive" },

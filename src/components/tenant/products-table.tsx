@@ -136,8 +136,7 @@ export async function ProductsTable({
                     number that says whether this product has any stock. */}
                 <span className="text-muted-foreground truncate text-xs">
                   {product.variationCount} item
-                  {product.variationCount === 1 ? "" : "s"} (
-                  {product.availableCount} available) ·{" "}
+                  {product.variationCount === 1 ? "" : "s"} ·{" "}
                   {product.categoryName}
                 </span>
               </div>
@@ -177,7 +176,7 @@ export async function ProductsTable({
                 Category
               </TableHead>
               <TableHead className="text-muted-foreground h-11 px-4 text-xs font-medium tracking-wide uppercase">
-                Items{query.outletId ? " at outlet" : ""}
+                Items
               </TableHead>
               <TableHead className="text-muted-foreground h-11 px-4 text-xs font-medium tracking-wide uppercase">
                 Status
@@ -219,9 +218,6 @@ export async function ProductsTable({
                 </TableCell>
                 <TableCell className="text-muted-foreground px-4 py-3 text-sm">
                   {product.variationCount}
-                  <span className="text-muted-foreground/80 block text-xs">
-                    {product.availableCount} available
-                  </span>
                 </TableCell>
                 <TableCell className="px-4 py-3">
                   {product.isActive ? (

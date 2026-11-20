@@ -24,16 +24,12 @@ export function ProductFilters({
   defaultQuery,
   defaultCategoryId,
   defaultStatus,
-  defaultOutletId,
   categories,
-  outlets,
 }: {
   defaultQuery: string;
   defaultCategoryId: string;
   defaultStatus: string;
-  defaultOutletId: string;
   categories: { id: string; name: string }[];
-  outlets: { id: string; name: string }[];
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -44,10 +40,6 @@ export function ProductFilters({
   const categoryLabels: Record<string, string> = {
     all: "All categories",
     ...Object.fromEntries(categories.map((c) => [c.id, c.name])),
-  };
-  const outletLabels: Record<string, string> = {
-    all: "All outlets",
-    ...Object.fromEntries(outlets.map((o) => [o.id, o.name])),
   };
 
   function updateParams(next: Record<string, string | null>) {
@@ -90,29 +82,6 @@ export function ProductFilters({
           className="pl-8"
         />
       </div>
-
-      {outlets.length > 1 ? (
-        <Select
-          defaultValue={defaultOutletId}
-          onValueChange={(next) =>
-            updateParams({ outletId: next === "all" ? null : next })
-          }
-        >
-          <SelectTrigger className="w-full sm:w-44" aria-label="Outlet">
-            <SelectValue placeholder="Outlet">
-              {(value: string) => outletLabels[value] ?? "Outlet"}
-            </SelectValue>
-          </SelectTrigger>
-          <SelectContent alignItemWithTrigger={false}>
-            <SelectItem value="all">All outlets</SelectItem>
-            {outlets.map((outlet) => (
-              <SelectItem key={outlet.id} value={outlet.id}>
-                {outlet.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      ) : null}
 
       <Select
         defaultValue={defaultCategoryId}
