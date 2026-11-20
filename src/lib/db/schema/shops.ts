@@ -29,6 +29,11 @@ export const shops = pgTable("shops", {
   //: by the super admin for offline/custom deals.
   plan: subscriptionPlanEnum("plan"),
   subscriptionEndsAt: timestamp("subscription_ends_at", { withTimezone: true }),
+  //: The owner cancelled: no refund, the account keeps working until
+  //: `subscriptionEndsAt` and then locks like any lapsed plan. Cleared by
+  //: "Resume" or by any paid renewal. Null = not cancelled.
+  subscriptionCancelledAt: timestamp("subscription_cancelled_at", { withTimezone: true }),
+  subscriptionCancelReason: text("subscription_cancel_reason"),
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()
     .defaultNow(),

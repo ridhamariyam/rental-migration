@@ -13,6 +13,7 @@ import { hasPermission, Permission } from "@/lib/auth/permissions";
 import { tenantPaths } from "@/lib/tenant-paths";
 import { productListQuerySchema } from "@/lib/validation/products";
 import { listAllCategories } from "@/server/categories/service";
+import { listActiveOutletsForSelect } from "@/server/outlets/service";
 import { getProductStats } from "@/server/products/service";
 
 export const metadata = {
@@ -48,11 +49,13 @@ export default async function ProductsPage({
     q: rawParams.q,
     categoryId: rawParams.categoryId,
     status: rawParams.status,
+    outletId: rawParams.outletId,
   });
 
-  const [stats, categories] = await Promise.all([
+  const [stats, categories, outlets] = await Promise.all([
     getProductStats(user.shopId),
     listAllCategories(user.shopId),
+    listActiveOutletsForSelect(user.shopId),
   ]);
 
   return (
@@ -93,7 +96,9 @@ export default async function ProductsPage({
             defaultQuery={query.q ?? ""}
             defaultCategoryId={query.categoryId ?? "all"}
             defaultStatus={query.status}
+            defaultOutletId={query.outletId ?? "all"}
             categories={categories}
+            outlets={outlets}
           />
         </div>
 

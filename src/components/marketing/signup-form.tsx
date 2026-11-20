@@ -18,6 +18,13 @@ import {
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Field, FieldError, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -41,6 +48,12 @@ import { signupSchema, type SignupInput } from "@/lib/validation/billing";
 
 type FormValues = z.input<typeof signupSchema>;
 type VerifyResult = { status: "ready" | "signin" | "attention" };
+type Purchase = {
+  status: "ready" | "signin";
+  businessName: string;
+  planName: string;
+  total: number;
+};
 
 const fieldClass =
   "h-11 rounded-[10px] border-auth-line bg-white text-[15px] text-auth-ink placeholder:text-auth-muted/70 md:text-[15px]";
@@ -61,7 +74,8 @@ export function SignupForm({
 }) {
   const router = useRouter();
   const [formError, setFormError] = useState<string | null>(null);
-  const [stage, setStage] = useState<"form" | "paying" | "verifying">("form");
+  const [stage, setStage] = useState<"form" | "paying" | "verifying" | "done">("form");
+  const [purchase, setPurchase] = useState<Purchase | null>(null);
   const [attention, setAttention] = useState<string | null>(null);
   const [showPassword, setShowPassword] = useState(false);
 
@@ -109,13 +123,15 @@ export function SignupForm({
         body: JSON.stringify(result),
       });
 
-      if (verified.status === "ready") {
-        router.push("/dashboard");
-        router.refresh();
-        return;
-      }
-      if (verified.status === "signin") {
-        router.push("/login");
+      if (verified.status === "ready" || verified.status === "signin") {
+        // Show the success modal first; its button takes them on.
+        setStage("done");
+        setPurchase({
+          status: verified.status,
+          businessName: values.businessName,
+          planName: plan.name,
+          total,
+        });
         return;
       }
       setAttention(
@@ -139,6 +155,15 @@ export function SignupForm({
       setFormError(error instanceof Error ? error.message : "Something went wrong. Please try again.");
     }
   });
+
+  const continueAfterPurchase = () => {
+    if (purchase?.status === "ready") {
+      router.push("/dashboard");
+      router.refresh();
+    } else {
+      router.push("/login");
+    }
+  };
 
   if (attention) {
     return (
@@ -377,6 +402,8 @@ export function SignupForm({
             ? "Complete payment in the window…"
             : stage === "verifying"
               ? "Creating your account…"
+              : stage === "done"
+                ? "Account created"
               : `Pay ${formatRupees(total)} & create account`}
         </Button>
         <p className="text-auth-muted flex items-center justify-center gap-1.5 text-xs">
@@ -384,6 +411,39 @@ export function SignupForm({
           Secure payment by Razorpay · UPI, cards, netbanking
         </p>
       </aside>
+
+      {/* Portalled out of the form. Payment is done and the account
+          exists, so closing it any way (button, Esc, overlay) moves the
+          owner on — never back to the form. */}
+      <Dialog
+        open={purchase !== null}
+        onOpenChange={(open) => {
+          if (!open) continueAfterPurchase();
+        }}
+      >
+        <DialogContent showCloseButton={false}>
+          <div className="flex flex-col items-center gap-3 p-6 pt-8 text-center sm:p-8">
+            <span className="bg-primary/10 flex size-14 items-center justify-center rounded-full">
+              <CheckCircle2Icon className="text-primary size-8" aria-hidden="true" />
+            </span>
+            <DialogTitle className="text-xl">Purchase successful!</DialogTitle>
+            <DialogDescription className="text-[15px]">
+              Welcome to RentQue{purchase ? `, ${purchase.businessName}` : ""}. Your{" "}
+              {purchase?.planName.toLowerCase()} plan is active and your account is ready.
+            </DialogDescription>
+            {purchase ? (
+              <p className="text-muted-foreground text-xs">
+                Amount paid: {formatRupees(purchase.total)}
+              </p>
+            ) : null}
+          </div>
+          <DialogFooter className="sm:justify-center">
+            <Button type="button" className="w-full sm:w-auto" onClick={continueAfterPurchase}>
+              {purchase?.status === "ready" ? "Go to my dashboard" : "Sign in to your account"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </form>
   );
 }

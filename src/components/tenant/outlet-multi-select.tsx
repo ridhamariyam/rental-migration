@@ -58,6 +58,8 @@ export function OutletMultiSelect({
   }
 
   const selected = outlets.filter((outlet) => value.includes(outlet.id));
+  const allSelected =
+    outlets.length > 0 && outlets.every((outlet) => value.includes(outlet.id));
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -102,6 +104,20 @@ export function OutletMultiSelect({
           <CommandInput placeholder="Search outlets…" />
           <CommandList>
             <CommandEmpty>No outlets found.</CommandEmpty>
+            {outlets.length > 1 ? (
+              <CommandGroup>
+                <CommandItem
+                  value="__all_outlets__ all outlets"
+                  data-checked={allSelected ? "true" : undefined}
+                  onSelect={() =>
+                    onChange(allSelected ? [] : outlets.map((o) => o.id))
+                  }
+                  className="font-medium"
+                >
+                  All outlets
+                </CommandItem>
+              </CommandGroup>
+            ) : null}
             <CommandGroup>
               {outlets.map((outlet) => {
                 const checked = value.includes(outlet.id);

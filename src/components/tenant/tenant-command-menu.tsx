@@ -7,6 +7,7 @@ import {
   BellIcon,
   BarChart3Icon,
   CalendarClockIcon,
+  CreditCardIcon,
   CalendarOffIcon,
   ContactIcon,
   HandCoinsIcon,
@@ -123,6 +124,12 @@ const allSearchableItems = [
     label: "Reports",
     icon: BarChart3Icon,
     permission: Permission.REPORT_VIEW,
+  },
+  {
+    href: tenantPaths.subscription,
+    label: "Subscription",
+    icon: CreditCardIcon,
+    permission: Permission.SHOP_MANAGE,
   },
   {
     href: tenantPaths.auditLog,

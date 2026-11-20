@@ -11,11 +11,11 @@ import { validateDateRange } from "@/server/bookings/availability";
 
 /**
  * Rental pricing arithmetic, ported from the legacy backend's
- * `PricingService`. Deliberately has **no** `rentAmountOverride` — the
- * legacy backend accepted a client-supplied `rent_amount` with no
- * permission check at all (the bug flagged in plan.md § 3.2); the fix here
- * is structural: rent is only ever priced from the variation's own
- * `rentPrice`, so there is no override to guard in the first place. The
+ * `PricingService`. Rent defaults to the variation's own `rentPrice`;
+ * `rentAmountPerUnit` replaces it for one bill. The legacy backend took a
+ * client-supplied `rent_amount` with no permission check at all (plan.md
+ * § 3.2) — here the override is only honoured by `createBooking` for a
+ * role holding `BOOKING_DISCOUNT`, and is audited when it differs. The
  * deposit *is* overridable (`securityDepositPerUnit`) — that is a
  * refundable holding amount the counter routinely varies per customer, not
  * revenue, and every caller of this function is already behind
@@ -61,11 +61,14 @@ export function quoteRental(
      * item's `securityDeposit`). Multiplied by `quantity` exactly like the
      * default is, so "2 of this item" holds twice the deposit either way. */
     securityDepositPerUnit?: string;
+    /** Rent **per unit** agreed for this bill, replacing the item's own
+     * `rentPrice`. Callers must have checked the actor may do this. */
+    rentAmountPerUnit?: string;
   } = {},
 ): RentalQuote {
   const totalDays = validateDateRange(fromDate, toDate);
 
-  const rentAmount = variation.rentPrice;
+  const rentAmount = options.rentAmountPerUnit || variation.rentPrice;
   if (isNegativeMoney(rentAmount)) {
     throw new AppError("Rent amount cannot be negative", 400);
   }

@@ -78,6 +78,14 @@ const envSchema = z.object({
   // Razorpay dashboard (events: payment.captured, order.paid). Backstop
   // for a buyer who closes the tab before the browser confirms payment.
   RAZORPAY_WEBHOOK_SECRET: z.string().default(""),
+  // The platform owner's own WhatsApp welcome to a business that just
+  // bought the software (see `src/server/billing/welcome.ts`). Sent from
+  // the platform's MSG91 integrated number with the same MSG91_AUTHKEY —
+  // not from any tenant's number. Both left empty = no welcome is sent.
+  PLATFORM_WHATSAPP_NUMBER: z.string().default(""),
+  PLATFORM_WELCOME_TEMPLATE: z.string().default(""),
+  PLATFORM_WELCOME_TEMPLATE_NAMESPACE: z.string().default(""),
+  PLATFORM_WELCOME_TEMPLATE_LANGUAGE: z.string().default("en"),
   WHATSAPP_DEFAULT_COUNTRY_CODE: z
     .string()
     .regex(/^\d{1,4}$/, "WHATSAPP_DEFAULT_COUNTRY_CODE must be numeric")

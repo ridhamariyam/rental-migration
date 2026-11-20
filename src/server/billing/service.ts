@@ -27,6 +27,7 @@ import type {
 import { tenantIdParamSchema } from "@/lib/validation/tenants";
 import { AuditAction, recordAudit } from "@/server/audit/service";
 import { getPlans } from "@/server/billing/plans";
+import { sendWelcomeAfterResponse } from "@/server/billing/welcome";
 import {
   createRazorpayOrder,
   razorpayKeyId,
@@ -283,7 +284,15 @@ export async function completePayment(params: {
       if (shop) {
         await tx
           .update(shops)
-          .set({ plan: plan.id, subscriptionEndsAt: periodEnd, updatedAt: now })
+          // Paying again is the clearest "I'm staying" — it undoes a
+          // pending cancellation.
+          .set({
+            plan: plan.id,
+            subscriptionEndsAt: periodEnd,
+            subscriptionCancelledAt: null,
+            subscriptionCancelReason: null,
+            updatedAt: now,
+          })
           .where(eq(shops.id, shop.id));
       }
 
@@ -405,6 +414,24 @@ export async function completePayment(params: {
   const { payment } = result;
   let sessionUserId: string | null = null;
 
+  // Welcome the new owner on WhatsApp — only on the call that actually
+  // provisioned the account (`fresh`), so the checkout handler and the
+  // Razorpay webhook racing each other never send it twice.
+  if (
+    result.fresh &&
+    payment.purpose === "signup" &&
+    payment.shopId &&
+    !payment.needsAttention &&
+    payment.signupDetails &&
+    payment.periodEnd
+  ) {
+    sendWelcomeAfterResponse({
+      details: payment.signupDetails,
+      planName: (PLANS[payment.plan as PlanId] ?? PLANS.yearly).name,
+      periodEnd: payment.periodEnd,
+    });
+  }
+
   if (
     payment.purpose === "signup" &&
     payment.shopId &&
@@ -426,6 +453,71 @@ export async function completePayment(params: {
     sessionUserId,
     needsAttention: payment.needsAttention,
   };
+}
+
+/**
+ * The owner cancels their plan. Nothing is charged automatically here
+ * (every period is a one-off Razorpay payment), so cancelling means: no
+ * refund, the account keeps working until `subscriptionEndsAt`, then it
+ * locks like any lapsed plan. Reversible with `resumeSubscription` until
+ * then, and undone by any paid renewal.
+ */
+export async function cancelSubscription(
+  actor: { id: string; shopId: string },
+  reason: string | undefined,
+) {
+  const [shop] = await db
+    .select({ endsAt: shops.subscriptionEndsAt, isDemo: shops.isDemo, cancelledAt: shops.subscriptionCancelledAt })
+    .from(shops)
+    .where(eq(shops.id, actor.shopId))
+    .limit(1);
+  if (!shop) throw AppError.notFound("Business not found");
+  if (shop.isDemo) throw AppError.forbidden("The demo account can't be cancelled.");
+  if (!shop.endsAt) {
+    throw new AppError("This account is managed by the Rentque team — contact us to close it.", 409);
+  }
+  if (shop.cancelledAt) return;
+
+  const now = new Date();
+  await db.transaction(async (tx) => {
+    await tx
+      .update(shops)
+      .set({
+        subscriptionCancelledAt: now,
+        subscriptionCancelReason: reason?.trim() || null,
+        updatedAt: now,
+      })
+      .where(eq(shops.id, actor.shopId));
+    await recordAudit(tx, {
+      shopId: actor.shopId,
+      userId: actor.id,
+      action: AuditAction.SUBSCRIPTION_CANCELLED,
+      entityType: "shop",
+      entityId: actor.shopId,
+      summary: `Subscription cancelled by the owner — access until ${shop.endsAt!.toDateString()}`,
+      after: { reason: reason?.trim() || null, endsAt: shop.endsAt },
+    });
+  });
+}
+
+export async function resumeSubscription(actor: { id: string; shopId: string }) {
+  const now = new Date();
+  await db.transaction(async (tx) => {
+    const [updated] = await tx
+      .update(shops)
+      .set({ subscriptionCancelledAt: null, subscriptionCancelReason: null, updatedAt: now })
+      .where(and(eq(shops.id, actor.shopId), isNotNull(shops.subscriptionCancelledAt)))
+      .returning({ id: shops.id });
+    if (!updated) return;
+    await recordAudit(tx, {
+      shopId: actor.shopId,
+      userId: actor.id,
+      action: AuditAction.SUBSCRIPTION_RESUMED,
+      entityType: "shop",
+      entityId: actor.shopId,
+      summary: "Subscription cancellation undone by the owner",
+    });
+  });
 }
 
 /** Webhook `payment.failed`: record it (only if still unpaid). */

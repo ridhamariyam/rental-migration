@@ -11,10 +11,20 @@ import {
   DemoUpgradeHeaderButton,
 } from "@/components/tenant/demo-upgrade-banner";
 import { NavNotifications } from "@/components/tenant/nav-notifications";
+import {
+  SubscriptionBanner,
+  SubscriptionLockScreen,
+} from "@/components/tenant/subscription-notice";
 import { TenantSidebar } from "@/components/tenant/tenant-sidebar";
 import { getCurrentUser } from "@/lib/auth/session";
 import { hasPermission, Permission } from "@/lib/auth/permissions";
+import { eq } from "drizzle-orm";
+import { db } from "@/lib/db/client";
+import { shops } from "@/lib/db/schema";
+import { subscriptionState } from "@/lib/plans";
 import { getTodaysAttendance } from "@/server/attendance/service";
+import { getPlans } from "@/server/billing/plans";
+import { isRazorpayConfigured } from "@/server/billing/razorpay";
 import type { TenantSessionUser } from "@/server/auth/guard";
 
 /**
@@ -56,6 +66,24 @@ export default async function TenantDashboardLayout({
     !isOwner && hasPermission(user.role, Permission.ATTENDANCE_SELF);
   const today = canSelfCheckIn ? await getTodaysAttendance(user.id) : null;
 
+  // Platform subscription. The demo shop never locks; a locked shop sees
+  // the renew screen instead of any dashboard page (its API calls are
+  // refused anyway — see `requireTenantUser`). Only the owner can pay.
+  const subscription = user.shopIsDemo ? "none" : subscriptionState(user.subscriptionEndsAt);
+  const isShopOwner = user.role === "admin";
+  const locked = subscription === "locked" && user.subscriptionEndsAt !== null;
+  const [lockPlans, lockShop] = locked
+    ? await Promise.all([
+        isShopOwner ? getPlans() : Promise.resolve(null),
+        db
+          .select({ name: shops.name, plan: shops.plan })
+          .from(shops)
+          .where(eq(shops.id, user.shopId!))
+          .limit(1)
+          .then((rows) => rows[0] ?? null),
+      ])
+    : [null, null];
+
   return (
     <SidebarProvider>
       <TenantSidebar
@@ -82,7 +110,25 @@ export default async function TenantDashboardLayout({
         </header>
         <div className="flex flex-1 flex-col overflow-y-auto">
           {user.shopIsDemo ? <DemoUpgradeBanner /> : null}
-          {children}
+          {user.subscriptionEndsAt && !locked ? (
+            <SubscriptionBanner
+              state={subscription}
+              endsAt={user.subscriptionEndsAt}
+              isOwner={isShopOwner}
+            />
+          ) : null}
+          {locked && user.subscriptionEndsAt ? (
+            <SubscriptionLockScreen
+              isOwner={isShopOwner}
+              endsAt={user.subscriptionEndsAt}
+              businessName={lockShop?.name ?? "Your business"}
+              plans={lockPlans}
+              currentPlan={lockShop?.plan ?? null}
+              razorpayEnabled={isRazorpayConfigured()}
+            />
+          ) : (
+            children
+          )}
         </div>
       </SidebarInset>
     </SidebarProvider>

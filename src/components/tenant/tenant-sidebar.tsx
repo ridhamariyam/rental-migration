@@ -10,6 +10,7 @@ import {
   CalendarClockIcon,
   CalendarOffIcon,
   ContactIcon,
+  CreditCardIcon,
   HandCoinsIcon,
   HistoryIcon,
   LayoutDashboardIcon,
@@ -130,6 +131,12 @@ const navItems = [
     label: "Reports",
     icon: BarChart3Icon,
     permission: Permission.REPORT_VIEW,
+  },
+  {
+    href: tenantPaths.subscription,
+    label: "Subscription",
+    icon: CreditCardIcon,
+    permission: Permission.SHOP_MANAGE,
   },
   {
     href: tenantPaths.auditLog,
