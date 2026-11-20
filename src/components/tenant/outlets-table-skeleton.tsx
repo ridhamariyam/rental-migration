@@ -12,9 +12,9 @@ import {
 export function OutletsTableSkeleton() {
   return (
     <>
-      <ListCardsSkeleton at="sm" />
+      <ListCardsSkeleton at="xl" />
 
-      <TableOnly at="sm">
+      <TableOnly at="xl">
         <Table>
           <TableHeader>
             <TableRow className="hover:bg-transparent">

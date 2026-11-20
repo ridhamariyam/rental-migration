@@ -74,8 +74,10 @@ export async function MyAttendanceTable({
             badge={<AttendanceStatusBadge status={record.status} />}
             meta={
               <>
-                {formatTime(record.checkInTime)} –{" "}
-                {record.checkOutTime ? formatTime(record.checkOutTime) : "—"}
+                {formatTime(record.checkInTime)}
+                {record.checkOutTime
+                  ? ` – ${formatTime(record.checkOutTime)}`
+                  : " · not checked out"}
                 {formatWorkedHours(record.checkInTime, record.checkOutTime)
                   ? ` · ${formatWorkedHours(record.checkInTime, record.checkOutTime)}`
                   : ""}

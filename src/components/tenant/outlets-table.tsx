@@ -88,7 +88,7 @@ export async function OutletsTable({
 
   return (
     <>
-      <ListCards>
+      <ListCards at="xl">
         {items.map((outlet) => (
           <ListCardRow
             key={outlet.id}
@@ -149,7 +149,7 @@ export async function OutletsTable({
         ))}
       </ListCards>
 
-      <TableOnly>
+      <TableOnly at="xl">
         <Table>
           <TableHeader>
             <TableRow className="hover:bg-transparent">

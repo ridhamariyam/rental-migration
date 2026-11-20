@@ -56,7 +56,7 @@ type Purchase = {
 };
 
 const fieldClass =
-  "h-11 rounded-[10px] border-auth-line bg-white text-[15px] text-auth-ink placeholder:text-auth-muted/70 md:text-[15px]";
+  "h-11 rounded-[10px] border-auth-line bg-white text-base text-auth-ink placeholder:text-auth-muted/70 md:text-[15px]";
 const labelClass = "text-auth-ink text-[13px] font-medium";
 
 /**
@@ -280,7 +280,7 @@ export function SignupForm({
                   rows={2}
                   disabled={busy}
                   placeholder="Street, city, PIN"
-                  className="border-auth-line rounded-[10px] bg-white text-[15px] md:text-[15px]"
+                  className="border-auth-line rounded-[10px] bg-white text-base md:text-[15px]"
                   {...form.register("address")}
                 />
                 <FieldError errors={[errors.address]} />

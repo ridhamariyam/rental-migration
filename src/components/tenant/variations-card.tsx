@@ -96,7 +96,7 @@ export function VariationsCard({
                 past the right edge, so the controls that change an item
                 are unreachable without a sideways scroll nothing hints
                 at. */}
-            <ul className="divide-border/40 divide-y lg:hidden">
+            <ul className="divide-border/40 divide-y xl:hidden">
               {variations.map((variation) => (
                 <VariationRow
                   key={variation.id}
@@ -110,7 +110,7 @@ export function VariationsCard({
               ))}
             </ul>
 
-            <div className="hidden lg:block">
+            <div className="hidden xl:block">
               <Table>
                 <TableHeader>
                   <TableRow className="bg-muted/20 border-border/60 border-b hover:bg-transparent">

@@ -82,7 +82,7 @@ export async function CategoriesTable({
       {/* No View button here, unlike the other lists: a category has no
           page of its own — its row menu (edit/delete) is the whole of what
           it can do. */}
-      <ListCards>
+      <ListCards at="xl">
         {items.map((category) => (
           <ListCardRow
             key={category.id}
@@ -99,7 +99,7 @@ export async function CategoriesTable({
         ))}
       </ListCards>
 
-      <TableOnly>
+      <TableOnly at="xl">
         <Table>
           <TableHeader>
             <TableRow className="hover:bg-transparent">

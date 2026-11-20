@@ -84,7 +84,7 @@ export async function ProductsTable({
           table can only fit a ~390px screen by scrolling sideways, which
           hides the columns that say whether a product is usable (items,
           status) behind a gesture nothing on the page hints at. */}
-      <ul className="divide-border/40 divide-y sm:hidden">
+      <ul className="divide-border/40 divide-y xl:hidden">
         {items.map((product) => (
           <li key={product.id} className="flex items-center gap-3 p-4">
             <span className="bg-muted flex size-11 shrink-0 items-center justify-center overflow-hidden rounded-lg border">
@@ -109,7 +109,7 @@ export async function ProductsTable({
                   say. */}
               <Link
                 href={`${tenantPaths.products}/${product.id}`}
-                className="truncate text-sm font-medium"
+                className="line-clamp-2 text-sm font-medium break-words"
               >
                 {product.name}
               </Link>
@@ -166,7 +166,7 @@ export async function ProductsTable({
         ))}
       </ul>
 
-      <div className="hidden sm:block">
+      <div className="hidden xl:block">
         <Table>
           <TableHeader>
             <TableRow className="hover:bg-transparent">

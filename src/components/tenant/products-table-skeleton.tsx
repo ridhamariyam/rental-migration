@@ -14,7 +14,7 @@ export function ProductsTableSkeleton() {
       {/* Mirrors `ProductsTable`'s responsive split — stacked rows on a
           phone, the table from `sm` up — so the loading state never flashes
           a layout the loaded list doesn't use. */}
-      <ul className="divide-border/40 divide-y sm:hidden">
+      <ul className="divide-border/40 divide-y xl:hidden">
         {Array.from({ length: 6 }).map((_, index) => (
           <li key={index} className="flex items-center gap-3 p-4">
             <Skeleton className="size-11 shrink-0 rounded-lg" />
@@ -27,7 +27,7 @@ export function ProductsTableSkeleton() {
         ))}
       </ul>
 
-      <div className="hidden sm:block">
+      <div className="hidden xl:block">
         <Table>
           <TableHeader>
             <TableRow className="hover:bg-transparent">

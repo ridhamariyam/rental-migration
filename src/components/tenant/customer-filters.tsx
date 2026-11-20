@@ -62,7 +62,7 @@ export function CustomerFilters({
   }
 
   return (
-    <div className="flex flex-row items-center gap-2.5 sm:flex-row sm:items-center">
+    <div className="flex flex-col gap-2.5 sm:flex-row sm:items-center">
       <div className="relative flex-1 sm:max-w-xs">
         <SearchIcon className="text-muted-foreground pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2" />
         <Input
@@ -80,7 +80,7 @@ export function CustomerFilters({
           updateParams({ status: next === "all" ? null : next })
         }
       >
-        <SelectTrigger className="w-[130px] shrink-0 sm:w-40">
+        <SelectTrigger className="w-full shrink-0 sm:w-40">
           <SelectValue placeholder="Status">
             {(value: string) => STATUS_LABELS[value] ?? "Status"}
           </SelectValue>

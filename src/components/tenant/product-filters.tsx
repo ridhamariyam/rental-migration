@@ -79,8 +79,8 @@ export function ProductFilters({
   }
 
   return (
-    <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-      <div className="relative sm:max-w-xs sm:flex-1">
+    <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
+      <div className="relative sm:max-w-xs sm:min-w-56 sm:flex-1">
         <SearchIcon className="text-muted-foreground pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2" />
         <Input
           value={value}

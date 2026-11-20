@@ -14,11 +14,14 @@ export function AttendanceTableSkeleton({
 }: {
   showStaffColumn?: boolean;
 }) {
+  // Matches the table it stands in for: the team table switches to cards
+  // below xl, a staff member's own (narrower) table only below sm.
+  const at = showStaffColumn ? "xl" : "sm";
   return (
     <>
-      <ListCardsSkeleton at="lg" />
+      <ListCardsSkeleton at={at} />
 
-      <TableOnly at="lg">
+      <TableOnly at={at}>
         <Table>
           <TableHeader>
             <TableRow className="hover:bg-transparent">

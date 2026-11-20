@@ -140,7 +140,7 @@ export function BookingPaymentsCard({
 
   return (
     <Card className="lg:col-span-3">
-      <CardHeader className="flex flex-row items-center justify-between gap-3">
+      <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-3">
         <CardTitle className="flex items-center gap-2 text-base">
           <BanknoteIcon className="size-4" aria-hidden="true" />
           {title}

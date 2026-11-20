@@ -80,7 +80,7 @@ export async function SettlementsTable({
 
   return (
     <>
-      <ListCards at="lg">
+      <ListCards at="xl">
         {items.map((settlement) => (
           <ListCardRow
             key={settlement.id}
@@ -110,7 +110,7 @@ export async function SettlementsTable({
         ))}
       </ListCards>
 
-      <TableOnly at="lg">
+      <TableOnly at="xl">
         <Table>
           <TableHeader>
             <TableRow className="hover:bg-transparent">
@@ -139,7 +139,7 @@ export async function SettlementsTable({
           <TableBody>
             {items.map((settlement) => (
               <TableRow key={settlement.id}>
-                <TableCell className="px-4 py-3">
+                <TableCell className="max-w-60 min-w-44 px-4 py-3 whitespace-normal">
                   <div className="flex flex-col">
                     <span className="font-medium">
                       {settlement.productName}

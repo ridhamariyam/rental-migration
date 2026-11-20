@@ -94,7 +94,7 @@ export async function OwnerItemsCard({
       </CardHeader>
 
       <CardContent className="p-0">
-        <ListCards at="lg" className="border-t">
+        <ListCards at="xl" className="border-t">
           {items.map((item) => (
             <ListCardRow
               key={item.variationId}
@@ -150,7 +150,7 @@ export async function OwnerItemsCard({
           ))}
         </ListCards>
 
-        <TableOnly at="lg">
+        <TableOnly at="xl">
           <Table>
             <TableHeader>
               <TableRow className="hover:bg-transparent">
@@ -180,7 +180,7 @@ export async function OwnerItemsCard({
             <TableBody>
               {items.map((item) => (
                 <TableRow key={item.variationId}>
-                  <TableCell className="px-4 py-3">
+                  <TableCell className="max-w-60 min-w-48 px-4 py-3 whitespace-normal">
                     <div className="flex items-center gap-3">
                       <span className="bg-muted flex size-9 shrink-0 items-center justify-center overflow-hidden rounded-lg border">
                         {item.image ? (
@@ -230,7 +230,7 @@ export async function OwnerItemsCard({
                       ) : null}
                     </div>
                   </TableCell>
-                  <TableCell className="text-muted-foreground px-4 py-3 text-sm">
+                  <TableCell className="text-muted-foreground min-w-28 px-4 py-3 text-sm whitespace-normal">
                     {item.outletName ?? "Unassigned"}
                   </TableCell>
                   <TableCell className="px-4 py-3 text-sm font-medium">

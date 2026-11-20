@@ -111,7 +111,7 @@ export function LoginForm({
   // sign-in screens are laid out around. Declared once so email and
   // password can't drift apart.
   const fieldClass =
-    "h-12 rounded-[10px] border-auth-line bg-white text-[15px] text-auth-ink placeholder:text-auth-muted/70 md:text-[15px]";
+    "h-12 rounded-[10px] border-auth-line bg-white text-base text-auth-ink placeholder:text-auth-muted/70 md:text-[15px]";
 
   return (
     <form onSubmit={onSubmit} noValidate className="flex flex-col gap-6">

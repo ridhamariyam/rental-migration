@@ -323,14 +323,14 @@ export function VariationRow({
   return (
     <>
       <TableRow className="hover:bg-accent/40 transition-colors">
-        <TableCell className="px-4 py-3.5">{identity}</TableCell>
+        <TableCell className="max-w-44 px-4 py-3.5 whitespace-normal">{identity}</TableCell>
         <TableCell className="text-muted-foreground px-4 py-3.5 text-sm">
           {pricing}
         </TableCell>
         <TableCell className="text-muted-foreground px-4 py-3.5 text-sm font-medium">
           {variation.quantity}
         </TableCell>
-        <TableCell className="text-muted-foreground px-4 py-3.5 text-sm font-medium">
+        <TableCell className="text-muted-foreground min-w-28 px-4 py-3.5 text-sm font-medium whitespace-normal">
           {variation.outletName ?? "Unassigned"}
         </TableCell>
         <TableCell className="px-4 py-3.5">{ownership}</TableCell>

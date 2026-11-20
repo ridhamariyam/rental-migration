@@ -94,7 +94,7 @@ export async function StaffTable({
 
   return (
     <>
-      <ListCards at="md">
+      <ListCards at="xl">
         {items.map((member) => {
           const name = `${member.firstName} ${member.lastName}`;
           return (
@@ -162,7 +162,7 @@ export async function StaffTable({
         })}
       </ListCards>
 
-      <TableOnly at="md">
+      <TableOnly at="xl">
         <Table>
           <TableHeader>
             <TableRow className="hover:bg-transparent">

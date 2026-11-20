@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { CalendarClockIcon, EyeIcon } from "lucide-react";
+import { CalendarClockIcon, EyeIcon, ShirtIcon } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { DeleteRecordButton } from "@/components/tenant/delete-record-button";
@@ -98,7 +98,7 @@ export async function BookingsTable({
 
   return (
     <>
-      <ListCards at="lg">
+      <ListCards at="xl">
         {items.map((booking) => {
           const customerName =
             `${booking.customerFirstName} ${booking.customerLastName}`.trim();
@@ -121,14 +121,16 @@ export async function BookingsTable({
                     />
                   ) : null}
                   <AvatarFallback
-                    className="text-[10px] font-semibold text-white uppercase"
+                    className="text-white"
                     style={{
                       backgroundImage: productAvatarGradient(
                         groupItems[0]?.productName ?? "",
                       ),
                     }}
                   >
-                    {(groupItems[0]?.productName ?? "").slice(0, 2)}
+                    {/* An icon, not letters: this row's title is the
+                        customer, so product initials read as wrong initials. */}
+                    <ShirtIcon className="size-4" aria-hidden="true" />
                   </AvatarFallback>
                 </Avatar>
               }
@@ -182,7 +184,7 @@ export async function BookingsTable({
         })}
       </ListCards>
 
-      <TableOnly at="lg">
+      <TableOnly at="xl">
         <Table>
           <TableHeader>
             <TableRow className="hover:bg-transparent">
@@ -201,7 +203,9 @@ export async function BookingsTable({
               <TableHead className="text-muted-foreground h-11 px-4 text-xs font-medium tracking-wide uppercase">
                 Amount
               </TableHead>
-              <TableHead className="text-muted-foreground h-11 px-4 text-xs font-medium tracking-wide uppercase">
+              {/* Secondary detail (also on the booking page): only shown
+                  where the table fits without sideways scrolling. */}
+              <TableHead className="text-muted-foreground hidden h-11 px-4 text-xs font-medium tracking-wide uppercase 2xl:table-cell">
                 Handled by
               </TableHead>
               <TableHead className="text-muted-foreground h-11 px-4 text-xs font-medium tracking-wide uppercase">
@@ -262,7 +266,7 @@ export async function BookingsTable({
                     {customerName}
                   </TableCell>
 
-                  <TableCell className="text-muted-foreground px-4 py-3 text-sm">
+                  <TableCell className="text-muted-foreground max-w-52 min-w-40 px-4 py-3 text-sm whitespace-normal">
                     {groupItems[0]?.productName ?? "—"}
                     {groupItems[0]?.variationColor ||
                     groupItems[0]?.variationSize
@@ -277,9 +281,18 @@ export async function BookingsTable({
                   </TableCell>
 
                   <TableCell className="text-muted-foreground px-4 py-3 text-sm whitespace-nowrap">
-                    {groupItems[0]
-                      ? `${formatDate(groupItems[0].fromDate)} – ${formatDate(groupItems[0].toDate)}`
-                      : "—"}
+                    {groupItems[0] ? (
+                      <>
+                        <span className="block">
+                          {formatDate(groupItems[0].fromDate)} –
+                        </span>
+                        <span className="block">
+                          {formatDate(groupItems[0].toDate)}
+                        </span>
+                      </>
+                    ) : (
+                      "—"
+                    )}
                   </TableCell>
 
                   <TableCell className="px-4 py-3 text-sm font-medium">
@@ -300,7 +313,7 @@ export async function BookingsTable({
                     ) : null}
                   </TableCell>
 
-                  <TableCell className="px-4 py-3 text-sm">
+                  <TableCell className="hidden px-4 py-3 text-sm 2xl:table-cell">
                     {booking.handledByFirstName ? (
                       (() => {
                         const handledByName =

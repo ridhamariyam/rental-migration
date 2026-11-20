@@ -22,12 +22,14 @@ const CARDS_HIDDEN_AT = {
   sm: "sm:hidden",
   md: "md:hidden",
   lg: "lg:hidden",
+  xl: "xl:hidden",
 } as const;
 
 const TABLE_SHOWN_AT = {
   sm: "hidden sm:block",
   md: "hidden md:block",
   lg: "hidden lg:block",
+  xl: "hidden xl:block",
 } as const;
 
 export type ListBreakpoint = keyof typeof CARDS_HIDDEN_AT;
@@ -94,7 +96,7 @@ export function ListCardRow({
       {media ? <span className="shrink-0">{media}</span> : null}
 
       <div className="flex min-w-0 flex-1 flex-col gap-1">
-        <div className="truncate text-sm font-medium">{title}</div>
+        <div className="line-clamp-2 text-sm font-medium break-words">{title}</div>
         {badge || meta ? (
           /* Wraps rather than squeezing: a row carrying two badges (a
              status plus a flag like "Refund pending") would otherwise

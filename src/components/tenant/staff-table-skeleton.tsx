@@ -12,9 +12,9 @@ import {
 export function StaffTableSkeleton() {
   return (
     <>
-      <ListCardsSkeleton at="md" />
+      <ListCardsSkeleton at="xl" />
 
-      <TableOnly at="md">
+      <TableOnly at="xl">
         <Table>
           <TableHeader>
             <TableRow className="hover:bg-transparent">

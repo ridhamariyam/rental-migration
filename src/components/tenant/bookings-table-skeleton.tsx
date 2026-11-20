@@ -12,9 +12,9 @@ import {
 export function BookingsTableSkeleton() {
   return (
     <>
-      <ListCardsSkeleton at="lg" />
+      <ListCardsSkeleton at="xl" />
 
-      <TableOnly at="lg">
+      <TableOnly at="xl">
         <Table>
           <TableHeader>
             <TableRow className="hover:bg-transparent">

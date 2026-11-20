@@ -37,17 +37,17 @@ export function SettlementStatsTiles({
     <div className="grid w-full grid-cols-2 gap-2 sm:grid-cols-3 sm:gap-3">
       {tiles.map((tile) => (
         <Card key={tile.label}>
-          <CardContent className="flex items-center gap-3 px-4">
+          <CardContent className="flex flex-col items-start gap-2 px-4 sm:flex-row sm:items-center sm:gap-3">
             <span
               className={`${PASTEL_TONES[tile.tone].chip} flex size-9 shrink-0 items-center justify-center rounded-full`}
             >
               <tile.icon className="size-4" aria-hidden="true" />
             </span>
-            <div className="flex flex-col">
+            <div className="flex min-w-0 flex-col">
               <span className="text-muted-foreground text-xs font-medium tracking-wide uppercase">
                 {tile.label}
               </span>
-              <span className="text-lg font-semibold tracking-tight">
+              <span className="text-base font-semibold tracking-tight tabular-nums sm:text-lg">
                 {tile.value}
               </span>
             </div>

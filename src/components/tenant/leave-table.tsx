@@ -91,7 +91,7 @@ export async function LeaveTable({
     <>
       {/* Approve/reject (or withdraw) is the row's action on a phone too —
           a leave request has no page of its own to "view". */}
-      <ListCards at="md">
+      <ListCards at="xl">
         {items.map((leave) => {
           const isOwn = leave.staffId === actor.id;
           const canDecide = canManage && !isOwn && leave.status === "pending";
@@ -138,7 +138,7 @@ export async function LeaveTable({
         })}
       </ListCards>
 
-      <TableOnly at="md">
+      <TableOnly at="xl">
         <Table>
           <TableHeader>
             <TableRow className="hover:bg-transparent">

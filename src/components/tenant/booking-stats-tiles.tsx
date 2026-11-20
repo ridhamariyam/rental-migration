@@ -35,7 +35,7 @@ export function BookingStatsTiles({ stats }: { stats: BookingStats }) {
     /* A plain grid at every width: these tiles used to sit in a
        sideways-snapping strip on a phone, which hid the last of them behind
        a scroll gesture the page gives no hint of. */
-    <div className="grid w-full grid-cols-2 gap-2 sm:grid-cols-4 sm:gap-3">
+    <div className="grid w-full grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-4">
       {tiles.map((tile) => (
         <Card key={tile.label}>
           <CardContent className="flex items-center gap-3 px-4">
@@ -44,7 +44,7 @@ export function BookingStatsTiles({ stats }: { stats: BookingStats }) {
             >
               <tile.icon className="size-4" aria-hidden="true" />
             </span>
-            <div className="flex flex-col">
+            <div className="flex min-w-0 flex-col">
               <span className="text-muted-foreground text-xs font-medium tracking-wide uppercase">
                 {tile.label}
               </span>

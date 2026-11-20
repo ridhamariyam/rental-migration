@@ -106,10 +106,10 @@ export async function DashboardAnalyticsSection({
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
         {/* Revenue Trend Chart Card */}
         <Card className="lg:col-span-2 overflow-hidden">
-          <CardHeader className="flex flex-row items-center justify-between border-b border-border/60 px-4 py-3.5 space-y-0">
-            <div className="flex flex-col gap-0.5">
-              <div className="flex items-center gap-2">
-                <CardTitle className="text-sm font-semibold tracking-tight">
+          <CardHeader className="flex flex-row items-start justify-between gap-3 border-b border-border/60 px-4 py-3.5 space-y-0">
+            <div className="flex min-w-0 flex-col gap-0.5">
+              <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                <CardTitle className="text-sm font-semibold tracking-tight whitespace-nowrap">
                   Revenue Analytics
                 </CardTitle>
                 {revenueChangePercent !== null ? (
@@ -136,7 +136,7 @@ export async function DashboardAnalyticsSection({
               variant="ghost"
               nativeButton={false}
               render={<Link href={tenantPaths.reports} />}
-              className="gap-1 h-7 px-2.5 text-xs text-muted-foreground hover:text-foreground"
+              className="h-7 shrink-0 gap-1 px-2.5 text-xs text-muted-foreground hover:text-foreground"
             >
               Full report
               <ArrowUpRightIcon className="size-3.5" />
@@ -165,7 +165,7 @@ export async function DashboardAnalyticsSection({
       </div>
 
       {/* Bottom Analytics Grid (3 Columns) */}
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
         {/* 1. Inventory & Rental Pipeline */}
         <Card className="overflow-hidden">
           <CardHeader className="border-b border-border/60 px-4 py-3">
@@ -239,7 +239,7 @@ export async function DashboardAnalyticsSection({
         </Card>
 
         {/* 3. Outlet Revenue Performance List */}
-        <Card className="overflow-hidden">
+        <Card className="overflow-hidden md:col-span-2 xl:col-span-1">
           <CardHeader className="flex flex-row items-center justify-between border-b border-border/60 px-4 py-3 space-y-0">
             <div>
               <CardTitle className="text-sm font-semibold tracking-tight">

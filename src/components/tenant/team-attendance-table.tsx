@@ -94,7 +94,7 @@ export async function TeamAttendanceTable({
 
   return (
     <>
-      <ListCards at="lg">
+      <ListCards at="xl">
         {items.map((record) => {
           const name =
             `${record.staffFirstName} ${record.staffLastName}`.trim();
@@ -119,8 +119,10 @@ export async function TeamAttendanceTable({
               badge={<AttendanceStatusBadge status={record.status} />}
               meta={
                 <>
-                  {formatDate(record.date)} · {formatTime(record.checkInTime)} –{" "}
-                  {record.checkOutTime ? formatTime(record.checkOutTime) : "—"}
+                  {formatDate(record.date)} · {formatTime(record.checkInTime)}
+                  {record.checkOutTime
+                    ? ` – ${formatTime(record.checkOutTime)}`
+                    : " · not checked out"}
                   {formatWorkedHours(record.checkInTime, record.checkOutTime)
                     ? ` · ${formatWorkedHours(record.checkInTime, record.checkOutTime)}`
                     : ""}{" "}
@@ -137,7 +139,7 @@ export async function TeamAttendanceTable({
         })}
       </ListCards>
 
-      <TableOnly at="lg">
+      <TableOnly at="xl">
         <Table>
           <TableHeader>
             <TableRow className="hover:bg-transparent">

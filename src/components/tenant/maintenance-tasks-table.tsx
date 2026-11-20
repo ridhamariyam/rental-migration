@@ -91,7 +91,7 @@ export async function MaintenanceTasksTable({
 
   return (
     <>
-      <ListCards at="lg">
+      <ListCards at="xl">
         {items.map((task) => (
           <ListCardRow
             key={task.id}
@@ -123,7 +123,7 @@ export async function MaintenanceTasksTable({
         ))}
       </ListCards>
 
-      <TableOnly at="lg">
+      <TableOnly at="xl">
         <Table>
           <TableHeader>
             <TableRow className="hover:bg-transparent">

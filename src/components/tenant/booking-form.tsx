@@ -98,6 +98,14 @@ function emptyItem(defaultFromDate?: string, defaultToDate?: string) {
  * quote — is keyed by the field array's own stable row id, not by index,
  * so removing line 2 of 3 never re-points line 3's item at line 2's quote.
  */
+const PAYMENT_METHOD_LABELS: Record<string, string> = {
+  cash: "Cash",
+  upi: "UPI",
+  card: "Card",
+  bank_transfer: "Bank transfer",
+  other: "Other",
+};
+
 export function BookingForm({
   canDiscount,
   staffOptions = [],
@@ -622,12 +630,16 @@ export function BookingForm({
                             id="order-advance-method"
                             className="w-full"
                           >
-                            <SelectValue placeholder="Cash" />
+                            <SelectValue placeholder="Cash">
+                              {(value: string) =>
+                                PAYMENT_METHOD_LABELS[value] ?? value
+                              }
+                            </SelectValue>
                           </SelectTrigger>
                           <SelectContent alignItemWithTrigger={false}>
                             {PAYMENT_METHOD_VALUES.map((method) => (
                               <SelectItem key={method} value={method}>
-                                {method.replace("_", " ")}
+                                {PAYMENT_METHOD_LABELS[method] ?? method}
                               </SelectItem>
                             ))}
                           </SelectContent>
