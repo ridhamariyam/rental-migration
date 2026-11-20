@@ -843,6 +843,7 @@ export async function quoteBooking(
     {
       additionalCost: input.additionalCost,
       securityDepositPerUnit: input.securityDeposit,
+      rentAmountPerUnit: input.rentAmount,
     },
   );
 
@@ -915,6 +916,9 @@ export async function createBooking(
     fromDate: string;
     toDate: string;
     quantity: number;
+    /** Set when this bill's rate differs from the item's default. */
+    rateChanged: boolean;
+    saveRateAsDefault: boolean;
   }[] = [];
 
   for (const item of input.items) {
@@ -929,12 +933,32 @@ export async function createBooking(
     // every line prices as its plain gross rent plus its item's own
     // default deposit here; the order-level adjustments below are what
     // actually reduce/add to/replace the total.
+    // A rate agreed at the counter replaces the item's default for this
+    // bill only — unless `saveRateAsDefault` also makes it permanent.
+    const rateChanged =
+      Boolean(item.rentAmount) &&
+      compareMoney(item.rentAmount!, variation.rentPrice) !== 0;
+    if (
+      rateChanged &&
+      !hasPermission(actor.role, Permission.BOOKING_DISCOUNT)
+    ) {
+      throw AppError.forbidden("You are not allowed to change an item's rate");
+    }
+    const saveRateAsDefault = rateChanged && item.saveRateAsDefault === true;
+    if (
+      saveRateAsDefault &&
+      !hasPermission(actor.role, Permission.PRODUCT_MANAGE)
+    ) {
+      throw AppError.forbidden("You are not allowed to change an item's default rate");
+    }
+
     const quote = quoteRental(
       variation,
       item.fromDate,
       item.toDate,
       ZERO_MONEY,
       quantity,
+      { rentAmountPerUnit: rateChanged ? item.rentAmount : undefined },
     );
     prepared.push({
       variation,
@@ -942,6 +966,8 @@ export async function createBooking(
       fromDate: item.fromDate,
       toDate: item.toDate,
       quantity,
+      rateChanged,
+      saveRateAsDefault,
     });
   }
 
@@ -1105,6 +1131,45 @@ export async function createBooking(
           })),
         )
         .returning();
+
+      // Rates changed at the counter: audited per line, and written back
+      // as the item's default where the counter asked for that.
+      const defaultsSaved = new Set<string>();
+      for (const item of prepared) {
+        if (!item.rateChanged) continue;
+        const label = `${item.variation.productName} (${item.variation.sku})`;
+        await recordAudit(tx, {
+          shopId: actor.shopId,
+          outletId: item.variation.outletId,
+          userId: actor.id,
+          action: AuditAction.BOOKING_RATE_CHANGED,
+          entityType: "booking",
+          entityId: order.id,
+          summary: `${label} billed at ${formatMoney(item.quote.rentAmount)} instead of ${formatMoney(item.variation.rentPrice)} on ${order.bookingNumber}`,
+          before: { rentAmount: item.variation.rentPrice },
+          after: { rentAmount: item.quote.rentAmount },
+        });
+
+        if (item.saveRateAsDefault && !defaultsSaved.has(item.variation.id)) {
+          defaultsSaved.add(item.variation.id);
+          await tx
+            .update(productVariations)
+            .set({ rentPrice: item.quote.rentAmount, updatedAt: new Date() })
+            // Already tenant-checked by `resolveVariation` above.
+            .where(eq(productVariations.id, item.variation.id));
+          await recordAudit(tx, {
+            shopId: actor.shopId,
+            outletId: item.variation.outletId,
+            userId: actor.id,
+            action: AuditAction.VARIATION_RATE_UPDATED,
+            entityType: "variation",
+            entityId: item.variation.id,
+            summary: `${label} default rate changed from ${formatMoney(item.variation.rentPrice)} to ${formatMoney(item.quote.rentAmount)} while billing ${order.bookingNumber}`,
+            before: { rentPrice: item.variation.rentPrice },
+            after: { rentPrice: item.quote.rentAmount },
+          });
+        }
+      }
 
       // Only the owner's "your item is booked" goes out here. The
       // customer's pickup/return reminders are *not* queued at booking
@@ -1421,12 +1486,15 @@ export async function updateBookingItem(
     undefined,
   );
 
+  // Keep the rate frozen on this line: editing dates must not quietly
+  // reprice a rate agreed at the counter back to the item's default.
   const quote = quoteRental(
     variation,
     input.fromDate,
     input.toDate,
     ZERO_MONEY,
     requestedQuantity,
+    { rentAmountPerUnit: item.rentAmount },
   );
 
   return db.transaction(async (tx) => {

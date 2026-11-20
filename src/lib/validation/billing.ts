@@ -55,6 +55,10 @@ export const renewSchema = z.object({
   plan: z.enum(PLAN_IDS),
 });
 
+export const cancelSubscriptionSchema = z.object({
+  reason: z.string().trim().max(500, "Must be at most 500 characters").optional(),
+});
+
 /** Super admin: set a tenant's plan/end date by hand (offline payment,
  * custom deal, comp extension). `endsAt` null clears the subscription so
  * the tenant never locks. */

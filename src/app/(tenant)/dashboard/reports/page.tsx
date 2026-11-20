@@ -1,5 +1,7 @@
 import { Suspense } from "react";
 import { redirect } from "next/navigation";
+import { DownloadIcon } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { ActiveBookingsReport } from "@/components/tenant/active-bookings-report";
 import {
   DailyIncomeReport,
@@ -63,6 +65,14 @@ export default async function ReportsPage({
 
   const outlets = await listActiveOutletsForSelect(user.shopId);
 
+  // The same filters as on screen, so the file is exactly this report.
+  const exportParams = new URLSearchParams({ report });
+  if (report === "monthly-income") exportParams.set("year", year);
+  if (fromDate) exportParams.set("fromDate", fromDate);
+  if (toDate) exportParams.set("toDate", toDate);
+  if (outletId) exportParams.set("outletId", outletId);
+  const exportHref = `/api/reports/export?${exportParams}`;
+
   const commonProps = {
     actor,
     fromDate: fromDate || undefined,
@@ -91,6 +101,16 @@ export default async function ReportsPage({
             outletId={outletId}
             outlets={outlets}
           />
+          <Button
+            variant="outline"
+            size="sm"
+            className="sm:ml-auto"
+            nativeButton={false}
+            render={<a href={exportHref} download />}
+          >
+            <DownloadIcon />
+            Download (Excel/CSV)
+          </Button>
         </div>
 
         <Suspense

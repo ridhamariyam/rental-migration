@@ -1,0 +1,2 @@
+ALTER TABLE "shops" ADD COLUMN IF NOT EXISTS "subscription_cancelled_at" timestamp with time zone;--> statement-breakpoint
+ALTER TABLE "shops" ADD COLUMN IF NOT EXISTS "subscription_cancel_reason" text;
