@@ -133,12 +133,6 @@ const navItems = [
     permission: Permission.REPORT_VIEW,
   },
   {
-    href: tenantPaths.subscription,
-    label: "Subscription",
-    icon: CreditCardIcon,
-    permission: Permission.SHOP_MANAGE,
-  },
-  {
     href: tenantPaths.auditLog,
     label: "Audit Log",
     icon: HistoryIcon,
@@ -157,6 +151,12 @@ const accountNavItems = [
     href: tenantPaths.business,
     label: "Business Settings",
     icon: Settings2Icon,
+    permission: Permission.SHOP_MANAGE,
+  },
+  {
+    href: tenantPaths.subscription,
+    label: "Subscription",
+    icon: CreditCardIcon,
     permission: Permission.SHOP_MANAGE,
   },
 ] as const;

@@ -112,6 +112,41 @@ export function isPlanId(value: unknown): value is PlanId {
   return typeof value === "string" && (PLAN_IDS as readonly string[]).includes(value);
 }
 
+/** The first moment a plan ending at `endsAt` can be renewed: the start of
+ * the reminder window, when the "expiring" notice starts asking for it. */
+export function renewalOpensAt(endsAt: Date): Date {
+  return new Date(endsAt.getTime() - SUBSCRIPTION_REMINDER_DAYS * 24 * 60 * 60 * 1000);
+}
+
+/**
+ * Why a renewal to `planId` isn't allowed right now, or null if it is.
+ * - While a plan has more than `SUBSCRIPTION_REMINDER_DAYS` left, nothing
+ *   can be paid for — no paying twice for time already bought.
+ * - A paid Yearly plan can't switch to Monthly until the year has run out
+ *   (it can renew Yearly in the reminder window).
+ * Shared by the server (`startRenewal`, which enforces it) and the renew
+ * UI (which explains it).
+ */
+export function renewalBlockedReason(
+  planId: PlanId,
+  current: { plan: PlanId | "custom" | null; endsAt: Date | null },
+  now: Date = new Date(),
+): string | null {
+  if (current.endsAt === null || current.endsAt <= now) return null;
+
+  const fmt = new Intl.DateTimeFormat("en-IN", { dateStyle: "long", timeZone: "Asia/Kolkata" });
+  const until = fmt.format(current.endsAt);
+  const opens = renewalOpensAt(current.endsAt);
+
+  if (opens > now) {
+    return `Your plan is already paid until ${until}. You can renew from ${fmt.format(opens)}.`;
+  }
+  if (planId === "monthly" && current.plan === "yearly") {
+    return `You're on the Yearly plan until ${until}. Monthly renewal opens after that date.`;
+  }
+  return null;
+}
+
 /** First payment: one period of the plan plus the one-time setup fee. */
 export function signupTotal(plan: Plan): number {
   return plan.price + plan.setupFee;

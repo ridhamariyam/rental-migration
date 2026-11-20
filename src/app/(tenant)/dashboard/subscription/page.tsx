@@ -94,7 +94,7 @@ export default async function SubscriptionPage() {
               ? "This is the demo account, so it can't be renewed."
               : state === "none"
                 ? "Your account is managed by the Rentque team and doesn't need renewing."
-                : "Pick a plan to renew or switch to — e.g. move from Monthly to Yearly to save. Renewing early adds the new period on top of the time you have left, so you never lose days."}
+                : "Pick a plan to renew or switch to — e.g. move from Monthly to Yearly to save. Renewal opens in the last 7 days of your plan, and the new period starts when the current one ends, so you never lose days."}
           </CardDescription>
         </CardHeader>
         {canRenew ? (

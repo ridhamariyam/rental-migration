@@ -17,6 +17,7 @@ import {
   SUBSCRIPTION_REMINDER_DAYS,
   addMonths,
   signupTotal,
+  renewalBlockedReason,
   toPaise,
   type PlanId,
 } from "@/lib/plans";
@@ -166,7 +167,14 @@ export async function startRenewal(
   assertRazorpayConfigured();
 
   const [shop] = await db
-    .select({ id: shops.id, name: shops.name, phone: shops.phone, isDemo: shops.isDemo })
+    .select({
+      id: shops.id,
+      name: shops.name,
+      phone: shops.phone,
+      isDemo: shops.isDemo,
+      plan: shops.plan,
+      endsAt: shops.subscriptionEndsAt,
+    })
     .from(shops)
     .where(eq(shops.id, shopId))
     .limit(1);
@@ -177,6 +185,8 @@ export async function startRenewal(
       "This is the demo account. Buy a plan to get your own account.",
     );
   }
+  const blocked = renewalBlockedReason(planId, shop);
+  if (blocked) throw AppError.forbidden(blocked);
 
   const plan = (await getPlans())[planId];
   const amountPaise = toPaise(plan.price);
