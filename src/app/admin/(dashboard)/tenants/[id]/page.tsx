@@ -45,7 +45,6 @@ import { formatDate, formatDateTime, formatMoney } from "@/lib/format";
 import { formatPaise } from "@/lib/plans";
 import { avatarGradient } from "@/lib/tenant-avatar";
 import {
-  getCustomDealTerms,
   getDemoTenant,
   getTenantOwners,
   getTenantUsage,
@@ -106,18 +105,11 @@ export default async function AdminTenantDetailPage({
     getDemoTenant(),
     getPlans(),
   ]);
-  // Last agreed custom terms (if they've ever paid one) — pre-fills the
-  // dialog even if they're on a standard plan right now.
-  const customDeal = (await getCustomDealTerms([tenant.id])).get(tenant.id) ?? null;
 
   const primaryOwner = owners[0] ?? null;
   const totalPaidPaise = payments.reduce((acc, p) => acc + p.amountPaise, 0);
   const renewalPaise =
-    tenant.plan === "yearly" || tenant.plan === "monthly"
-      ? plans[tenant.plan].price * 100
-      : tenant.plan === "custom"
-        ? (customDeal?.amountPaise ?? null)
-        : null;
+    tenant.plan === "yearly" || tenant.plan === "monthly" ? plans[tenant.plan].price * 100 : null;
   const reminder = renewalReminderLink({
     phone: primaryOwner?.phone ?? tenant.phone,
     businessName: tenant.name,
@@ -213,12 +205,7 @@ export default async function AdminTenantDetailPage({
                   <p className="mt-1 font-semibold">{planLabel(tenant.plan)}</p>
                   {renewalPaise ? (
                     <p className="text-muted-foreground text-xs">
-                      {formatPaise(renewalPaise)} /{" "}
-                      {tenant.plan === "custom"
-                        ? customDeal?.cycle === "yearly"
-                          ? "year"
-                          : "month"
-                        : plans[tenant.plan as "yearly" | "monthly"].periodLabel}
+                      {formatPaise(renewalPaise)} / {plans[tenant.plan as "yearly" | "monthly"].periodLabel}
                     </p>
                   ) : null}
                 </div>
@@ -228,12 +215,6 @@ export default async function AdminTenantDetailPage({
                     {tenant.subscriptionEndsAt ? formatDate(tenant.subscriptionEndsAt, "long") : "—"}
                   </p>
                   <p className="text-muted-foreground text-xs">{subscriptionSummary(tenant.subscriptionEndsAt)}</p>
-                  {tenant.subscriptionCancelledAt ? (
-                    <p className="text-destructive mt-1 text-xs font-medium">
-                      Owner cancelled on {formatDate(tenant.subscriptionCancelledAt)}
-                      {tenant.subscriptionCancelReason ? ` — “${tenant.subscriptionCancelReason}”` : ""}
-                    </p>
-                  ) : null}
                 </div>
                 <div className="rounded-lg border p-3">
                   <p className="text-muted-foreground text-xs font-medium tracking-wide uppercase">Total paid</p>
@@ -249,7 +230,6 @@ export default async function AdminTenantDetailPage({
                   tenantId={tenant.id}
                   tenantName={tenant.name}
                   plans={plans}
-                  customDeal={customDeal}
                   currentPlan={tenant.plan}
                   currentEndsAt={tenant.subscriptionEndsAt?.toISOString() ?? null}
                   hasPaidBefore={payments.length > 0}

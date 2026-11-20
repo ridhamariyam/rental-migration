@@ -1,9 +1,15 @@
 "use client";
 
 import { useState } from "react";
-import { PencilIcon, TrashIcon } from "lucide-react";
+import { MoreHorizontalIcon, PencilIcon, TrashIcon } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { CategoryFormDialog } from "@/components/tenant/category-form-dialog";
 import { CategoryDeleteDialog } from "@/components/tenant/category-delete-dialog";
 import type { CategoryRow } from "@/server/categories/service";
@@ -14,28 +20,32 @@ export function CategoryRowActions({ category }: { category: CategoryRow }) {
 
   return (
     <>
-      {/* Always-visible actions — a "⋯" menu hid these from clients. */}
-      <div className="flex items-center justify-end gap-1.5">
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => setEditOpen(true)}
-          aria-label={`Edit ${category.name}`}
+      <DropdownMenu>
+        <DropdownMenuTrigger
+          render={
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              aria-label={`Actions for ${category.name}`}
+            />
+          }
         >
-          <PencilIcon />
-          Edit
-        </Button>
-        <Button
-          variant="outline"
-          size="sm"
-          className="text-destructive hover:text-destructive"
-          onClick={() => setDeleteOpen(true)}
-          aria-label={`Delete ${category.name}`}
-        >
-          <TrashIcon />
-          Delete
-        </Button>
-      </div>
+          <MoreHorizontalIcon />
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end">
+          <DropdownMenuItem onClick={() => setEditOpen(true)}>
+            <PencilIcon />
+            Edit
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            variant="destructive"
+            onClick={() => setDeleteOpen(true)}
+          >
+            <TrashIcon />
+            Delete
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
 
       <CategoryFormDialog
         open={editOpen}

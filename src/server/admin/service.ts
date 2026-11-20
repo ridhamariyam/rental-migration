@@ -298,11 +298,8 @@ export type DueItem = {
   state: SubscriptionState;
   /** Positive = days left; negative = days overdue. Null without an end date. */
   daysLeft: number | null;
-  /** What renewing costs, in paise: the live list price, or the last
-   * custom-deal amount. Null when unknown. */
+  /** The renewal price for a standard plan, in paise; null for custom/none. */
   renewalPaise: number | null;
-  /** Terms of the tenant's custom deal, if they're on one and have paid it. */
-  customDeal: CustomDealTerms | null;
   ownerName: string | null;
   ownerPhone: string | null;
   lastPaidAt: Date | null;
@@ -351,7 +348,7 @@ export async function listDues(filter: DueFilter): Promise<DueItem[]> {
   if (rows.length === 0) return [];
   const ids = rows.map((r) => r.id);
 
-  const [owners, lastPaid, plans, customTerms] = await Promise.all([
+  const [owners, lastPaid, plans] = await Promise.all([
     db
       .select({
         shopId: users.shopId,
@@ -369,7 +366,6 @@ export async function listDues(filter: DueFilter): Promise<DueItem[]> {
       .where(and(inArray(subscriptionPayments.shopId, ids), eq(subscriptionPayments.status, "paid")))
       .groupBy(subscriptionPayments.shopId),
     getPlans(),
-    getCustomDealTerms(ids),
   ]);
 
   const ownerByShop = new Map<string, (typeof owners)[number]>();
@@ -387,12 +383,7 @@ export async function listDues(filter: DueFilter): Promise<DueItem[]> {
         ? Math.ceil((row.subscriptionEndsAt.getTime() - now.getTime()) / DAY_MS)
         : null,
       renewalPaise:
-        row.plan === "yearly" || row.plan === "monthly"
-          ? toPaise(plans[row.plan].price)
-          : row.plan === "custom"
-            ? (customTerms.get(row.id)?.amountPaise ?? null)
-            : null,
-      customDeal: customTerms.get(row.id) ?? null,
+        row.plan === "yearly" || row.plan === "monthly" ? toPaise(plans[row.plan].price) : null,
       ownerName: owner ? `${owner.firstName} ${owner.lastName}`.trim() : null,
       ownerPhone: owner?.phone ?? null,
       lastPaidAt: lastPaidByShop.get(row.id) ?? null,
@@ -531,47 +522,19 @@ export async function recordOfflinePayment(id: string, input: RecordOfflinePayme
       .where(and(eq(subscriptionPayments.shopId, shopId), eq(subscriptionPayments.status, "paid")));
     const isFirstPayment = (paidBefore?.value ?? 0) === 0;
 
-    const coverMonths =
-      input.plan === "custom"
-        ? input.cycle === "yearly"
-          ? 12
-          : 1
-        : PLANS[input.plan].periodMonths;
-
-    let periodStart: Date;
+    const periodStart = shop.endsAt && shop.endsAt > now ? shop.endsAt : now;
     let periodEnd: Date;
-    if (!input.extend) {
-      // The admin already set the end date by hand; this payment pays for
-      // that period. Log it without moving the date again.
-      if (!shop.endsAt || shop.endsAt <= now) {
-        throw new AppError(
-          "There's no paid-until date in the future to log this against. Choose “Extend subscription” instead.",
-          400,
-        );
-      }
-      periodEnd = shop.endsAt;
-      // The period this payment pays for: the stretch ending on that date.
-      periodStart = addMonths(shop.endsAt, -coverMonths);
+    if (input.plan === "custom") {
+      if (!input.endsAt) throw new AppError("Pick the date this deal runs until", 400);
+      periodEnd = new Date(`${input.endsAt}T23:59:59`);
+      if (periodEnd <= now) throw new AppError("The end date must be in the future", 400);
     } else {
-      periodStart = shop.endsAt && shop.endsAt > now ? shop.endsAt : now;
-      if (input.plan === "custom" && !input.cycle) {
-        if (!input.endsAt) {
-          throw new AppError("Choose whether this custom deal is billed monthly or yearly", 400);
-        }
-        periodEnd = new Date(`${input.endsAt}T23:59:59`);
-        if (periodEnd <= now) throw new AppError("The end date must be in the future", 400);
-      } else {
-        periodEnd = addMonths(periodStart, coverMonths);
-      }
+      periodEnd = addMonths(periodStart, PLANS[input.plan].periodMonths);
     }
 
     const amountPaise = toPaise(input.amount);
     const setupFeePaise = Math.min(toPaise(input.setupFee ?? 0), amountPaise);
     const noteParts = [
-      input.plan === "custom" && input.cycle
-        ? `Custom ${input.cycle === "yearly" ? "yearly" : "monthly"} deal`
-        : null,
-      input.extend ? null : "logged against the already-set end date",
       `Offline payment via ${input.method}`,
       input.reference ? `ref ${input.reference}` : null,
       input.note || null,
@@ -604,7 +567,7 @@ export async function recordOfflinePayment(id: string, input: RecordOfflinePayme
       action: AuditAction.SUBSCRIPTION_PAYMENT_RECORDED,
       entityType: "subscription_payment",
       entityId: payment.id,
-      summary: `Offline payment of ₹${input.amount.toLocaleString("en-IN")} recorded for "${shop.name}" (${input.plan}${input.plan === "custom" && input.cycle ? `, billed ${input.cycle}` : ""})`,
+      summary: `Offline payment of ₹${input.amount.toLocaleString("en-IN")} recorded for "${shop.name}" (${input.plan})`,
       before: { plan: shop.plan, subscriptionEndsAt: shop.endsAt },
       after: { plan: input.plan, subscriptionEndsAt: periodEnd, amountPaise },
     });
@@ -769,43 +732,4 @@ export async function listTenantPaymentSummaries(): Promise<TenantPaymentSummary
       };
     })
     .sort((a, b) => b.totalPaidPaise - a.totalPaidPaise || a.name.localeCompare(b.name));
-}
-
-export type CustomDealTerms = { amountPaise: number; cycle: "monthly" | "yearly" };
-
-/**
- * The agreed terms of each tenant's custom deal, read from their most
- * recent paid custom-plan payment: the plan fee charged and whether it
- * covered a month or a year. Used to pre-fill the next "Record payment"
- * and to show what a custom tenant owes on the Dues page.
- */
-export async function getCustomDealTerms(shopIds: string[]): Promise<Map<string, CustomDealTerms>> {
-  if (shopIds.length === 0) return new Map();
-  const rows = await db
-    .selectDistinctOn([subscriptionPayments.shopId], {
-      shopId: subscriptionPayments.shopId,
-      planFeePaise: subscriptionPayments.planFeePaise,
-      periodStart: subscriptionPayments.periodStart,
-      periodEnd: subscriptionPayments.periodEnd,
-    })
-    .from(subscriptionPayments)
-    .where(
-      and(
-        inArray(subscriptionPayments.shopId, shopIds),
-        eq(subscriptionPayments.status, "paid"),
-        eq(subscriptionPayments.plan, "custom"),
-      ),
-    )
-    .orderBy(subscriptionPayments.shopId, desc(subscriptionPayments.paidAt));
-
-  const terms = new Map<string, CustomDealTerms>();
-  for (const row of rows) {
-    if (!row.shopId) continue;
-    const days =
-      row.periodStart && row.periodEnd
-        ? (row.periodEnd.getTime() - row.periodStart.getTime()) / DAY_MS
-        : 0;
-    terms.set(row.shopId, { amountPaise: row.planFeePaise, cycle: days > 62 ? "yearly" : "monthly" });
-  }
-  return terms;
 }

@@ -86,7 +86,7 @@ export default async function AdminDuesPage({ searchParams }: { searchParams: Se
 
       {outstandingPaise > 0 ? (
         <p className="text-sm">
-          <span className="text-muted-foreground">Overdue renewals in this view: </span>
+          <span className="text-muted-foreground">Overdue renewals in this view (standard plans): </span>
           <span className="font-semibold tabular-nums">{formatPaise(outstandingPaise)}</span>
         </p>
       ) : null}
@@ -173,7 +173,6 @@ export default async function AdminDuesPage({ searchParams }: { searchParams: Se
                       tenantId={item.id}
                       tenantName={item.name}
                       plans={plans}
-                      customDeal={item.customDeal}
                       currentPlan={item.plan}
                       currentEndsAt={item.subscriptionEndsAt?.toISOString() ?? null}
                       hasPaidBefore={Boolean(item.lastPaidAt)}

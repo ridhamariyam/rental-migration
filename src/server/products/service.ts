@@ -10,7 +10,6 @@ import {
   isNotNull,
   ne,
   or,
-  sql,
 } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { AppError } from "@/lib/errors/app-error";
@@ -41,9 +40,6 @@ export type ProductRow = typeof products.$inferSelect;
 export type ProductListItem = ProductRow & {
   categoryName: string;
   variationCount: number;
-  /** Items currently rentable — lifecycle `available` *and* switched on
-   * for rental. Scoped to the filtered outlet, like `variationCount`. */
-  availableCount: number;
   /** The picture to show for this product — the photo of its oldest
    * physical item that has one (photos live on `productVariations` now,
    * see that table's doc comment), falling back to the catalogue row's own
@@ -67,7 +63,7 @@ export async function listProducts(
   shopId: string,
   query: ProductListQuery,
 ): Promise<ProductListResult> {
-  const { page, pageSize, q, categoryId, status, outletId } = query;
+  const { page, pageSize, q, categoryId, status } = query;
 
   const conditions = [eq(products.shopId, shopId)];
 
@@ -80,14 +76,6 @@ export async function listProducts(
 
   if (categoryId) {
     conditions.push(eq(products.categoryId, categoryId));
-  }
-
-  if (outletId) {
-    // Products with stock at this outlet. A product is "at" an outlet
-    // through its physical items — that's where `outletId` lives.
-    conditions.push(
-      sql`exists (select 1 from ${productVariations} where ${productVariations.productId} = ${products.id} and ${productVariations.outletId} = ${outletId})`,
-    );
   }
 
   if (status === "active") {
@@ -125,24 +113,15 @@ export async function listProducts(
 
   const variationCounts = rows.length
     ? await db
-        .select({
-          productId: productVariations.productId,
-          value: count(),
-          available: sql<number>`count(*) filter (where ${productVariations.status} = 'available' and ${productVariations.isAvailable})`.mapWith(
-            Number,
-          ),
-        })
+        .select({ productId: productVariations.productId, value: count() })
         .from(productVariations)
         .where(
-          and(
-            or(...rows.map((row) => eq(productVariations.productId, row.id))),
-            outletId ? eq(productVariations.outletId, outletId) : undefined,
-          ),
+          or(...rows.map((row) => eq(productVariations.productId, row.id))),
         )
         .groupBy(productVariations.productId)
     : [];
   const countByProduct = new Map(
-    variationCounts.map((row) => [row.productId, row]),
+    variationCounts.map((row) => [row.productId, row.value]),
   );
 
   // One query for the whole page's covers rather than one per row — the
@@ -173,8 +152,7 @@ export async function listProducts(
   return {
     items: rows.map((row) => ({
       ...row,
-      variationCount: countByProduct.get(row.id)?.value ?? 0,
-      availableCount: countByProduct.get(row.id)?.available ?? 0,
+      variationCount: countByProduct.get(row.id) ?? 0,
       coverImage: imageByProduct.get(row.id) ?? row.image,
     })),
     total,
@@ -244,13 +222,8 @@ export async function getProductById(
     return null;
   }
 
-  const [{ value: variationCount, available: availableCount }] = await db
-    .select({
-      value: count(),
-      available: sql<number>`count(*) filter (where ${productVariations.status} = 'available' and ${productVariations.isAvailable})`.mapWith(
-        Number,
-      ),
-    })
+  const [{ value: variationCount }] = await db
+    .select({ value: count() })
     .from(productVariations)
     .where(eq(productVariations.productId, row.id));
 
@@ -269,7 +242,6 @@ export async function getProductById(
   return {
     ...row,
     variationCount,
-    availableCount,
     coverImage: firstPhotographedItem?.image ?? row.image,
   };
 }

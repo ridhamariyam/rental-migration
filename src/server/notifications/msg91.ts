@@ -151,27 +151,6 @@ function extractLegacySlotAliases(
   return aliases;
 }
 
-/**
- * NAMED-parameter templates (`{{var_1}}`) need each body component to carry
- * its `parameter_name` — MSG91's own sample payload for such a template is
- * `"body_var_1": { type, value, parameter_name: "var_1" }`. The key's
- * suffix after `body_` *is* that name, so it is derived here at send time
- * (which also covers logs queued before this existed). POSITIONAL keys
- * (`body_1`) have a numeric suffix and are left as they are.
- */
-export function withParameterNames(components: UnknownRecord): UnknownRecord {
-  const result: UnknownRecord = {};
-  for (const [key, component] of Object.entries(components)) {
-    const name = /^body_(.+)$/.exec(key)?.[1];
-    const record = asRecord(component);
-    result[key] =
-      name && !/^\d+$/.test(name) && !("parameter_name" in record)
-        ? { ...record, parameter_name: name }
-        : component;
-  }
-  return result;
-}
-
 export class Msg91Client {
   private readonly baseUrl: string;
   private readonly authkey: string;
@@ -329,7 +308,7 @@ export class Msg91Client {
           to_and_components: [
             {
               to: [params.to],
-              components: withParameterNames(params.components),
+              components: params.components,
               CRQID: params.crqid,
             },
           ],

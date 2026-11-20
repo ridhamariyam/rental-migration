@@ -20,11 +20,9 @@ import {
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
 import { DatePicker } from "@/components/ui/date-picker";
 import { Field, FieldError, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { Spinner } from "@/components/ui/spinner";
 import { ConfirmActionButton } from "@/components/tenant/confirm-action-button";
@@ -58,10 +56,6 @@ export type BookingItemQuote = {
 
 const QUOTE_DEBOUNCE_MS = 400;
 
-/** A rate the API will accept — anything else is left to the field's own
- * inline error instead of firing a quote that can only 422. */
-const RATE_PATTERN = /^\d{1,10}(\.\d{1,2})?$/;
-
 /**
  * One "cart line" in the booking form — its own item, dates, quantity
  * and deposit, with a live availability/price preview. Discount/additional
@@ -92,7 +86,6 @@ export function BookingItemRow({
   onQuoteChange,
   expanded,
   onEdit,
-  canChangeRate = false,
 }: {
   index: number;
   itemKey: string;
@@ -105,7 +98,6 @@ export function BookingItemRow({
     fromDate?: { message?: string };
     toDate?: { message?: string };
     quantity?: { message?: string };
-    rentAmount?: { message?: string };
   };
   selectedItem: VariationSearchResult | null;
   onSelectItem: (item: VariationSearchResult | null) => void;
@@ -118,10 +110,6 @@ export function BookingItemRow({
    * not a stack of identical open forms. */
   expanded: boolean;
   onEdit: () => void;
-  /** Owner/manager (`BOOKING_DISCOUNT`): may bill this line at a rate
-   * other than the item's default, and optionally save it as the new
-   * default. Everyone else sees the rate read-only. */
-  canChangeRate?: boolean;
 }) {
   const [quote, setQuote] = useState<BookingItemQuote | null>(null);
   const [quoteLoading, setQuoteLoading] = useState(false);
@@ -130,18 +118,6 @@ export function BookingItemRow({
   const fromDate = useWatch({ control, name: `items.${index}.fromDate` });
   const toDate = useWatch({ control, name: `items.${index}.toDate` });
   const quantity = useWatch({ control, name: `items.${index}.quantity` });
-  const rentAmountInput = useWatch({
-    control,
-    name: `items.${index}.rentAmount`,
-  });
-  const rateOverride =
-    canChangeRate && rentAmountInput && RATE_PATTERN.test(rentAmountInput)
-      ? rentAmountInput
-      : undefined;
-  const rateDiffers =
-    rateOverride !== undefined &&
-    selectedItem !== null &&
-    Number(rateOverride) !== Number(selectedItem.rentPrice);
   const selectedItemId = selectedItem?.id;
 
   useEffect(() => {
@@ -174,7 +150,6 @@ export function BookingItemRow({
               fromDate,
               toDate,
               quantity: quantity || "1",
-              ...(rateOverride ? { rentAmount: rateOverride } : {}),
             }),
           },
         );
@@ -196,7 +171,7 @@ export function BookingItemRow({
 
     return () => clearTimeout(timeout);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedItemId, fromDate, toDate, quantity, rateOverride, itemKey]);
+  }, [selectedItemId, fromDate, toDate, quantity, itemKey]);
 
   // Collapsed: what was added, in one line. No border of its own — the
   // Items panel around it is the only box this needs.
@@ -225,7 +200,6 @@ export function BookingItemRow({
           <p className="text-muted-foreground truncate text-xs">
             {quote ? `${formatMoney(quote.totalReceivable)} · ` : ""}
             {quantity && Number(quantity) > 1 ? `${quantity} × · ` : ""}
-            {quote && rateDiffers ? `rate ${formatMoney(quote.rentAmount)} · ` : ""}
             {fromDate ? formatDate(fromDate) : "—"} →{" "}
             {toDate ? formatDate(toDate) : "—"}
           </p>
@@ -323,67 +297,6 @@ export function BookingItemRow({
         <FieldError errors={[errors?.quantity]} />
       </Field>
 
-      {selectedItem ? (
-        <Field data-invalid={!!errors?.rentAmount}>
-          <FieldLabel htmlFor={`rate-item-${index}`}>
-            Rate per unit
-            <span className="text-muted-foreground ml-1 font-normal">
-              (default {formatMoney(selectedItem.rentPrice)})
-            </span>
-          </FieldLabel>
-          {canChangeRate ? (
-            <>
-              <Input
-                id={`rate-item-${index}`}
-                inputMode="decimal"
-                placeholder={selectedItem.rentPrice}
-                disabled={disabled}
-                aria-invalid={!!errors?.rentAmount}
-                {...register(`items.${index}.rentAmount`)}
-              />
-              <FieldError errors={[errors?.rentAmount]} />
-              {rateDiffers ? (
-                <Controller
-                  control={control}
-                  name={`items.${index}.saveRateAsDefault`}
-                  render={({ field }) => (
-                    <div className="flex items-start gap-2">
-                      <Checkbox
-                        id={`rate-default-${index}`}
-                        checked={field.value === true}
-                        onCheckedChange={(checked) =>
-                          field.onChange(checked === true)
-                        }
-                        disabled={disabled}
-                        className="mt-0.5"
-                      />
-                      <Label
-                        htmlFor={`rate-default-${index}`}
-                        className="text-sm leading-snug font-normal"
-                      >
-                        Also save {formatMoney(rateOverride!)} as this
-                        item&rsquo;s default rate
-                        <span className="text-muted-foreground block text-xs">
-                          Unticked: this bill only.
-                        </span>
-                      </Label>
-                    </div>
-                  )}
-                />
-              ) : (
-                <p className="text-muted-foreground text-xs">
-                  Leave blank to bill at the default rate.
-                </p>
-              )}
-            </>
-          ) : (
-            <p id={`rate-item-${index}`} className="text-sm">
-              {formatMoney(selectedItem.rentPrice)}
-            </p>
-          )}
-        </Field>
-      ) : null}
-
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <Field data-invalid={!!errors?.fromDate}>
           <FieldLabel>Pickup date</FieldLabel>
@@ -478,9 +391,6 @@ export function BookingItemRow({
                   </span>
                 </div>
                 <p className="text-muted-foreground text-xs">
-                  {rateDiffers
-                    ? `${formatMoney(quote.rentAmount)} per unit (default ${formatMoney(selectedItem.rentPrice)}) · `
-                    : ""}
                   Rent {formatMoney(quote.totalAmount)}
                   {Number(quote.securityDeposit) > 0
                     ? ` + ${formatMoney(quote.securityDeposit)} deposit`

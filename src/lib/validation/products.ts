@@ -12,9 +12,6 @@ export const productListQuerySchema = z.object({
     .catch(undefined),
   categoryId: z.string().trim().optional().catch(undefined),
   status: z.enum(["all", "active", "inactive"]).catch("all"),
-  //: Only products with at least one item stocked at this outlet, with
-  //: their item/availability counts scoped to it. Absent = all outlets.
-  outletId: z.uuid().optional().catch(undefined),
 });
 
 export type ProductListQuery = z.infer<typeof productListQuerySchema>;

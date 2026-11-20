@@ -171,9 +171,6 @@ export const quoteRequestSchema = z
       .optional(),
     // Blank keeps the item's own deposit; a value replaces it (per unit).
     securityDeposit: optionalMoneySchema,
-    // Blank keeps the item's own rent; a value replaces it (per unit) —
-    // preview only, `createBooking` enforces who may actually do this.
-    rentAmount: optionalMoneySchema,
     // How many units of this line are wanted — scales both the live
     // preview's price (rent and deposit each multiply by this) and its
     // availability check ("is there room for N units").
@@ -217,13 +214,6 @@ export const bookingItemSchema = z
     fromDate: dateStringSchema,
     toDate: dateStringSchema,
     quantity: bookingQuantitySchema,
-    /** Rate agreed at the counter for this bill, **per unit**. Blank keeps
-     * the item's own `rentPrice`. Needs `BOOKING_DISCOUNT` (see
-     * `createBooking`). */
-    rentAmount: optionalMoneySchema,
-    /** Also make `rentAmount` the item's default rate from now on —
-     * needs `PRODUCT_MANAGE` on top. Ignored without a `rentAmount`. */
-    saveRateAsDefault: z.boolean().optional(),
   })
   .superRefine((data, ctx) => {
     itemIdentifierRefinement(data, ctx);

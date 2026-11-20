@@ -16,12 +16,7 @@ export const recordOfflinePaymentSchema = z.object({
   reference: z.string().trim().max(100, "Must be at most 100 characters").optional(),
   note: z.string().trim().max(300, "Must be at most 300 characters").optional(),
   paidOn: dateString.optional(),
-  /** Custom plan: how long this payment covers — one month or one year. */
-  cycle: z.enum(["monthly", "yearly"]).optional(),
-  /** false = the end date was already set by hand; just log the payment
-   * against that period instead of adding another one on top. */
-  extend: z.boolean().default(true),
-  /** Custom plan, legacy alternative to `cycle`: an explicit end date. */
+  /** Required for a custom plan — the date the deal runs until. */
   endsAt: dateString.optional(),
 });
 
