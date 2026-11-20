@@ -27,6 +27,7 @@ import type {
 import { tenantIdParamSchema } from "@/lib/validation/tenants";
 import { AuditAction, recordAudit } from "@/server/audit/service";
 import { getPlans } from "@/server/billing/plans";
+import { sendWelcomeAfterResponse } from "@/server/billing/welcome";
 import {
   createRazorpayOrder,
   razorpayKeyId,
@@ -404,6 +405,24 @@ export async function completePayment(params: {
 
   const { payment } = result;
   let sessionUserId: string | null = null;
+
+  // Welcome the new owner on WhatsApp — only on the call that actually
+  // provisioned the account (`fresh`), so the checkout handler and the
+  // Razorpay webhook racing each other never send it twice.
+  if (
+    result.fresh &&
+    payment.purpose === "signup" &&
+    payment.shopId &&
+    !payment.needsAttention &&
+    payment.signupDetails &&
+    payment.periodEnd
+  ) {
+    sendWelcomeAfterResponse({
+      details: payment.signupDetails,
+      planName: (PLANS[payment.plan as PlanId] ?? PLANS.yearly).name,
+      periodEnd: payment.periodEnd,
+    });
+  }
 
   if (
     payment.purpose === "signup" &&

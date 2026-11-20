@@ -28,6 +28,8 @@ export const AuditAction = {
   ATTENDANCE_CORRECTED: "attendance.corrected",
   LEAVE_DECIDED: "leave.decided",
   BOOKING_DISCOUNT_APPLIED: "booking.discount_applied",
+  BOOKING_RATE_CHANGED: "booking.rate_changed",
+  VARIATION_RATE_UPDATED: "variation.rate_updated",
   BOOKING_CANCELLED: "booking.cancelled",
   BOOKING_PICKED_UP: "booking.picked_up",
   BOOKING_RETURNED: "booking.returned",

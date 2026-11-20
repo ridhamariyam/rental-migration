@@ -81,6 +81,8 @@ function emptyItem(defaultFromDate?: string, defaultToDate?: string) {
     toDate: defaultToDate ?? todayIso(),
     securityDeposit: "",
     quantity: "1",
+    rentAmount: "",
+    saveRateAsDefault: false,
   };
 }
 
@@ -164,6 +166,9 @@ export function BookingForm({
     form.setValue(`items.${index}.variationId`, item?.id ?? "", {
       shouldValidate: form.formState.isSubmitted,
     });
+    // A rate typed for the previous item never carries over to a new one.
+    form.setValue(`items.${index}.rentAmount`, "");
+    form.setValue(`items.${index}.saveRateAsDefault`, false);
     setFormError(null);
   }
 
@@ -446,6 +451,7 @@ export function BookingForm({
                       onQuoteChange={handleQuoteChange}
                       expanded={line.key === openKey}
                       onEdit={() => setEditingKey(line.key)}
+                      canChangeRate={canDiscount}
                     />
                   ))}
 

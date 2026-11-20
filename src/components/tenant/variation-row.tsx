@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation";
 import Image from "next/image";
 import {
   BarcodeIcon,
-  MoreHorizontalIcon,
   PencilIcon,
   ShirtIcon,
   Trash2Icon,
@@ -13,12 +12,6 @@ import {
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import {
   Select,
   SelectContent,
@@ -238,39 +231,40 @@ export function VariationRow({
     </Badge>
   );
 
+  // Always-visible actions — a "⋯" menu hid these from clients.
   const actionsMenu = (
-    <DropdownMenu>
-      <DropdownMenuTrigger
-        render={
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            aria-label={`Actions for ${variation.sku}`}
-          />
-        }
+    <div className="flex flex-wrap items-center justify-end gap-1.5">
+      <Button
+        variant="outline"
+        size="sm"
+        onClick={() => setEditOpen(true)}
+        aria-label={`Edit ${variation.sku}`}
       >
-        <MoreHorizontalIcon />
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end">
-        <DropdownMenuItem onClick={() => setEditOpen(true)}>
-          <PencilIcon />
-          Edit
-        </DropdownMenuItem>
-        <DropdownMenuItem onClick={() => setBarcodeOpen(true)}>
-          <BarcodeIcon />
-          Barcode
-        </DropdownMenuItem>
-        {canDelete ? (
-          <DropdownMenuItem
-            variant="destructive"
-            onClick={() => setDeleteOpen(true)}
-          >
-            <Trash2Icon />
-            Delete
-          </DropdownMenuItem>
-        ) : null}
-      </DropdownMenuContent>
-    </DropdownMenu>
+        <PencilIcon />
+        Edit
+      </Button>
+      <Button
+        variant="outline"
+        size="sm"
+        onClick={() => setBarcodeOpen(true)}
+        aria-label={`Barcode for ${variation.sku}`}
+      >
+        <BarcodeIcon />
+        Barcode
+      </Button>
+      {canDelete ? (
+        <Button
+          variant="outline"
+          size="sm"
+          className="text-destructive hover:text-destructive"
+          onClick={() => setDeleteOpen(true)}
+          aria-label={`Delete ${variation.sku}`}
+        >
+          <Trash2Icon />
+          Delete
+        </Button>
+      ) : null}
+    </div>
   );
 
   const dialogs = (
