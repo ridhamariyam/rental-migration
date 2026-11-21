@@ -138,6 +138,19 @@ function staffScopeCondition(
   );
 }
 
+/** Orders with at least one item from `outletId` — the same shape as the
+ * staff scope above, so an order spanning two outlets shows under both. */
+function outletFilterCondition(outletId: string | undefined) {
+  if (!outletId) return undefined;
+  return inArray(
+    bookings.id,
+    db
+      .select({ id: bookingItems.bookingId })
+      .from(bookingItems)
+      .where(eq(bookingItems.outletId, outletId)),
+  );
+}
+
 /**
  * Order reads, always scoped to the caller's own tenant. Search matches
  * the booking number or the customer's name/phone. One row per order —
@@ -349,7 +362,7 @@ export async function listBookings(
   query: BookingListQuery,
   actor: Pick<TenantSessionUser, "id" | "role" | "outletId">,
 ): Promise<BookingListResult> {
-  const { page, pageSize, q, status, customerId, view } = query;
+  const { page, pageSize, q, status, customerId, view, outletId } = query;
 
   const conditions = [eq(bookings.shopId, shopId)];
 
@@ -372,6 +385,11 @@ export async function listBookings(
 
   if (status !== "all") {
     conditions.push(eq(bookings.status, status));
+  }
+
+  const outletCondition = outletFilterCondition(outletId);
+  if (outletCondition) {
+    conditions.push(outletCondition);
   }
 
   if (customerId) {
@@ -505,10 +523,13 @@ export type BookingStats = {
 export async function getBookingStats(
   shopId: string,
   actor: Pick<TenantSessionUser, "id" | "role" | "outletId">,
+  /** The list's outlet filter, so the tiles count what the list shows. */
+  outletId?: string,
 ): Promise<BookingStats> {
   const scope = staffScopeCondition(actor);
+  const outletCondition = outletFilterCondition(outletId);
   const scopedWhere = (...extra: (ReturnType<typeof eq> | undefined)[]) =>
-    and(eq(bookings.shopId, shopId), scope, ...extra);
+    and(eq(bookings.shopId, shopId), scope, outletCondition, ...extra);
 
   const [totalRow, draftRow, cancelledRow, confirmedRow] = await Promise.all([
     db.select({ value: count() }).from(bookings).where(scopedWhere()),

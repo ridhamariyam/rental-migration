@@ -36,6 +36,7 @@ export async function NavNotifications({ user }: { user: TenantSessionUser }) {
         bookingNumber: item.bookingNumber,
         createdAt: item.createdAt,
         sentAt: item.sentAt,
+        lastError: item.lastError,
       }))}
       failedCount={items.filter((item) => item.status === "failed").length}
     />

@@ -20,7 +20,7 @@ import {
 } from "@/test/db";
 import { bookingItems } from "@/lib/db/schema";
 import { listStaff } from "@/server/staff/service";
-import { listBookings } from "@/server/bookings/service";
+import { getBookingStats, listBookings } from "@/server/bookings/service";
 import { listMaintenanceTasks } from "@/server/maintenance/service";
 import { createBooking } from "@/server/bookings/service";
 import {
@@ -159,6 +159,44 @@ test("a manager sees only bookings for their own outlet", async () => {
 
   const owner = await listBookings(fixture.shopId, bookingQuery, fixture.admin);
   assert.equal(owner.total, 2, "the owner sees both");
+});
+
+test("the owner can filter bookings (and their counts) by outlet", async () => {
+  await resetDatabase();
+  const fixture = await seedShop();
+  const otherOutlet = await seedOutlet(fixture.shopId);
+
+  const mine = await seedVariation(fixture, { quantity: 2 });
+  const theirs = await seedVariation(fixture, {
+    quantity: 2,
+    outletId: otherOutlet,
+  });
+
+  for (const variation of [mine, theirs, theirs]) {
+    await createBooking(fixture.admin, {
+      customerId: fixture.customerId,
+      items: [{ variationId: variation.id, fromDate: "2030-03-01", toDate: "2030-03-02", quantity: "1" }],
+    } as Parameters<typeof createBooking>[1]);
+  }
+
+  const atOther = await listBookings(
+    fixture.shopId,
+    { ...(bookingQuery as object), outletId: otherOutlet } as never,
+    fixture.admin,
+  );
+  assert.equal(atOther.total, 2, "only the orders with an item at that outlet");
+
+  const atMain = await listBookings(
+    fixture.shopId,
+    { ...(bookingQuery as object), outletId: fixture.outletId } as never,
+    fixture.admin,
+  );
+  assert.equal(atMain.total, 1);
+
+  const stats = await getBookingStats(fixture.shopId, fixture.admin, otherOutlet);
+  assert.equal(stats.total, 2, "the tiles count what the filtered list shows");
+  const allStats = await getBookingStats(fixture.shopId, fixture.admin);
+  assert.equal(allStats.total, 3);
 });
 
 test("a manager sees only their own outlet's maintenance queue", async () => {

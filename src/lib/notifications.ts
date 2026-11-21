@@ -146,8 +146,42 @@ export function notificationStatusTone(status: NotificationLogStatus) {
   if (status === "read" || status === "delivered" || status === "sent") {
     return "default";
   }
-  if (status === "failed" || status === "cancelled") {
+  if (status === "failed") {
     return "destructive";
   }
+  if (status === "cancelled") {
+    return "outline";
+  }
   return "secondary";
+}
+
+/** What a log row's status means to a shop owner. `cancelled` is how an
+ * event that happened but never went to WhatsApp is recorded (switched
+ * off, or not set up) — its `lastError` says why. */
+export function notificationStatusLabel(status: NotificationLogStatus): string {
+  if (status === "cancelled") return "Not sent";
+  return status.charAt(0).toUpperCase() + status.slice(1);
+}
+
+/**
+ * Why an enabled rule will not send, or `null` when it will (or is simply
+ * switched off). Mirrors the checks `resolveRuleTarget` makes before it
+ * queues anything — that function skips silently, so this is what the UI
+ * uses to say so out loud instead of the shop finding out from a customer.
+ */
+export function notificationRuleBlocker(
+  rule: Pick<NotificationRule, "isEnabled" | "whatsappNumberId" | "templateId">,
+  setup: { hasNumber: boolean; templateStatus: string | null | undefined },
+): string | null {
+  if (!rule.isEnabled) return null;
+  if (!rule.whatsappNumberId || !setup.hasNumber) {
+    return "no WhatsApp number picked";
+  }
+  if (!rule.templateId || !setup.templateStatus) {
+    return "no template picked";
+  }
+  if (setup.templateStatus.toLowerCase() !== "approved") {
+    return `template is ${setup.templateStatus.toLowerCase()} on MSG91, not approved`;
+  }
+  return null;
 }

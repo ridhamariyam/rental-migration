@@ -36,6 +36,9 @@ export const bookingListQuerySchema = z.object({
     .catch(undefined),
   status: z.enum(BOOKING_STATUS_FILTER_VALUES).catch("all"),
   customerId: z.string().trim().optional().catch(undefined),
+  /** Owner/manager cut by branch: orders with at least one item from this
+   * outlet. Outlet-scoped staff are already limited to their own. */
+  outletId: z.uuid().optional().catch(undefined),
   /** The operational cuts the dashboard tiles link to — answers about
    * *dates and money* that a plain status filter cannot express ("what
    * goes out today", "what is late back", "who still owes"). Kept as its

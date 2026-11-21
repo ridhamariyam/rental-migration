@@ -13,6 +13,7 @@ import { DashboardOperationsTiles } from "@/components/tenant/dashboard-operatio
 import { DashboardOperationsTilesSkeleton } from "@/components/tenant/dashboard-operations-tiles-skeleton";
 import { DashboardStatsTiles } from "@/components/tenant/dashboard-stats-tiles";
 import { DashboardStatsTilesSkeleton } from "@/components/tenant/dashboard-stats-tiles-skeleton";
+import { NotificationSetupAlert } from "@/components/tenant/notification-setup-alert";
 import { OnboardingChecklist } from "@/components/tenant/onboarding-checklist";
 import { OnboardingChecklistSkeleton } from "@/components/tenant/onboarding-checklist-skeleton";
 import { RevenueTrendSectionSkeleton } from "@/components/tenant/revenue-trend-section-skeleton";
@@ -70,6 +71,10 @@ export default async function TenantDashboardPage() {
 
   const shop = user.shopId ? await getTenantById(user.shopId) : null;
   const canViewReports = hasPermission(user.role, Permission.REPORT_VIEW);
+  const canManageNotifications = hasPermission(
+    user.role,
+    Permission.NOTIFICATION_MANAGE,
+  );
 
   return (
     <main className="flex flex-1 flex-col gap-4.5 p-5 sm:p-6">
@@ -101,6 +106,12 @@ export default async function TenantDashboardPage() {
           ))}
         </div>
       </div>
+
+      {canManageNotifications && user.shopId ? (
+        <Suspense fallback={null}>
+          <NotificationSetupAlert shopId={user.shopId} />
+        </Suspense>
+      ) : null}
 
       {/* Work to do, not money earned. The counts are scoped by role
           (`staffScopeCondition`), so a staff account sees its own outlet's

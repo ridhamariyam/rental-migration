@@ -20,7 +20,10 @@ import {
 } from "@/lib/db/schema";
 import { createBooking } from "@/server/bookings/service";
 import { recordPayment } from "@/server/payments/service";
-import { ensureDefaultNotificationRules } from "@/server/notifications/service";
+import {
+  ensureDefaultNotificationRules,
+  retryNotification,
+} from "@/server/notifications/service";
 
 /**
  * A rule only produces a log row once it has a number and a template, so
@@ -194,4 +197,62 @@ test("default notification rules survive concurrent seeding", async () => {
   const unique = new Set(rows.map((row) => row.event));
   assert.equal(rows.length, unique.size, "no duplicate rules");
   assert.ok(rows.length > 0, "the defaults were actually seeded");
+});
+
+test("without WhatsApp set up, the confirmation is still recorded in-app as not sent", async () => {
+  await resetDatabase();
+  const fixture = await seedShop();
+  // No wireNotifications: the default rules exist but have no number or
+  // template — the state every new shop starts in.
+
+  const variation = await seedVariation(fixture, { quantity: 2 });
+  const created = await createBooking(fixture.admin, {
+    customerId: fixture.customerId,
+    items: [
+      {
+        variationId: variation.id,
+        fromDate: "2030-11-01",
+        toDate: "2030-11-03",
+        quantity: "1",
+      },
+    ],
+    advanceAmount: "500.00",
+    advancePaymentMethod: "cash",
+  } as Parameters<typeof createBooking>[1]);
+
+  const rows = await db
+    .select()
+    .from(notificationLogs)
+    .where(eq(notificationLogs.bookingId, created.booking.id));
+  const confirmation = rows.find((row) => row.event === "booking_confirmed");
+
+  assert.ok(confirmation, "the event appears in the notification log");
+  assert.equal(confirmation.status, "cancelled", "never handed to the dispatcher");
+  assert.match(confirmation.lastError ?? "", /^Not sent: /);
+
+  await recordPayment(fixture.admin, created.booking.id, {
+    amount: "200.00",
+    paymentType: "balance",
+    paymentMethod: "cash",
+  } as Parameters<typeof recordPayment>[2]);
+  const [paymentLog] = await db
+    .select()
+    .from(notificationLogs)
+    .where(
+      and(
+        eq(notificationLogs.bookingId, created.booking.id),
+        eq(notificationLogs.event, "payment_received"),
+      ),
+    );
+  assert.equal(
+    paymentLog?.status,
+    "cancelled",
+    "every event is recorded, not just the confirmation",
+  );
+
+  await assert.rejects(
+    retryNotification(fixture.shopId, confirmation.id),
+    /can't be retried/,
+    "a message with no number/template has nothing to retry with",
+  );
 });

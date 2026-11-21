@@ -12,7 +12,11 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { tenantPaths } from "@/lib/tenant-paths";
 import { formatDateTime } from "@/lib/format";
-import { NOTIFICATION_EVENT_LABELS } from "@/lib/notifications";
+import {
+  NOTIFICATION_EVENT_LABELS,
+  notificationStatusLabel,
+  type NotificationLogStatus,
+} from "@/lib/notifications";
 
 export type NavNotification = {
   id: string;
@@ -23,6 +27,8 @@ export type NavNotification = {
   bookingNumber: string | null;
   createdAt: Date;
   sentAt: Date | null;
+  /** Why it failed or wasn't sent. */
+  lastError: string | null;
 };
 
 const TONE: Record<string, string> = {
@@ -32,7 +38,7 @@ const TONE: Record<string, string> = {
   queued: "bg-muted text-muted-foreground",
   sending: "bg-muted text-muted-foreground",
   failed: "bg-destructive/10 text-destructive",
-  cancelled: "text-muted-foreground",
+  cancelled: "bg-amber-500/10 text-amber-700 dark:text-amber-300",
 };
 
 /**
@@ -90,7 +96,7 @@ export function NavNotificationsBell({
 
         {notifications.length === 0 ? (
           <p className="text-muted-foreground px-3 py-6 text-center text-sm">
-            Nothing sent yet. Messages appear here as bookings go out.
+            Nothing yet. Every booking, payment, pickup and return message shows up here.
           </p>
         ) : (
           <ul className="divide-border/50 divide-y">
@@ -111,7 +117,9 @@ export function NavNotificationsBell({
                       "bg-muted text-muted-foreground"
                     }`}
                   >
-                    {notification.status}
+                    {notificationStatusLabel(
+                      notification.status as NotificationLogStatus,
+                    )}
                   </span>
                 </div>
                 <span className="text-muted-foreground truncate text-xs">
@@ -124,6 +132,13 @@ export function NavNotificationsBell({
                     notification.sentAt ?? notification.createdAt,
                   )}
                 </span>
+                {(notification.status === "cancelled" ||
+                  notification.status === "failed") &&
+                notification.lastError ? (
+                  <span className="text-muted-foreground line-clamp-2 text-xs">
+                    {notification.lastError}
+                  </span>
+                ) : null}
               </li>
             ))}
           </ul>

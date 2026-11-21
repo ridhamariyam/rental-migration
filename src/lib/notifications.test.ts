@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   buildTemplateComponents,
   normalizeWhatsAppPhone,
+  notificationRuleBlocker,
 } from "@/lib/notifications";
 
 test("normalizes a 10 digit Indian WhatsApp number with the default country code", () => {
@@ -27,5 +28,39 @@ test("maps configured template component slots from notification context", () =>
       body_1: { type: "text", value: "Ridha" },
       body_2: { type: "text", value: "BK-001" },
     },
+  );
+});
+
+test("rule blocker: a switched-off rule is never reported", () => {
+  const rule = { isEnabled: false, whatsappNumberId: null, templateId: null };
+  assert.equal(
+    notificationRuleBlocker(rule, { hasNumber: false, templateStatus: null }),
+    null,
+  );
+});
+
+test("rule blocker: names what an enabled rule is missing", () => {
+  const on = { isEnabled: true, whatsappNumberId: "n1", templateId: "t1" };
+  assert.equal(
+    notificationRuleBlocker(
+      { ...on, whatsappNumberId: null },
+      { hasNumber: false, templateStatus: "APPROVED" },
+    ),
+    "no WhatsApp number picked",
+  );
+  assert.equal(
+    notificationRuleBlocker(
+      { ...on, templateId: null },
+      { hasNumber: true, templateStatus: null },
+    ),
+    "no template picked",
+  );
+  assert.match(
+    notificationRuleBlocker(on, { hasNumber: true, templateStatus: "PENDING" }) ?? "",
+    /pending/,
+  );
+  assert.equal(
+    notificationRuleBlocker(on, { hasNumber: true, templateStatus: "APPROVED" }),
+    null,
   );
 });

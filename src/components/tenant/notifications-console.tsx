@@ -22,6 +22,8 @@ import {
   NOTIFICATION_EVENT_SCOPE,
   NOTIFICATION_EVENTS,
   NOTIFICATION_VARIABLES,
+  notificationRuleBlocker,
+  notificationStatusLabel,
   notificationStatusTone,
   type NotificationEvent,
 } from "@/lib/notifications";
@@ -112,6 +114,8 @@ type Log = {
   attempts: number;
   scheduledFor: string | Date | null;
   sentAt: string | Date | null;
+  createdAt: string | Date;
+  lastError: string | null;
   bookingNumber: string | null;
   customerName: string | null;
 };
@@ -181,6 +185,18 @@ export function NotificationsConsole({
   const numberById = useMemo(
     () => new Map(dashboard.numbers.map((number) => [number.id, number])),
     [dashboard.numbers],
+  );
+  // Same check the server makes before queueing — computed from the live
+  // `rules` state so toggling a rule updates the warning immediately.
+  const blockedRules = rules.filter((rule) =>
+    notificationRuleBlocker(rule, {
+      hasNumber: Boolean(
+        rule.whatsappNumberId && numberById.has(rule.whatsappNumberId),
+      ),
+      templateStatus: rule.templateId
+        ? templateById.get(rule.templateId)?.status
+        : null,
+    }),
   );
 
   function run(action: () => Promise<void>) {
@@ -641,6 +657,20 @@ export function NotificationsConsole({
           </p>
         </CardHeader>
         <CardContent className="space-y-2">
+          {blockedRules.length > 0 ? (
+            <p className="border-destructive/25 bg-destructive/5 text-destructive rounded-lg border px-3 py-2 text-sm">
+              <strong>
+                {blockedRules.length === 1
+                  ? "1 message is"
+                  : `${blockedRules.length} messages are`}{" "}
+                switched on but not sending:
+              </strong>{" "}
+              {blockedRules
+                .map((rule) => NOTIFICATION_EVENT_LABELS[rule.event])
+                .join(", ")}
+              .
+            </p>
+          ) : null}
           {rules.map((rule) => {
             const scope = NOTIFICATION_EVENT_SCOPE[rule.event];
             const number = rule.whatsappNumberId
@@ -649,6 +679,10 @@ export function NotificationsConsole({
             const template = rule.templateId
               ? templateById.get(rule.templateId)
               : null;
+            const blocker = notificationRuleBlocker(rule, {
+              hasNumber: Boolean(number),
+              templateStatus: template?.status,
+            });
 
             return (
               <button
@@ -679,19 +713,25 @@ export function NotificationsConsole({
                         ? `${number.integratedNumber} · ${template.name}`
                         : "Not set up yet"}
                     </p>
-                    {rule.isEnabled &&
-                    template &&
-                    template.status.toLowerCase() !== "approved" ? (
+                    {blocker ? (
                       <p className="text-destructive text-xs">
-                        Template is {template.status} on MSG91 — nothing is
-                        sent for this event until it is approved and
-                        templates are synced again.
+                        Not sending: {blocker}. Click to finish setting it
+                        up, or switch it off.
                       </p>
                     ) : null}
                   </div>
                 </div>
-                <Badge variant={rule.isEnabled ? "default" : "secondary"}>
-                  {rule.isEnabled ? "On" : "Off"}
+                <Badge
+                  variant={
+                    blocker
+                      ? "destructive"
+                      : rule.isEnabled
+                        ? "default"
+                        : "secondary"
+                  }
+                  className="shrink-0"
+                >
+                  {blocker ? "Not sending" : rule.isEnabled ? "On" : "Off"}
                 </Badge>
               </button>
             );
@@ -968,18 +1008,22 @@ export function NotificationsConsole({
                 }
                 badge={
                   <Badge variant={notificationStatusTone(log.status)}>
-                    {log.status}
+                    {notificationStatusLabel(log.status)}
                   </Badge>
                 }
                 meta={
                   <>
                     {log.sentAt
                       ? formatDateTime(log.sentAt)
-                      : log.scheduledFor
-                        ? formatDateTime(log.scheduledFor)
-                        : "Queued"}{" "}
+                      : log.status === "cancelled"
+                        ? formatDateTime(log.createdAt)
+                        : log.scheduledFor
+                          ? formatDateTime(log.scheduledFor)
+                          : "Queued"}{" "}
                     · {NOTIFICATION_EVENT_LABELS[log.event]} ·{" "}
-                    {log.templateName}
+                    {log.status === "cancelled" || log.status === "failed"
+                      ? (log.lastError ?? log.templateName)
+                      : log.templateName}
                     {log.bookingNumber ? ` · ${log.bookingNumber}` : ""}
                   </>
                 }
@@ -1042,11 +1086,17 @@ export function NotificationsConsole({
                     <TableCell>
                       {NOTIFICATION_EVENT_LABELS[log.event]}
                     </TableCell>
-                    <TableCell>{log.templateName}</TableCell>
-                    <TableCell>
+                    <TableCell>{log.templateName || "-"}</TableCell>
+                    <TableCell className="whitespace-normal">
                       <Badge variant={notificationStatusTone(log.status)}>
-                        {log.status}
+                        {notificationStatusLabel(log.status)}
                       </Badge>
+                      {(log.status === "cancelled" || log.status === "failed") &&
+                      log.lastError ? (
+                        <p className="text-muted-foreground mt-1 max-w-56 text-xs">
+                          {log.lastError}
+                        </p>
+                      ) : null}
                     </TableCell>
                     <TableCell>
                       <Button

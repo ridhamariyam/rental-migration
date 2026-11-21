@@ -11,7 +11,9 @@ import { getCurrentUser } from "@/lib/auth/session";
 import { hasPermission, Permission } from "@/lib/auth/permissions";
 import { tenantPaths } from "@/lib/tenant-paths";
 import { bookingListQuerySchema } from "@/lib/validation/bookings";
+import { isOutletScoped } from "@/server/auth/guard";
 import { getBookingStats } from "@/server/bookings/service";
+import { listActiveOutletsForSelect } from "@/server/outlets/service";
 
 export const metadata = {
   title: "Bookings — Rentique",
@@ -56,9 +58,17 @@ export default async function BookingsPage({
     status: rawParams.status,
     customerId: rawParams.customerId,
     view: rawParams.view,
+    outletId: rawParams.outletId,
   });
 
-  const stats = await getBookingStats(user.shopId, user);
+  // Outlet-scoped staff only ever see their own outlet, so they get no
+  // picker (and any ?outletId= they type is moot — the scope still applies).
+  const [stats, outlets] = await Promise.all([
+    getBookingStats(user.shopId, user, query.outletId),
+    isOutletScoped(user)
+      ? Promise.resolve([])
+      : listActiveOutletsForSelect(user.shopId),
+  ]);
 
   return (
     <main className="flex flex-1 flex-col gap-6 p-6">
@@ -108,6 +118,8 @@ export default async function BookingsPage({
           <BookingFilters
             defaultQuery={query.q ?? ""}
             defaultStatus={query.status}
+            defaultOutletId={query.outletId ?? "all"}
+            outlets={outlets}
           />
         </div>
 

@@ -52,6 +52,9 @@ function bookingsHref(query: BookingListQuery, page: number): string {
   const params = new URLSearchParams();
   if (query.q) params.set("q", query.q);
   if (query.status !== "all") params.set("status", query.status);
+  if (query.view !== "all") params.set("view", query.view);
+  if (query.outletId) params.set("outletId", query.outletId);
+  if (query.customerId) params.set("customerId", query.customerId);
   if (page > 1) params.set("page", String(page));
   const search = params.toString();
   return `${tenantPaths.bookings}${search ? `?${search}` : ""}`;

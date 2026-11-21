@@ -111,9 +111,11 @@ async function storedTemplate(shopId: string, name: string) {
   return row;
 }
 
+/** Confirmations that will actually go out — "Not sent" records (logged
+ * so the in-app list is complete) don't count. */
 async function confirmationsFor(bookingId: string): Promise<number> {
   const rows = await db
-    .select({ id: notificationLogs.id })
+    .select({ status: notificationLogs.status })
     .from(notificationLogs)
     .where(
       and(
@@ -121,7 +123,20 @@ async function confirmationsFor(bookingId: string): Promise<number> {
         eq(notificationLogs.event, "booking_confirmed"),
       ),
     );
-  return rows.length;
+  return rows.filter((row) => row.status !== "cancelled").length;
+}
+
+async function notSentReasonFor(bookingId: string): Promise<string | null> {
+  const [row] = await db
+    .select({ status: notificationLogs.status, lastError: notificationLogs.lastError })
+    .from(notificationLogs)
+    .where(
+      and(
+        eq(notificationLogs.bookingId, bookingId),
+        eq(notificationLogs.event, "booking_confirmed"),
+      ),
+    );
+  return row?.status === "cancelled" ? row.lastError : null;
 }
 
 async function bookWithAdvance(fixture: Fixture, variationId: string) {
@@ -165,6 +180,11 @@ test("a template back in Meta review syncs as pending and stops confirmations, t
     await confirmationsFor(whileInReview.booking.id),
     0,
     "a pending template must not be used to send",
+  );
+  assert.match(
+    (await notSentReasonFor(whileInReview.booking.id)) ?? "",
+    /^Not sent: Template is pending/,
+    "the event is still recorded in-app, with why it didn't go out",
   );
 
   stubMsg91Templates([msg91Template("booking_confirmed", "approved", CONFIRMED_VARS)]);

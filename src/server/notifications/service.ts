@@ -52,6 +52,7 @@ import {
   NOTIFICATION_EVENTS,
   buildTemplateComponents,
   normalizeWhatsAppPhone,
+  notificationRuleBlocker,
   type NotificationEvent,
 } from "@/lib/notifications";
 import type {
@@ -215,6 +216,65 @@ export async function listNotificationRules(
     .orderBy(notificationRules.event);
 
   return rows.map((row) => ({ ...row, event: row.event as NotificationEvent }));
+}
+
+export type NotificationSetupIssue = {
+  event: NotificationEvent;
+  reason: string;
+};
+
+/**
+ * Every enabled rule that would be skipped at queue time, with the reason —
+ * the same checks `resolveRuleTarget` makes, so "switched on" and "actually
+ * sends" can't quietly disagree. Empty when everything that's on will send.
+ */
+export async function getNotificationSetupIssues(
+  shopId: string,
+): Promise<NotificationSetupIssue[]> {
+  await ensureDefaultNotificationRules(shopId);
+
+  const rows = await db
+    .select({
+      event: notificationRules.event,
+      isEnabled: notificationRules.isEnabled,
+      whatsappNumberId: notificationRules.whatsappNumberId,
+      templateId: notificationRules.templateId,
+      numberId: whatsappNumbers.id,
+      templateStatus: whatsappTemplates.status,
+    })
+    .from(notificationRules)
+    .leftJoin(
+      whatsappTemplates,
+      and(
+        eq(notificationRules.templateId, whatsappTemplates.id),
+        eq(whatsappTemplates.shopId, shopId),
+      ),
+    )
+    .leftJoin(
+      whatsappNumbers,
+      and(
+        eq(notificationRules.whatsappNumberId, whatsappNumbers.id),
+        eq(whatsappNumbers.shopId, shopId),
+      ),
+    )
+    .where(
+      and(
+        eq(notificationRules.shopId, shopId),
+        eq(notificationRules.isEnabled, true),
+        inArray(notificationRules.event, NOTIFICATION_EVENTS),
+      ),
+    )
+    .orderBy(notificationRules.event);
+
+  return rows.flatMap((row) => {
+    const reason = notificationRuleBlocker(row, {
+      hasNumber: row.numberId !== null,
+      templateStatus: row.templateStatus,
+    });
+    return reason
+      ? [{ event: row.event as NotificationEvent, reason }]
+      : [];
+  });
 }
 
 export async function updateNotificationRules(
@@ -754,19 +814,54 @@ type NotificationTarget = {
 };
 
 type ResolvedRuleTarget = {
+  skipped?: undefined;
   rule: NotificationRule;
   number: WhatsappNumber;
   template: WhatsappTemplate;
 };
 
-/** Looks up the enabled rule + connected number + approved template for
- * one shop/event, or `null` if any leg isn't ready to send — the one
- * check every queue function needs before it can build a message. */
+/** An event that happened but won't go out on WhatsApp — still logged so
+ * the in-app notification list is a complete record ("Not sent: …"). */
+type SkippedRuleTarget = {
+  skipped: string;
+  rule: NotificationRule | null;
+};
+
+type RuleOutcome = ResolvedRuleTarget | SkippedRuleTarget;
+
+function isSkipped(target: RuleOutcome): target is SkippedRuleTarget {
+  return typeof target.skipped === "string";
+}
+
+/**
+ * Recording a "not sent" event is bookkeeping for the in-app list — it
+ * must never fail the booking, payment or cron tick that triggered it
+ * (e.g. an imported customer whose phone can't be normalised). Real sends
+ * keep their existing behaviour.
+ */
+async function bestEffortIfSkipped<T>(
+  target: RuleOutcome,
+  record: () => Promise<T>,
+): Promise<T | null> {
+  if (!isSkipped(target)) return record();
+  try {
+    return await record();
+  } catch (error) {
+    console.warn(
+      `[notifications] could not record not-sent event: ${error instanceof Error ? error.message : error}`,
+    );
+    return null;
+  }
+}
+
+/** Looks up the rule + connected number + approved template for one
+ * shop/event. When any leg isn't ready it says why instead of returning
+ * nothing, so every queue function can record the event as not sent. */
 async function resolveRuleTarget(
   database: DbOrTx,
   shopId: string,
   event: NotificationEvent,
-): Promise<ResolvedRuleTarget | null> {
+): Promise<RuleOutcome> {
   const [rule] = await database
     .select()
     .from(notificationRules)
@@ -777,31 +872,42 @@ async function resolveRuleTarget(
       ),
     )
     .limit(1);
-  if (!rule?.isEnabled || !rule.templateId || !rule.whatsappNumberId)
-    return null;
+  if (!rule) return { skipped: "No rule for this event", rule: null };
+  if (!rule.isEnabled) return { skipped: "Switched off", rule };
 
-  const [number] = await database
-    .select()
-    .from(whatsappNumbers)
-    .where(
-      and(
-        eq(whatsappNumbers.id, rule.whatsappNumberId),
-        eq(whatsappNumbers.shopId, shopId),
-      ),
-    )
-    .limit(1);
-  const [template] = await database
-    .select()
-    .from(whatsappTemplates)
-    .where(
-      and(
-        eq(whatsappTemplates.id, rule.templateId),
-        eq(whatsappTemplates.shopId, shopId),
-      ),
-    )
-    .limit(1);
-  if (!number || !template || template.status.toLowerCase() !== "approved")
-    return null;
+  const [number] = rule.whatsappNumberId
+    ? await database
+        .select()
+        .from(whatsappNumbers)
+        .where(
+          and(
+            eq(whatsappNumbers.id, rule.whatsappNumberId),
+            eq(whatsappNumbers.shopId, shopId),
+          ),
+        )
+        .limit(1)
+    : [];
+  const [template] = rule.templateId
+    ? await database
+        .select()
+        .from(whatsappTemplates)
+        .where(
+          and(
+            eq(whatsappTemplates.id, rule.templateId),
+            eq(whatsappTemplates.shopId, shopId),
+          ),
+        )
+        .limit(1)
+    : [];
+
+  const blocker = notificationRuleBlocker(rule, {
+    hasNumber: Boolean(number),
+    templateStatus: template?.status,
+  });
+  if (blocker || !number || !template) {
+    const reason = blocker ?? "not set up";
+    return { skipped: reason.charAt(0).toUpperCase() + reason.slice(1), rule };
+  }
 
   return { rule, number, template };
 }
@@ -810,7 +916,7 @@ async function resolveRuleTarget(
  * at, so crqid/component-building/log shape never drifts between them. */
 async function insertNotificationLog(
   database: DbOrTx,
-  target: ResolvedRuleTarget,
+  target: RuleOutcome,
   params: {
     shopId: string;
     bookingId: string;
@@ -822,6 +928,30 @@ async function insertNotificationLog(
     scheduledFor: Date | null;
   },
 ): Promise<NotificationLog> {
+  if (isSkipped(target)) {
+    // Recorded, never dispatched: the dispatcher only claims `queued`.
+    const skippedId = randomUUID();
+    const [skippedLog] = await database
+      .insert(notificationLogs)
+      .values({
+        id: skippedId,
+        crqid: skippedId.replace(/-/g, "").slice(0, 52),
+        shopId: params.shopId,
+        bookingId: params.bookingId,
+        bookingItemId: params.bookingItemId,
+        recipientPhone: params.recipientPhone,
+        recipientName: params.recipientName,
+        event: params.event,
+        integratedNumber: "",
+        templateName: "",
+        payload: { context: params.values, skipped: true },
+        status: "cancelled",
+        lastError: `Not sent: ${target.skipped}`,
+      })
+      .returning();
+    return skippedLog;
+  }
+
   const { rule, number, template } = target;
   const components = buildTemplateComponents(
     rule.variableMapping,
@@ -1082,7 +1212,6 @@ export async function queueBookingNotification(
   await ensureDefaultNotificationRules(booking.shopId, database);
 
   const target = await resolveRuleTarget(database, booking.shopId, event);
-  if (!target) return null;
 
   const scope = NOTIFICATION_EVENT_SCOPE[event];
   if (scope === "item" && !options.itemId) {
@@ -1114,30 +1243,32 @@ export async function queueBookingNotification(
     if (existing) return existing;
   }
 
-  const context =
-    scope === "item"
-      ? await buildItemContext(
-          database,
-          booking.id,
-          itemId as string,
-          options.extraContext,
-        )
-      : await buildOrderContext(database, booking.id, options.extraContext);
+  return bestEffortIfSkipped(target, async () => {
+    const context =
+      scope === "item"
+        ? await buildItemContext(
+            database,
+            booking.id,
+            itemId as string,
+            options.extraContext,
+          )
+        : await buildOrderContext(database, booking.id, options.extraContext);
 
-  const scheduledFor = offsetDate(
-    options.scheduledFor,
-    target.rule.scheduleOffsetMinutes,
-  );
+    const scheduledFor = offsetDate(
+      options.scheduledFor,
+      target.rule?.scheduleOffsetMinutes ?? 0,
+    );
 
-  return insertNotificationLog(database, target, {
-    shopId: booking.shopId,
-    bookingId: booking.id,
-    bookingItemId: itemId,
-    event,
-    recipientPhone: context.recipientPhone,
-    recipientName: context.recipientName,
-    values: context.values,
-    scheduledFor,
+    return insertNotificationLog(database, target, {
+      shopId: booking.shopId,
+      bookingId: booking.id,
+      bookingItemId: itemId,
+      event,
+      recipientPhone: context.recipientPhone,
+      recipientName: context.recipientName,
+      values: context.values,
+      scheduledFor,
+    });
   });
 }
 
@@ -1243,13 +1374,14 @@ async function queueDatedReminders(
   // One rule lookup per shop rather than per item — same batching the
   // overdue scan documents below.
   const shopIds = [...new Set(dueItems.map((item) => item.shopId))];
-  const targets = new Map<string, ResolvedRuleTarget | null>();
+  const targets = new Map<string, RuleOutcome>();
   for (const shopId of shopIds) {
     targets.set(shopId, await resolveRuleTarget(db, shopId, event));
   }
 
-  const candidates = dueItems.filter((item) => targets.get(item.shopId));
-  if (candidates.length === 0) return 0;
+  // Every due item is recorded — sent or "not sent" — so the in-app list
+  // shows the reminder day even for shops without WhatsApp set up.
+  const candidates = dueItems;
 
   // One query for everything already queued/sent for these items, instead
   // of a lookup per item per tick.
@@ -1273,25 +1405,27 @@ async function queueDatedReminders(
     const target = targets.get(item.shopId);
     if (!target) continue;
 
-    const context = await buildItemContext(db, item.bookingId, item.itemId);
-    await insertNotificationLog(db, target, {
-      shopId: item.shopId,
-      bookingId: item.bookingId,
-      bookingItemId: item.itemId,
-      event,
-      recipientPhone: context.recipientPhone,
-      recipientName: context.recipientName,
-      values: context.values,
-      // Sent at a civil hour today rather than whenever the cron happens
-      // to tick, with the shop's own rule offset applied on top.
-      scheduledFor: offsetDate(
-        atLocalHour(toDateString(now)),
-        target.rule.scheduleOffsetMinutes,
-      ),
+    const log = await bestEffortIfSkipped(target, async () => {
+      const context = await buildItemContext(db, item.bookingId, item.itemId);
+      return insertNotificationLog(db, target, {
+        shopId: item.shopId,
+        bookingId: item.bookingId,
+        bookingItemId: item.itemId,
+        event,
+        recipientPhone: context.recipientPhone,
+        recipientName: context.recipientName,
+        values: context.values,
+        // Sent at a civil hour today rather than whenever the cron happens
+        // to tick, with the shop's own rule offset applied on top.
+        scheduledFor: offsetDate(
+          atLocalHour(toDateString(now)),
+          target.rule?.scheduleOffsetMinutes ?? 0,
+        ),
+      });
     });
     // Nothing else in this tick should queue it again.
     seen.add(item.itemId);
-    queued += 1;
+    if (log && !isSkipped(target)) queued += 1;
   }
 
   return queued;
@@ -1410,9 +1544,10 @@ export async function queueOwnerBookingNotification(
   await ensureDefaultNotificationRules(booking.shopId, database);
 
   const target = await resolveRuleTarget(database, booking.shopId, event);
-  if (!target) return null;
 
-  const context = await buildOwnerItemContext(database, booking.id, itemId);
+  const context = await bestEffortIfSkipped(target, () =>
+    buildOwnerItemContext(database, booking.id, itemId),
+  );
   if (!context) return null;
 
   const [existing] = await database
@@ -1437,7 +1572,7 @@ export async function queueOwnerBookingNotification(
     recipientPhone: context.recipientPhone,
     recipientName: context.recipientName,
     values: context.values,
-    scheduledFor: offsetDate(null, target.rule.scheduleOffsetMinutes),
+    scheduledFor: offsetDate(null, target.rule?.scheduleOffsetMinutes ?? 0),
   });
 }
 
@@ -1483,7 +1618,7 @@ export async function queueOverdueReminders(now = new Date()): Promise<number> {
 
   // 1. One rule lookup per *shop*, not per item.
   const shopIds = [...new Set(overdueItems.map((item) => item.shopId))];
-  const targets = new Map<string, ResolvedRuleTarget | null>();
+  const targets = new Map<string, RuleOutcome>();
   for (const shopId of shopIds) {
     targets.set(
       shopId,
@@ -1491,8 +1626,7 @@ export async function queueOverdueReminders(now = new Date()): Promise<number> {
     );
   }
 
-  const candidates = overdueItems.filter((item) => targets.get(item.shopId));
-  if (candidates.length === 0) return 0;
+  const candidates = overdueItems;
 
   // 2. One prior-log query for every candidate, aggregated in the
   //    database, instead of fetching each item's whole log history.
@@ -1525,7 +1659,7 @@ export async function queueOverdueReminders(now = new Date()): Promise<number> {
 
     const stats = statsByItem.get(item.itemId);
     const alreadySent = stats?.sent ?? 0;
-    if (alreadySent >= target.rule.repeatLimit) continue;
+    if (alreadySent >= (target.rule?.repeatLimit ?? 1)) continue;
 
     const lastSentHoursAgo = stats?.lastAt
       ? (now.getTime() - new Date(stats.lastAt).getTime()) / (1000 * 60 * 60)
@@ -1534,18 +1668,20 @@ export async function queueOverdueReminders(now = new Date()): Promise<number> {
 
     // 3. Only build the (expensive, multi-join) context for items that
     //    have actually earned another reminder.
-    const context = await buildItemContext(db, item.bookingId, item.itemId);
-    await insertNotificationLog(db, target, {
-      shopId: item.shopId,
-      bookingId: item.bookingId,
-      bookingItemId: item.itemId,
-      event: "overdue_reminder",
-      recipientPhone: context.recipientPhone,
-      recipientName: context.recipientName,
-      values: context.values,
-      scheduledFor: null,
+    const log = await bestEffortIfSkipped(target, async () => {
+      const context = await buildItemContext(db, item.bookingId, item.itemId);
+      return insertNotificationLog(db, target, {
+        shopId: item.shopId,
+        bookingId: item.bookingId,
+        bookingItemId: item.itemId,
+        event: "overdue_reminder",
+        recipientPhone: context.recipientPhone,
+        recipientName: context.recipientName,
+        values: context.values,
+        scheduledFor: null,
+      });
     });
-    queued += 1;
+    if (log && !isSkipped(target)) queued += 1;
   }
 
   return queued;
@@ -1555,6 +1691,21 @@ export async function retryNotification(
   shopId: string,
   id: string,
 ): Promise<NotificationLog> {
+  const [current] = await db
+    .select({ payload: notificationLogs.payload })
+    .from(notificationLogs)
+    .where(
+      and(eq(notificationLogs.id, id), eq(notificationLogs.shopId, shopId)),
+    )
+    .limit(1);
+  if (!current) throw AppError.notFound("Notification not found");
+  if ((current.payload as { skipped?: boolean }).skipped) {
+    throw new AppError(
+      "This message was never sent because WhatsApp wasn't set up for it — it can't be retried.",
+      400,
+    );
+  }
+
   const [log] = await db
     .update(notificationLogs)
     .set({

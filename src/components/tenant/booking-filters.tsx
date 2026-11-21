@@ -41,10 +41,18 @@ const STATUS_LABELS: Record<string, string> = {
 export function BookingFilters({
   defaultQuery,
   defaultStatus,
+  defaultOutletId = "all",
+  outlets = [],
 }: {
   defaultQuery: string;
   defaultStatus: string;
+  defaultOutletId?: string;
+  outlets?: { id: string; name: string }[];
 }) {
+  const outletLabels: Record<string, string> = {
+    all: "All outlets",
+    ...Object.fromEntries(outlets.map((o) => [o.id, o.name])),
+  };
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -80,8 +88,8 @@ export function BookingFilters({
   }
 
   return (
-    <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-      <div className="relative sm:max-w-xs sm:flex-1">
+    <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
+      <div className="relative sm:max-w-xs sm:min-w-56 sm:flex-1">
         <SearchIcon className="text-muted-foreground pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2" />
         <Input
           value={value}
@@ -91,6 +99,29 @@ export function BookingFilters({
           className="pl-8"
         />
       </div>
+
+      {outlets.length > 1 ? (
+        <Select
+          defaultValue={defaultOutletId}
+          onValueChange={(next) =>
+            updateParams({ outletId: next === "all" ? null : next })
+          }
+        >
+          <SelectTrigger className="w-full sm:w-44" aria-label="Outlet">
+            <SelectValue placeholder="Outlet">
+              {(value: string) => outletLabels[value] ?? "Outlet"}
+            </SelectValue>
+          </SelectTrigger>
+          <SelectContent alignItemWithTrigger={false}>
+            <SelectItem value="all">All outlets</SelectItem>
+            {outlets.map((outlet) => (
+              <SelectItem key={outlet.id} value={outlet.id}>
+                {outlet.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      ) : null}
 
       <Select
         defaultValue={defaultStatus}
