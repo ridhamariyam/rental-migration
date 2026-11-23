@@ -163,6 +163,17 @@ export const maintenanceStatusEnum = pgEnum("maintenance_status", [
 ]);
 
 /**
+ * An outlet-to-outlet stock move (`stock_transfers`). `in_transit` from the
+ * moment it is sent until the assigned receiver confirms it arrived
+ * (`received`), or the sender/owner calls it off (`cancelled`).
+ */
+export const transferStatusEnum = pgEnum("transfer_status", [
+  "in_transit",
+  "received",
+  "cancelled",
+]);
+
+/**
  * One staff attendance day's state (doc §17), mirroring the legacy
  * backend's `AttendanceStatus`. `present` is written by a normal geofenced
  * check-in; `corrected` is set whenever an owner edits a recorded day

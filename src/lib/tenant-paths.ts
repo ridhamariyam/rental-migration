@@ -17,6 +17,8 @@ export const tenantPaths = {
   bookings: "/dashboard/bookings",
   newBooking: "/dashboard/bookings/new",
   maintenance: "/dashboard/maintenance",
+  transfers: "/dashboard/transfers",
+  newTransfer: "/dashboard/transfers/new",
   attendance: "/dashboard/attendance",
   leave: "/dashboard/leave",
   salary: "/dashboard/salary",

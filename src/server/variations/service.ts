@@ -180,6 +180,15 @@ async function allocateUnique(
   throw new Error("Could not generate a unique value after several attempts");
 }
 
+/** Fresh auto-generated SKU + barcode — for an item split off another
+ * (a part-quantity stock transfer), which needs its own identity. */
+export async function allocateGeneratedIdentifiers(
+  tx: VariationTx,
+  productName: string,
+): Promise<{ sku: string; barcode: string }> {
+  return allocateIdentifiers(tx, productName, undefined, undefined);
+}
+
 async function allocateIdentifiers(
   tx: VariationTx,
   productName: string,

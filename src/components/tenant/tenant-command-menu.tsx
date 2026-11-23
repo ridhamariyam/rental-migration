@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
+  ArrowLeftRightIcon,
   Building2Icon,
   BellIcon,
   BarChart3Icon,
@@ -88,6 +89,12 @@ const allSearchableItems = [
     label: "Cleaning & Maintenance",
     icon: SprayCanIcon,
     permission: Permission.MAINTENANCE_VIEW,
+  },
+  {
+    href: tenantPaths.transfers,
+    label: "Stock Transfers",
+    icon: ArrowLeftRightIcon,
+    permission: Permission.TRANSFER_VIEW,
   },
   {
     href: tenantPaths.attendance,

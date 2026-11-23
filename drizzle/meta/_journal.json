@@ -225,6 +225,13 @@
       "when": 1795107988341,
       "tag": "0031_plan_prices",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1795282472467,
+      "tag": "0032_stock_transfers",
+      "breakpoints": true
     }
   ]
 }

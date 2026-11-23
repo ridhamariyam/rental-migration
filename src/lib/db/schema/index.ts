@@ -11,6 +11,7 @@ export * from "@/lib/db/schema/bookings";
 export * from "@/lib/db/schema/booking-items";
 export * from "@/lib/db/schema/payments";
 export * from "@/lib/db/schema/maintenance-tasks";
+export * from "@/lib/db/schema/stock-transfers";
 export * from "@/lib/db/schema/attendance";
 export * from "@/lib/db/schema/staff-leaves";
 export * from "@/lib/db/schema/salary";

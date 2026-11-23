@@ -34,6 +34,8 @@ export enum Permission {
   PAYMENT_REFUND = "payment:refund",
   MAINTENANCE_VIEW = "maintenance:view",
   MAINTENANCE_MANAGE = "maintenance:manage",
+  TRANSFER_VIEW = "transfer:view",
+  TRANSFER_CREATE = "transfer:create",
   // Attendance (doc §17). `ATTENDANCE_SELF` is the geofenced check-in/out
   // action itself; `ATTENDANCE_VIEW` is reading *other* staff's attendance
   // (a self-check bypasses this for one's own records, same as the legacy
@@ -122,6 +124,8 @@ const STAFF_PERMISSIONS: ReadonlySet<Permission> = new Set([
   Permission.PAYMENT_RECORD,
   Permission.MAINTENANCE_VIEW,
   Permission.MAINTENANCE_MANAGE,
+  Permission.TRANSFER_VIEW,
+  Permission.TRANSFER_CREATE,
   Permission.ATTENDANCE_SELF,
   Permission.LEAVE_VIEW,
   Permission.SALARY_VIEW,
@@ -152,6 +156,8 @@ const MANAGER_PERMISSIONS: ReadonlySet<Permission> = new Set([
   Permission.PAYMENT_REFUND,
   Permission.MAINTENANCE_VIEW,
   Permission.MAINTENANCE_MANAGE,
+  Permission.TRANSFER_VIEW,
+  Permission.TRANSFER_CREATE,
   Permission.ATTENDANCE_SELF,
   Permission.ATTENDANCE_VIEW,
   Permission.LEAVE_VIEW,

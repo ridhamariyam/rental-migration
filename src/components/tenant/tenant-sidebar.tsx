@@ -4,6 +4,7 @@ import * as React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
+  ArrowLeftRightIcon,
   Building2Icon,
   BellIcon,
   BarChart3Icon,
@@ -95,6 +96,12 @@ const navItems = [
     label: "Cleaning & Maintenance",
     icon: SprayCanIcon,
     permission: Permission.MAINTENANCE_VIEW,
+  },
+  {
+    href: tenantPaths.transfers,
+    label: "Stock Transfers",
+    icon: ArrowLeftRightIcon,
+    permission: Permission.TRANSFER_VIEW,
   },
   {
     href: tenantPaths.attendance,
