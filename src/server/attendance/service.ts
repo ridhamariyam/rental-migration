@@ -103,7 +103,10 @@ async function resolveOwnOutlet(actor: TenantSessionUser) {
  * unusable until they do — the geofence is an *optional* extra check, not
  * a prerequisite for using attendance at all. Returns `null` distance
  * (nothing to compare against) when there's no geofence to check against. */
-function validatePosition(
+/** Most GPS error we'll forgive on top of an outlet's radius. */
+const GPS_ACCURACY_TOLERANCE_CAP_METRES = 100;
+
+export function validatePosition(
   outlet: {
     latitude: number | null;
     longitude: number | null;
@@ -112,6 +115,7 @@ function validatePosition(
   },
   latitude: number,
   longitude: number,
+  accuracyMetres?: number,
 ): number | null {
   assertValidCoordinates(latitude, longitude);
 
@@ -126,7 +130,14 @@ function validatePosition(
     outlet.longitude,
   );
 
-  if (distance > outlet.allowedRadiusMetres) {
+  // Phone GPS indoors is routinely 30–100 m off, which rejected staff
+  // standing inside the shop. Give the benefit of the phone's own reported
+  // accuracy, capped so a wildly vague fix can't pass from across town.
+  const tolerance = Math.min(
+    Math.max(accuracyMetres ?? 0, 0),
+    GPS_ACCURACY_TOLERANCE_CAP_METRES,
+  );
+  if (distance - tolerance > outlet.allowedRadiusMetres) {
     throw new AppError(
       `You are ${formatDistanceMetres(distance)} from ${outlet.name}. Attendance is only accepted within ${formatDistanceMetres(outlet.allowedRadiusMetres)}.`,
       403,
@@ -222,7 +233,12 @@ export async function checkIn(
   }
 
   const outlet = await resolveOwnOutlet(actor);
-  const distance = validatePosition(outlet, input.latitude, input.longitude);
+  const distance = validatePosition(
+    outlet,
+    input.latitude,
+    input.longitude,
+    input.accuracy,
+  );
 
   // Stored only once every other check has passed, so a check-in that is
   // going to be refused (wrong day, outside the geofence, no permission)
@@ -272,7 +288,12 @@ export async function checkOut(
   }
 
   const outlet = await resolveOwnOutlet(actor);
-  const distance = validatePosition(outlet, input.latitude, input.longitude);
+  const distance = validatePosition(
+    outlet,
+    input.latitude,
+    input.longitude,
+    input.accuracy,
+  );
 
   const [attendance] = await db
     .update(attendances)

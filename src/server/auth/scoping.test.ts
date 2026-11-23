@@ -20,7 +20,12 @@ import {
 } from "@/test/db";
 import { bookingItems } from "@/lib/db/schema";
 import { listStaff } from "@/server/staff/service";
-import { getBookingStats, listBookings } from "@/server/bookings/service";
+import {
+  getBookingById,
+  getBookingItems,
+  getBookingStats,
+  listBookings,
+} from "@/server/bookings/service";
 import { listMaintenanceTasks } from "@/server/maintenance/service";
 import { createBooking } from "@/server/bookings/service";
 import {
@@ -156,6 +161,21 @@ test("a manager sees only bookings for their own outlet", async () => {
 
   const scoped = await listBookings(fixture.shopId, bookingQuery, manager);
   assert.equal(scoped.total, 1, "only the booking at their own outlet");
+
+  // Opening that booking used to crash for every outlet-scoped account
+  // ("missing FROM-clause entry for table bookings").
+  const own = scoped.items[0];
+  assert.ok(await getBookingById(fixture.shopId, own.id, manager));
+  const items = await getBookingItems(fixture.shopId, own.id, manager);
+  assert.equal(items.length, 1, "the manager can see their booking's items");
+
+  const ownerView = await listBookings(fixture.shopId, bookingQuery, fixture.admin);
+  const other = ownerView.items.find((row) => row.id !== own.id)!;
+  assert.equal(
+    (await getBookingItems(fixture.shopId, other.id, manager)).length,
+    0,
+    "but not another outlet's",
+  );
 
   const owner = await listBookings(fixture.shopId, bookingQuery, fixture.admin);
   assert.equal(owner.total, 2, "the owner sees both");

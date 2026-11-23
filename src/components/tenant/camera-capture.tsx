@@ -1,7 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
-import { CameraIcon, RefreshCwIcon, VideoOffIcon } from "lucide-react";
+import { useCallback, useEffect, useRef, useState, type ChangeEvent } from "react";
+import { CameraIcon, ImageUpIcon, RefreshCwIcon, VideoOffIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 
@@ -9,6 +9,27 @@ import { Spinner } from "@/components/ui/spinner";
  * frame as JPEG is ~150 KB, and this is a photograph, not a diagram. */
 const CAPTURE_TYPE = "image/jpeg";
 const CAPTURE_QUALITY = 0.85;
+/** Longest side of a photo taken through the phone's own camera app —
+ * those are often 8–12 MP and over the 5 MB upload limit as-is. */
+const FALLBACK_MAX_SIDE = 1280;
+
+/** Shrinks a photo from the phone's camera app to a reasonable JPEG. */
+async function downscalePhoto(file: File): Promise<Blob> {
+  const bitmap = await createImageBitmap(file);
+  const scale = Math.min(1, FALLBACK_MAX_SIDE / Math.max(bitmap.width, bitmap.height));
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.round(bitmap.width * scale);
+  canvas.height = Math.round(bitmap.height * scale);
+  canvas.getContext("2d")?.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+  bitmap.close();
+  return new Promise((resolve, reject) =>
+    canvas.toBlob(
+      (blob) => (blob ? resolve(blob) : reject(new Error("encode failed"))),
+      CAPTURE_TYPE,
+      CAPTURE_QUALITY,
+    ),
+  );
+}
 
 /** Thrown for the cases the browser cannot even attempt — no secure
  * context, no `mediaDevices` — so they travel the same rejected-promise
@@ -111,6 +132,9 @@ export function CameraCapture({
   );
   const [error, setError] = useState<string | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
+  // Only the live self-view is mirrored; a photo from the camera app isn't.
+  const [previewMirrored, setPreviewMirrored] = useState(true);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const stopStream = useCallback(() => {
     streamRef.current?.getTracks().forEach((track) => track.stop());
@@ -182,6 +206,7 @@ export function CameraCapture({
           setError("Couldn't capture the photo. Please try again.");
           return;
         }
+        setPreviewMirrored(true);
         setPreview(URL.createObjectURL(blob));
         onCapture(blob);
         stopStream();
@@ -189,6 +214,27 @@ export function CameraCapture({
       CAPTURE_TYPE,
       CAPTURE_QUALITY,
     );
+  }
+
+  /** The fallback for when the browser can't open a live camera — in-app
+   * browsers (WhatsApp, Instagram), older webviews, or a blocked camera
+   * permission. `capture="user"` opens the phone's own front camera, which
+   * works in nearly every mobile browser. */
+  async function onFallbackPhoto(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    try {
+      const blob = await downscalePhoto(file);
+      if (preview) URL.revokeObjectURL(preview);
+      setPreviewMirrored(false);
+      setPreview(URL.createObjectURL(blob));
+      setError(null);
+      onCapture(blob);
+      stopStream();
+    } catch {
+      setError("Couldn't read that photo. Please take it again.");
+    }
   }
 
   function retake() {
@@ -206,7 +252,7 @@ export function CameraCapture({
           <img
             src={preview}
             alt="The photo you just took"
-            className="size-full -scale-x-100 object-cover"
+            className={`size-full object-cover ${previewMirrored ? "-scale-x-100" : ""}`}
           />
         ) : (
           <video
@@ -234,11 +280,30 @@ export function CameraCapture({
         ) : null}
       </div>
 
-      {status === "error" ? (
-        <Button type="button" variant="outline" onClick={restart}>
-          <RefreshCwIcon aria-hidden="true" />
-          Try camera again
-        </Button>
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*"
+        capture="user"
+        className="hidden"
+        onChange={onFallbackPhoto}
+      />
+
+      {status === "error" && !preview ? (
+        <>
+          <Button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={disabled}
+          >
+            <ImageUpIcon aria-hidden="true" />
+            Take photo with phone camera
+          </Button>
+          <Button type="button" variant="outline" onClick={restart}>
+            <RefreshCwIcon aria-hidden="true" />
+            Try live camera again
+          </Button>
+        </>
       ) : preview ? (
         <Button
           type="button"

@@ -1,6 +1,7 @@
 import "server-only";
 
 import {
+  aliasedTable,
   and,
   asc,
   count,
@@ -135,6 +136,28 @@ function staffScopeCondition(
       .select({ id: bookingItems.bookingId })
       .from(bookingItems)
       .where(eq(bookingItems.outletId, outletId)),
+  );
+}
+
+/** `staffScopeCondition` for queries that select from `booking_items`
+ * without joining `bookings` — the order-level filter names
+ * `bookings.id`, which such a query has no FROM entry for (it failed with
+ * "missing FROM-clause entry" and broke the booking page for every
+ * outlet-scoped account). Same rule: the whole order is visible if any of
+ * its items is at the actor's outlet. */
+function staffItemScopeCondition(
+  actor: Pick<TenantSessionUser, "id" | "role" | "outletId">,
+) {
+  const outletId = outletScopeFor(actor);
+  if (outletId === null) return undefined;
+
+  const scopedItems = aliasedTable(bookingItems, "scoped_items");
+  return inArray(
+    bookingItems.bookingId,
+    db
+      .select({ id: scopedItems.bookingId })
+      .from(scopedItems)
+      .where(eq(scopedItems.outletId, outletId)),
   );
 }
 
@@ -699,7 +722,7 @@ export async function getBookingItems(
         and(
           eq(bookingItems.shopId, shopId),
           eq(bookingItems.bookingId, bookingId),
-          staffScopeCondition(actor),
+          staffItemScopeCondition(actor),
         ),
       )
       // Items created together in one order share the exact same
@@ -722,7 +745,7 @@ export async function getBookingItemById(
         eq(bookingItems.shopId, shopId),
         eq(bookingItems.bookingId, bookingId),
         eq(bookingItems.id, itemId),
-        staffScopeCondition(actor),
+        staffItemScopeCondition(actor),
       ),
     )
     .limit(1);

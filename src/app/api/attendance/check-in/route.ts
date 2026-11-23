@@ -23,6 +23,7 @@ export async function POST(request: Request) {
     const body = checkInOutSchema.parse({
       latitude: formData.get("latitude"),
       longitude: formData.get("longitude"),
+      accuracy: formData.get("accuracy") ?? undefined,
     });
     const photo = await readImageUpload(formData.get("photo"), "photo");
 

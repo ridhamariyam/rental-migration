@@ -4,19 +4,8 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { ApiClientError, apiRequest } from "@/lib/api-client";
 import type { Attendance } from "@/lib/db/schema";
+import { getCheckInPosition } from "@/lib/geolocation";
 
-function getPosition(): Promise<GeolocationPosition> {
-  return new Promise((resolve, reject) => {
-    if (!("geolocation" in navigator)) {
-      reject(new Error("Your browser doesn't support location access"));
-      return;
-    }
-    navigator.geolocation.getCurrentPosition(resolve, reject, {
-      enableHighAccuracy: true,
-      timeout: 15_000,
-    });
-  });
-}
 
 function isGeolocationError(error: unknown): error is GeolocationPositionError {
   return (
@@ -46,7 +35,7 @@ export function useAttendanceCheckInOut(initialToday: Attendance | null) {
     setIsSubmitting(true);
 
     try {
-      const position = await getPosition();
+      const position = await getCheckInPosition();
 
       // Check-in carries the live camera capture, so it goes up as
       // multipart with the coordinates attached; check-out is unchanged
@@ -57,11 +46,13 @@ export function useAttendanceCheckInOut(initialToday: Attendance | null) {
           ? JSON.stringify({
               latitude: position.coords.latitude,
               longitude: position.coords.longitude,
+              accuracy: position.coords.accuracy,
             })
           : (() => {
               const form = new FormData();
               form.set("latitude", String(position.coords.latitude));
               form.set("longitude", String(position.coords.longitude));
+              form.set("accuracy", String(position.coords.accuracy));
               form.set("photo", photo, "check-in.jpg");
               return form;
             })();

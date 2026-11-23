@@ -13,6 +13,8 @@ export const checkInOutSchema = z.object({
     .number()
     .min(-180, "Invalid longitude")
     .max(180, "Invalid longitude"),
+  /** The phone's own estimate of how far off its fix may be, in metres. */
+  accuracy: z.coerce.number().min(0).max(100_000).optional().catch(undefined),
 });
 
 export type CheckInOutInput = z.infer<typeof checkInOutSchema>;
